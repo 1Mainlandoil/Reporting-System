@@ -7,7 +7,7 @@ import SplashOverlay from './components/layout/SplashOverlay.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={(import.meta.env.BASE_URL || '/').replace(/\/$/, '') || undefined}>
       <SplashOverlay />
       <App />
     </BrowserRouter>
