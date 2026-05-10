@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { publicUrl } from '../../lib/publicUrl'
+import { MAINLAND_LOGO_SRC } from '../../constants/brandLogo'
 
 const SPLASH_MS = 3000
 const FADE_MS = 400
@@ -29,7 +29,7 @@ export default function SplashOverlay() {
       aria-hidden="true"
     >
       <img
-        src={publicUrl('favicon.svg')}
+        src={MAINLAND_LOGO_SRC}
         alt=""
         className="h-16 w-auto max-w-[min(280px,85vw)] object-contain brightness-110 contrast-105 drop-shadow-[0_2px_12px_rgba(0,0,0,0.5)]"
       />
