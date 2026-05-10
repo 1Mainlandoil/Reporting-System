@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
+import { publicUrl } from '../../lib/publicUrl'
 import { useAppStore } from '../../store/useAppStore'
 import { linksByRole } from '../../constants/navigation'
 
@@ -47,7 +48,7 @@ const Sidebar = () => {
   return (
     <aside className="hidden w-full border-b border-slate-200 bg-white p-4 md:fixed md:left-0 md:top-[73px] md:block md:h-[calc(100vh-73px)] md:w-64 md:overflow-y-auto md:border-b-0 md:border-r md:border-[#c4151d] md:bg-[#f01d26] md:dark:border-[#c4151d] md:dark:bg-[#f01d26]">
       <div className="mb-6 flex flex-col items-center rounded-2xl border border-white/10 bg-[#000000] px-3 py-3 text-center text-white shadow-lg shadow-black/60">
-        <img src="/mainland-logo.png" alt="Mainland Oil logo" className="mb-2 h-10 w-auto" />
+        <img src={publicUrl('favicon.svg')} alt="Mainland Oil logo" className="mb-2 h-10 w-auto" />
         <p className="font-serif text-base font-extrabold uppercase tracking-[0.12em] text-white">Mainland Oil</p>
       </div>
       <nav className="space-y-1.5">
