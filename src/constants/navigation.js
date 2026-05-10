@@ -1,0 +1,26 @@
+export const linksByRole = {
+  admin: [
+    { label: 'Dashboard', path: '/admin/dashboard' },
+    { label: 'Reports', path: '/admin/reports' },
+    { label: 'Product Requests', path: '/admin/product-requests' },
+    { label: 'History', path: '/admin/history' },
+    { label: 'Stations', path: '/stations' },
+    { label: 'Reconciliation', path: '/reconciliation' },
+    { label: 'Alerts', path: '/alerts' },
+    { label: 'Analytics', path: '/analytics' },
+    { label: 'Users', path: '/users' },
+    { label: 'Settings', path: '/settings' },
+  ],
+  supervisor: [
+    { label: 'Dashboard', path: '/supervisor' },
+    { label: 'Product Requests', path: '/supervisor?view=product-requests' },
+    { label: 'History', path: '/supervisor?view=history' },
+    { label: 'Stations', path: '/stations' },
+    { label: 'Reconciliation', path: '/reconciliation' },
+    { label: 'Alerts', path: '/alerts' },
+    { label: 'Analytics', path: '/analytics' },
+    { label: 'Users', path: '/users' },
+    { label: 'Settings', path: '/settings' },
+  ],
+  staff: [{ label: 'Manager Dashboard', path: '/staff' }],
+}

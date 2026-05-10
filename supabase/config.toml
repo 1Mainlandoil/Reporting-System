@@ -1,0 +1,5 @@
+# Edge Function: IT portal sets Auth passwords without sending email.
+# Matches Dashboard: Edge Functions → set-auth-password → JWT verification off.
+
+[functions.set-auth-password]
+verify_jwt = false
