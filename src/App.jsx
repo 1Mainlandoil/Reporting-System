@@ -18,6 +18,7 @@ import AlertsPage from './pages/AlertsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
+import ITAdminPage from './pages/ITAdminPage'
 
 const RootRoute = () => {
   const role = useAppStore((state) => state.role)
@@ -89,6 +90,7 @@ const App = () => (
       <Route path="/settings" element={<SettingsPage />} />
     </Route>
 
+    <Route path="/it-admin" element={<ITAdminPage />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
 )

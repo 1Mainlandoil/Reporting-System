@@ -1,10 +1,12 @@
 # Build static site and publish to GitHub Pages (source: GitHub Actions).
-# Repo Settings → Pages → Build and deployment → Source: GitHub Actions.
+# Repo Settings ? Pages ? Build and deployment ? Source: GitHub Actions.
 #
-# Required secrets (Settings → Secrets and variables → Actions):
+# Required secrets (Settings ? Secrets and variables ? Actions):
 #   VITE_SUPABASE_URL
 #   VITE_SUPABASE_ANON_KEY
-# Optional: VITE_AUTH_REDIRECT_URL (e.g. https://<org>.github.io/Reporting-System/auth/callback)
+# Optional:
+#   VITE_AUTH_REDIRECT_URL
+#   VITE_IT_PORTAL_SECRET (needed for IT admin password resets on prod)
 
 name: Deploy GitHub Pages
 
@@ -42,6 +44,7 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_AUTH_REDIRECT_URL: ${{ secrets.VITE_AUTH_REDIRECT_URL }}
+          VITE_IT_PORTAL_SECRET: ${{ secrets.VITE_IT_PORTAL_SECRET }}
         run: npm run build
 
       - name: SPA routing fallback (GitHub Pages has no server rewrites)
