@@ -10,15 +10,9 @@
   "icons": [
     {
       "src": "mainland-logo.png",
-      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "mainland-logo.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "sizes": "any",
+      "purpose": "any maskable"
     }
   ]
 }
