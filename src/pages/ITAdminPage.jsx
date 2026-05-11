@@ -57,7 +57,8 @@ function SecurityModal({ config, onConfirm, onCancel }) {
 
 export default function ITAdminPage() {
   const [authed, setAuthed] = useState(false)
-  const [secretInput, setSecretInput] = useState('')
+  const [gateEmail, setGateEmail] = useState('')
+  const [gatePassword, setGatePassword] = useState('')
   const [notice, setNotice] = useState({ text: '', type: 'ok' })
   const [tab, setTab] = useState('users')
   const [stations, setStations] = useState([])
@@ -111,10 +112,23 @@ export default function ITAdminPage() {
   const stationName = (id) => stations.find((s) => s.id === id)?.name || id || '-'
   const stationLocation = (id) => stations.find((s) => s.id === id)?.location || '-'
 
-  const handleGateSubmit = (e) => {
+  const handleGateSubmit = async (e) => {
     e.preventDefault()
-    if (!itSecret) { showNotice('VITE_IT_PORTAL_SECRET is not set in the environment.', 'error'); return }
-    if (secretInput.trim() === itSecret) { setAuthed(true); showNotice('') } else { showNotice('Invalid IT portal secret.', 'error') }
+    if (!supabase) { showNotice('Supabase not configured.', 'error'); return }
+    const email = gateEmail.trim().toLowerCase()
+    const password = gatePassword
+    if (!email || !password) { showNotice('Enter email and password.', 'error'); return }
+    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInErr) { showNotice(signInErr.message || 'Invalid credentials.', 'error'); return }
+    const { data: rows } = await supabase.from('users').select('role').eq('email', email).limit(1)
+    const userRole = rows?.[0]?.role
+    if (userRole !== 'admin') {
+      await supabase.auth.signOut()
+      showNotice('Access denied. Only admin accounts can access the IT portal.', 'error')
+      return
+    }
+    setAuthed(true)
+    showNotice('')
   }
 
   const handleCreateManager = async (e) => {
@@ -315,10 +329,11 @@ export default function ITAdminPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 dark:bg-slate-900">
       <form onSubmit={handleGateSubmit} className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg dark:bg-slate-800">
         <h1 className="text-xl font-bold text-slate-900 dark:text-white">IT Control Portal</h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Enter the IT portal secret to continue.</p>
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Sign in with your admin account to continue.</p>
         {notice.text && <p className={`mt-3 rounded p-2 text-xs ${notice.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>{notice.text}</p>}
-        <input type="password" value={secretInput} onChange={(e) => setSecretInput(e.target.value)} placeholder="IT_PORTAL_SECRET" className="mt-4 w-full rounded border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" autoFocus />
-        <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Unlock</button>
+        <input type="email" value={gateEmail} onChange={(e) => setGateEmail(e.target.value)} placeholder="admin@mainlandoil.com" className="mt-4 w-full rounded border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" autoFocus />
+        <input type="password" value={gatePassword} onChange={(e) => setGatePassword(e.target.value)} placeholder="Password" className="mt-3 w-full rounded border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" />
+        <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Sign In</button>
       </form>
     </div>
   )
