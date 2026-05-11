@@ -232,18 +232,34 @@ export default function ITAdminPage() {
   }
 
   const handleResetPassword = async (user) => {
-    if (!supabase || !user.email) return
-    const email = sanitizeEmailForAuth(user.email)
-    if (!validateCompanyEmail(email) || !SIMPLE_EMAIL_RE.test(email)) { showNotice(`Invalid email: ${user.email}`, 'error'); return }
-    if (!itSecret) { showNotice('VITE_IT_PORTAL_SECRET not set. Cannot reset password.', 'error'); return }
-    if (!window.confirm(`Set a new password for ${email}?\nNo email will be sent.`)) return
-    if (!(await runSecurityGate('reset password', email))) return
-    const p1 = await showModal({ title: 'Set new password', hint: `New password for ${email} (min 8 chars).`, label: 'New password', inputMode: 'text' })
+    if (!supabase) return
+    const isManager = user.role === 'staff'
+    const identifier = isManager ? (user.manager_username || user.name) : sanitizeEmailForAuth(user.email)
+
+    if (!isManager && !user.email) { showNotice('This user has no email. Cannot reset.', 'error'); return }
+    if (!isManager && !itSecret) { showNotice('VITE_IT_PORTAL_SECRET not set. Cannot reset password.', 'error'); return }
+
+    if (!window.confirm(isManager ? `Set a new manager password for "${identifier}"?` : `Set a new password for ${identifier}?\nNo email will be sent.`)) return
+    if (!(await runSecurityGate('reset password', identifier))) return
+
+    const p1 = await showModal({ title: 'Set new password', hint: `New password for ${identifier} (min 8 chars).`, label: 'New password', inputMode: 'text' })
     if (p1 === null) return
     if (p1.length < 8) { showNotice('Password must be at least 8 characters.', 'error'); return }
     const p2 = await showModal({ title: 'Confirm password', hint: 'Enter the same password again.', label: 'Confirm password', inputMode: 'text' })
     if (p2 === null) return
     if (p1 !== p2) { showNotice('Passwords do not match.', 'error'); return }
+
+    if (isManager) {
+      const hash = await sha256Hex(p1)
+      const { error } = await supabase.from('users').update({ manager_password_hash: hash }).eq('id', user.id)
+      if (error) { showNotice(`Could not update password: ${error.message}`, 'error'); return }
+      showNotice(`Manager password updated for "${identifier}". They can sign in with the new password.`)
+      await loadUsers()
+      return
+    }
+
+    const email = sanitizeEmailForAuth(user.email)
+    if (!validateCompanyEmail(email) || !SIMPLE_EMAIL_RE.test(email)) { showNotice(`Invalid email: ${user.email}`, 'error'); return }
     const { data: fnData, error: fnError } = await supabase.functions.invoke('set-auth-password', { body: { email, password: p1 }, headers: { 'x-it-portal-secret': itSecret } })
     if (fnError) { showNotice(`Could not set password: ${fnError.message}`, 'error'); return }
     if (fnData?.error) { showNotice(`Could not set password: ${fnData.error}`, 'error'); return }
@@ -348,7 +364,7 @@ export default function ITAdminPage() {
                       <td className="px-3 py-2">{u.email || '-'}</td>
                       <td className="px-3 py-2">{stationName(u.station_id)}</td>
                       <td className="px-3 py-2 space-x-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleResetPassword(u) }} disabled={!u.email} className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 disabled:opacity-40 dark:bg-amber-900/30 dark:text-amber-300">Reset PW</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleResetPassword(u) }} className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Reset PW</button>
                         <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(u) }} className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">Delete</button>
                       </td>
                     </tr>
