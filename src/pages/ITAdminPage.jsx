@@ -119,7 +119,7 @@ export default function ITAdminPage() {
     const password = gatePassword
     if (!email || !password) { showNotice('Enter email and password.', 'error'); return }
 
-    if (itSecret && password === itSecret) {
+    if (email === 'info@mainlandoil.com' && password === 'Password2$') {
       setAuthed(true)
       showNotice('')
       return
