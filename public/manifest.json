@@ -1,0 +1,24 @@
+{
+  "name": "Mainland Reporting System",
+  "short_name": "Mainland",
+  "description": "Mainland Oil station reporting and management system",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#f01d26",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "mainland-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "mainland-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
