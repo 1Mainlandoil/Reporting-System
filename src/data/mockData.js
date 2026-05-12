@@ -39,13 +39,6 @@ const stationNames = [
   'UYO 2',
 ]
 
-const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min
-
-const formatDate = (offset) => {
-  const date = new Date()
-  date.setDate(date.getDate() - offset)
-  return date.toISOString().split('T')[0]
-}
 
 export const stations = stationNames.map((name, index) => ({
   id: `stn-${index + 1}`,
@@ -54,37 +47,8 @@ export const stations = stationNames.map((name, index) => ({
 }))
 
 /** Bump when this catalog changes so persisted localStorage refreshes `stations`. */
-export const STATION_CATALOG_PERSIST_VERSION = 1
+export const STATION_CATALOG_PERSIST_VERSION = 2
 
-export const mockUsers = [
-  { id: 'mgr-1', name: 'Chinedu Okafor', role: 'staff', stationId: 'stn-1' },
-  { id: 'mgr-2', name: 'Amina Bello', role: 'staff', stationId: 'stn-2' },
-  { id: 'mgr-3', name: 'Grace Effiong', role: 'staff', stationId: 'stn-3' },
-  { id: 'sup-1', name: 'Tunde Alabi', role: 'supervisor', stationId: null },
-  { id: 'sup-2', name: 'Martha Eze', role: 'supervisor', stationId: null },
-  { id: 'admin-1', name: 'System Admin', role: 'admin', stationId: null },
-]
+export const mockUsers = []
 
-export const dailyReports = stations.flatMap((station) => {
-  return Array.from({ length: 7 }).map((_, dayIndex) => {
-    const openingPMS = random(14000, 32000)
-    const receivedPMS = random(1000, 10000)
-    const salesPMS = random(7000, 14000)
-    const openingAGO = random(7000, 18000)
-    const receivedAGO = random(500, 6000)
-    const salesAGO = random(3000, 9500)
-
-    return {
-      id: `${station.id}-${dayIndex + 1}`,
-      stationId: station.id,
-      date: formatDate(6 - dayIndex),
-      openingPMS,
-      receivedPMS,
-      salesPMS,
-      openingAGO,
-      receivedAGO,
-      salesAGO,
-      remarks: dayIndex % 2 ? 'Normal dispatch window' : 'Slight queue during peak hours',
-    }
-  })
-})
+export const dailyReports = []

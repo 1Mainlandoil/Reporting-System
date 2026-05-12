@@ -1083,26 +1083,16 @@ export const useAppStore = create(
 
             set({
               stations: mergeStationCatalog(canonicalStations, remoteData.stations),
-              users: mergeUsersById(latestState.users, remoteData.users),
-              reports: mergeReportsByStationDate(latestState.reports, remoteData.reports),
-              productRequests: remoteData.productRequests.length ? remoteData.productRequests : latestState.productRequests,
-              dailyFinalizations: remoteData.dailyFinalizations.length
-                ? remoteData.dailyFinalizations
-                : latestState.dailyFinalizations,
-              monthEndFinalizations: remoteData.monthEndFinalizations.length
-                ? remoteData.monthEndFinalizations
-                : latestState.monthEndFinalizations,
-              interventions: remoteData.interventions.length ? remoteData.interventions : latestState.interventions,
+              users: remoteData.users,
+              reports: remoteData.reports,
+              productRequests: remoteData.productRequests,
+              dailyFinalizations: remoteData.dailyFinalizations,
+              monthEndFinalizations: remoteData.monthEndFinalizations,
+              interventions: remoteData.interventions,
               chatMessages: mergedChatMessages,
-              adminDailyReviews: remoteData.adminDailyReviews.length
-                ? remoteData.adminDailyReviews
-                : latestState.adminDailyReviews,
-              adminReplenishmentWorkflows: remoteData.adminReplenishmentWorkflows.length
-                ? remoteData.adminReplenishmentWorkflows
-                : latestState.adminReplenishmentWorkflows,
-              adminReportResolutions: remoteData.adminReportResolutions.length
-                ? remoteData.adminReportResolutions
-                : latestState.adminReportResolutions,
+              adminDailyReviews: remoteData.adminDailyReviews,
+              adminReplenishmentWorkflows: remoteData.adminReplenishmentWorkflows,
+              adminReportResolutions: remoteData.adminReportResolutions,
               hydratedFromSupabase: true,
               isHydrating: false,
             })
@@ -1143,7 +1133,20 @@ export const useAppStore = create(
           return persisted
         }
         if (fromVersion < STATION_CATALOG_PERSIST_VERSION) {
-          return { ...persisted, stations: canonicalStations }
+          return {
+            ...persisted,
+            stations: canonicalStations,
+            users: [],
+            reports: [],
+            productRequests: [],
+            dailyFinalizations: [],
+            monthEndFinalizations: [],
+            interventions: [],
+            chatMessages: [],
+            adminDailyReviews: [],
+            adminReplenishmentWorkflows: [],
+            adminReportResolutions: [],
+          }
         }
         return persisted
       },
