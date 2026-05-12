@@ -353,7 +353,7 @@ const StaffClosingReportForm = ({
           </div>
         )}
         <label className="space-y-1">
-          <span className="text-sm font-medium">NO SALES DAY</span>
+          <span className="text-sm font-medium">DID YOU SELL TODAY?</span>
           <select
             value={formData.noSalesDay}
             onChange={(event) =>

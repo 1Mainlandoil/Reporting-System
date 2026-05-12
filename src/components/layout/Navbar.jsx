@@ -61,7 +61,7 @@ const Navbar = () => {
   const mobileLinks = role === 'staff'
     ? [
       ...(staffHistoryPath ? [{ label: 'History', path: staffHistoryPath }] : []),
-      { label: 'Stock Ordering', path: '/staff/stock-ordering' },
+      { label: 'Order Product', path: '/staff/stock-ordering' },
     ]
     : mobileMenuByRole[role] || links.filter((link) => !['Supervisor', 'Reconciliation'].includes(link.label))
 
@@ -117,7 +117,7 @@ const Navbar = () => {
               onClick={() => navigate('/staff/stock-ordering')}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
             >
-              Stock Ordering
+              Order Product
             </button>
             <button
               type="button"

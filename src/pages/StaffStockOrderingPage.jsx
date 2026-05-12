@@ -28,7 +28,7 @@ const StaffStockOrderingPage = () => {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <Card className="space-y-4">
-        <h3 className="text-lg font-semibold">Stock Ordering</h3>
+        <h3 className="text-lg font-semibold">Order Product</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Submit product requests for supervisor and admin review.
         </p>
