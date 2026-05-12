@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
@@ -6,7 +7,12 @@ import { useAppStore } from '../store/useAppStore'
 
 const AppLayout = () => {
   const role = useAppStore((state) => state.role)
+  const hydrateFromSupabase = useAppStore((state) => state.hydrateFromSupabase)
   const showSidebar = role !== 'staff'
+
+  useEffect(() => {
+    hydrateFromSupabase()
+  }, [hydrateFromSupabase])
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#a9cd39]/90 text-slate-900 dark:bg-[#a9cd39]/90 dark:text-slate-100">
