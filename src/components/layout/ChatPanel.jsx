@@ -11,8 +11,8 @@ const getChatRoleLabel = (role) => {
 }
 
 const AVATAR_COLORS = [
-  '#25D366', '#128C7E', '#075E54', '#34B7F1',
-  '#00A884', '#5B61B9', '#D4A03C', '#E06C75',
+  '#4caf50', '#388e3c', '#2e7d32', '#34B7F1',
+  '#66bb6a', '#5B61B9', '#D4A03C', '#E06C75',
   '#56B6C2', '#C678DD',
 ]
 
@@ -98,7 +98,7 @@ const BouncingDots = () => (
     {[0, 1, 2].map((i) => (
       <span
         key={i}
-        className="inline-block h-[6px] w-[6px] rounded-full bg-[#25D366]"
+        className="inline-block h-[6px] w-[6px] rounded-full bg-[#4caf50]"
         style={{
           animation: 'chatBounce 1.4s infinite ease-in-out both',
           animationDelay: `${i * 0.16}s`,
@@ -421,6 +421,9 @@ const ChatPanel = () => {
         .chat-unread-pulse {
           animation: chatPulse 2s infinite;
         }
+        .safe-area-pb {
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
         .chat-bubble-tail-right::after {
           content: '';
           position: absolute;
@@ -429,7 +432,7 @@ const ChatPanel = () => {
           width: 0;
           height: 0;
           border: 6px solid transparent;
-          border-left-color: #075E54;
+          border-left-color: #2e7d32;
           border-bottom: 0;
         }
         .chat-bubble-tail-left::after {
@@ -455,7 +458,7 @@ const ChatPanel = () => {
           } ${
             isMobileViewport
               ? 'fixed inset-0 z-[70] h-screen w-screen rounded-none border-transparent'
-              : 'flex h-[580px] w-[880px] max-w-[calc(100vw-2rem)] rounded-2xl border-[#00A884]/30'
+              : 'flex h-[580px] w-[880px] max-w-[calc(100vw-2rem)] rounded-2xl border-[#4caf50]/30'
           } bg-white dark:bg-[#111b21]`}
         >
           {/* ───── Contact List Pane ───── */}
@@ -465,7 +468,7 @@ const ChatPanel = () => {
                 isMobileViewport ? 'h-full w-full' : 'w-[320px] border-r border-slate-200 dark:border-slate-700/50'
               }`}
             >
-              <div className="bg-[#008069] px-4 py-3 dark:bg-[#202c33]">
+              <div className="bg-[#388e3c] px-4 py-3 dark:bg-[#202c33]">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Avatar user={currentUser} size={32} />
@@ -491,7 +494,7 @@ const ChatPanel = () => {
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
                     placeholder="Search or start new chat"
-                    className="w-full rounded-lg border-0 bg-[#005c4b] py-2 pl-10 pr-3 text-sm text-white placeholder-white/50 outline-none transition focus:bg-[#004d40] dark:bg-[#2a3942] dark:focus:bg-[#323f49]"
+                    className="w-full rounded-lg border-0 bg-[#2e7d32] py-2 pl-10 pr-3 text-sm text-white placeholder-white/50 outline-none transition focus:bg-[#1b5e20] dark:bg-[#2a3942] dark:focus:bg-[#323f49]"
                   />
                 </div>
               </div>
@@ -521,7 +524,7 @@ const ChatPanel = () => {
                             {item.isPinned && <span className="text-[10px]">📌</span>}
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <p className={`text-[11px] ${item.unreadCount > 0 ? 'text-[#25D366] font-medium' : 'text-slate-500'}`}>
+                            <p className={`text-[11px] ${item.unreadCount > 0 ? 'text-[#4caf50] font-medium' : 'text-slate-500'}`}>
                               {formatTimestamp(item.lastMessage?.createdAt)}
                             </p>
                           </div>
@@ -532,7 +535,7 @@ const ChatPanel = () => {
                           </p>
                           <div className="flex items-center gap-1.5">
                             {item.unreadCount > 0 && (
-                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#25D366] px-1 text-[10px] font-bold text-white">
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#4caf50] px-1 text-[10px] font-bold text-white">
                                 {item.unreadCount}
                               </span>
                             )}
@@ -559,9 +562,9 @@ const ChatPanel = () => {
 
           {/* ───── Conversation Pane ───── */}
           {showConversationPane && (
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className={`flex min-w-0 flex-1 flex-col ${isMobileViewport ? 'h-full' : ''}`}>
               {/* Header */}
-              <div className="flex items-center justify-between bg-[#008069] px-4 py-2.5 dark:bg-[#202c33]">
+              <div className="flex items-center justify-between bg-[#388e3c] px-4 py-2.5 dark:bg-[#202c33]">
                 <div className="flex items-center gap-3">
                   {isMobileViewport && (
                     <button
@@ -597,7 +600,7 @@ const ChatPanel = () => {
 
               {/* Messages area */}
               <div
-                className={`flex-1 overflow-y-auto px-4 py-3 ${chatWallpaperBg}`}
+                className={`flex-1 overflow-y-auto px-4 py-3 ${chatWallpaperBg} ${isMobileViewport ? 'pb-20' : ''}`}
                 style={chatWallpaperPattern}
               >
                 {!conversation.length && (
@@ -641,7 +644,7 @@ const ChatPanel = () => {
                         <div
                           className={`relative rounded-lg px-3 py-1.5 text-[13px] leading-[1.35] shadow-sm ${
                             mine
-                              ? 'bg-[#005c4b] text-white chat-bubble-tail-right dark:bg-[#005c4b]'
+                              ? 'bg-[#2e7d32] text-white chat-bubble-tail-right dark:bg-[#2e7d32]'
                               : 'bg-white text-slate-900 chat-bubble-tail-left dark:bg-[#1e293b] dark:text-slate-100'
                           }`}
                         >
@@ -705,7 +708,7 @@ const ChatPanel = () => {
               </div>
 
               {/* Input bar */}
-              <div className="flex items-center gap-2 bg-[#f0f2f5] px-4 py-3 dark:bg-[#202c33]">
+              <div className={`flex items-center gap-2 bg-[#f0f2f5] px-4 py-3 dark:bg-[#202c33] ${isMobileViewport ? 'fixed bottom-0 left-0 right-0 z-[80] safe-area-pb' : ''}`}>
                 <input
                   disabled={!activeTargetId}
                   value={draft}
@@ -730,7 +733,7 @@ const ChatPanel = () => {
                   type="button"
                   onClick={handleSend}
                   disabled={!activeTargetId || !draft.trim()}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00A884] text-white shadow-sm transition hover:bg-[#008069] disabled:opacity-40"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4caf50] text-white shadow-sm transition hover:bg-[#388e3c] disabled:opacity-40"
                 >
                   <SendIcon />
                 </button>
@@ -751,11 +754,14 @@ const ChatPanel = () => {
             setChatOpen(true)
           }
         }}
-        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition hover:bg-[#128C7E]"
+        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-[#4caf50] text-white shadow-xl transition hover:bg-[#388e3c]"
         aria-label={chatUnreadTotal > 0 ? `Chat, ${chatUnreadTotal} unread` : 'Open chat'}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19.077 4.928C17.191 3.041 14.683 2.001 12.011 2c-5.506 0-9.987 4.479-9.989 9.985a9.964 9.964 0 0 0 1.333 4.993L2 22l5.233-1.237a9.963 9.963 0 0 0 4.773 1.216h.004c5.505 0 9.986-4.48 9.988-9.985a9.93 9.93 0 0 0-2.921-7.066ZM12.012 20.015h-.003a8.273 8.273 0 0 1-4.222-1.156l-.303-.18-3.143.824.839-3.064-.197-.314a8.275 8.275 0 0 1-1.268-4.14c.002-4.577 3.729-8.303 8.308-8.303a8.25 8.25 0 0 1 5.868 2.432 8.248 8.248 0 0 1 2.429 5.874c-.002 4.577-3.729 8.303-8.308 8.303v-.276.276Zm4.558-6.22c-.25-.125-1.478-.729-1.708-.812-.229-.083-.396-.125-.563.125-.167.25-.646.812-.792.979-.146.166-.292.187-.541.062-.25-.125-1.054-.388-2.008-1.237-.742-.662-1.243-1.479-1.388-1.729-.146-.25-.016-.385.109-.51.112-.112.25-.291.375-.437.125-.146.166-.25.25-.416.083-.167.041-.312-.021-.437-.063-.125-.563-1.354-.771-1.854-.203-.487-.41-.421-.563-.429l-.479-.008a.919.919 0 0 0-.667.312c-.229.25-.875.854-.875 2.083s.896 2.416 1.021 2.583c.125.167 1.763 2.692 4.271 3.775.596.258 1.063.412 1.426.527.599.19 1.144.163 1.575.099.48-.072 1.478-.604 1.687-1.187.208-.583.208-1.083.146-1.187-.063-.104-.229-.167-.479-.292Z" />
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          <circle cx="9" cy="10" r="0.8" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="10" r="0.8" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="10" r="0.8" fill="currentColor" stroke="none" />
         </svg>
         {!isOpen && chatUnreadTotal > 0 && (
           <span className="chat-unread-pulse absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white ring-2 ring-white dark:ring-slate-900">
