@@ -320,6 +320,12 @@ const SupervisorDashboardPage = () => {
             : 'Not Submitted',
           pmsPrice: latestToday ? latestToday.pmsPrice ?? 'Not Submitted' : 'Not Submitted',
           agoPrice: latestToday ? latestToday.agoPrice ?? 'Not Submitted' : 'Not Submitted',
+          multiPricing: Boolean(latestToday?.multiPricing),
+          priceBandsPMS: Array.isArray(latestToday?.priceBandsPMS) ? latestToday.priceBandsPMS : [],
+          priceBandsAGO: Array.isArray(latestToday?.priceBandsAGO) ? latestToday.priceBandsAGO : [],
+          salesAmountPMS: Number(latestToday?.salesAmountPMS || 0),
+          salesAmountAGO: Number(latestToday?.salesAmountAGO || 0),
+          totalSalesAmount: Number(latestToday?.totalSalesAmount || 0),
           receivedProduct: latestToday
             ? latestToday.receivedProduct
               ? `Yes (${receivedProductType || 'Not specified'})`
@@ -2008,11 +2014,39 @@ const SupervisorDashboardPage = () => {
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <p className="text-xs uppercase text-slate-500">PMS Price</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.pmsPrice}</p>
+                    <p className="font-medium">
+                      {selectedDailyOpeningReport.multiPricing &&
+                      (selectedDailyOpeningReport.priceBandsPMS || []).length > 1
+                        ? `Avg ₦${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
+                        : selectedDailyOpeningReport.pmsPrice}
+                    </p>
+                    {(selectedDailyOpeningReport.priceBandsPMS || []).length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                        {selectedDailyOpeningReport.priceBandsPMS.map((band, index) => (
+                          <li key={`pms-band-${index}`}>
+                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <p className="text-xs uppercase text-slate-500">AGO Price</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.agoPrice}</p>
+                    <p className="font-medium">
+                      {selectedDailyOpeningReport.multiPricing &&
+                      (selectedDailyOpeningReport.priceBandsAGO || []).length > 1
+                        ? `Avg ₦${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
+                        : selectedDailyOpeningReport.agoPrice}
+                    </p>
+                    {(selectedDailyOpeningReport.priceBandsAGO || []).length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                        {selectedDailyOpeningReport.priceBandsAGO.map((band, index) => (
+                          <li key={`ago-band-${index}`}>
+                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <p className="text-xs uppercase text-slate-500">Input Quantity Received (L)</p>

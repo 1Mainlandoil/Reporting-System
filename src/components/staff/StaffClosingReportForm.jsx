@@ -1,12 +1,20 @@
 import { useMemo, useState } from 'react'
 import FormInput from '../ui/FormInput'
+import ProductPriceSection from './ProductPriceSection'
 import { computeSalesFromMovement } from '../../utils/reportFields'
+import {
+  computeSalesAmountFromBands,
+  normalizePriceBands,
+  validatePriceBandsForProduct,
+  weightedAveragePrice,
+} from '../../utils/priceBands'
 
 const EXPENSE_OPTIONS = ['Gas', 'Pms', 'Transport', 'Oil', 'Pos paper', 'Other']
 const PAYMENT_CHANNEL_OPTIONS = ['Signature Bank', 'Moniepoint', 'First Bank', 'FCMB', 'Zenith', 'Other']
 const PUMP_LABEL_OPTIONS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'Other']
 const DEFAULT_PAYMENT_CHANNEL = { channel: '', amount: '' }
 const DEFAULT_PUMP_READING = { label: 'P1', otherLabel: '', closing: '' }
+const DEFAULT_PRICE_BAND_DRAFT = { price: '', liters: '' }
 
 const defaultForm = {
   closingStockPMS: '',
@@ -55,6 +63,12 @@ const StaffClosingReportForm = ({
   const [paymentBreakdown, setPaymentBreakdown] = useState([])
   const [pumpDraft, setPumpDraft] = useState(DEFAULT_PUMP_READING)
   const [pumpReadings, setPumpReadings] = useState([])
+  const [pmsMultiPrice, setPmsMultiPrice] = useState('no')
+  const [agoMultiPrice, setAgoMultiPrice] = useState('no')
+  const [priceBandDraftPMS, setPriceBandDraftPMS] = useState(DEFAULT_PRICE_BAND_DRAFT)
+  const [priceBandDraftAGO, setPriceBandDraftAGO] = useState(DEFAULT_PRICE_BAND_DRAFT)
+  const [priceBandsPMS, setPriceBandsPMS] = useState([])
+  const [priceBandsAGO, setPriceBandsAGO] = useState([])
   const [success, setSuccess] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -85,12 +99,10 @@ const StaffClosingReportForm = ({
     }
   }, [carriedOpening, formData])
 
-  const fields = useMemo(
+  const stockFields = useMemo(
     () => [
       { name: 'closingStockPMS', label: 'CLOSING STOCK PMS (L)' },
       { name: 'closingStockAGO', label: 'CLOSING STOCK AGO (L)' },
-      { name: 'pmsPrice', label: 'PMS PRICE' },
-      { name: 'agoPrice', label: 'AGO PRICE' },
       { name: 'rttPMS', label: 'RTT PMS' },
       { name: 'rttAGO', label: 'RTT AGO' },
     ],
@@ -124,14 +136,24 @@ const StaffClosingReportForm = ({
       const requiredNumericFields = [
         ['closingStockPMS', 'Closing stock PMS'],
         ['closingStockAGO', 'Closing stock AGO'],
-        ['pmsPrice', 'PMS price'],
-        ['agoPrice', 'AGO price'],
         ['rttPMS', 'RTT PMS'],
         ['rttAGO', 'RTT AGO'],
       ]
       const missingRequired = requiredNumericFields.find(([key]) => String(formData[key] ?? '').trim() === '')
       if (missingRequired) {
         const message = `${missingRequired[1]} is required.`
+        setSubmitError(message)
+        window.alert(message)
+        return
+      }
+      if (pmsMultiPrice === 'no' && String(formData.pmsPrice ?? '').trim() === '') {
+        const message = 'PMS price is required.'
+        setSubmitError(message)
+        window.alert(message)
+        return
+      }
+      if (agoMultiPrice === 'no' && String(formData.agoPrice ?? '').trim() === '') {
+        const message = 'AGO price is required.'
         setSubmitError(message)
         window.alert(message)
         return
@@ -144,6 +166,41 @@ const StaffClosingReportForm = ({
         const message = 'Enter at least one received quantity (PMS or AGO) when received product is Yes.'
         setSubmitError(message)
         window.alert(message)
+        return
+      }
+
+      const previewPmsLiters = computeSalesFromMovement({
+        opening: carriedOpening.pms,
+        received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0,
+        closing: Number(formData.closingStockPMS || 0),
+        rtt: Number(formData.rttPMS || 0),
+      })
+      const previewAgoLiters = computeSalesFromMovement({
+        opening: carriedOpening.ago,
+        received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0,
+        closing: Number(formData.closingStockAGO || 0),
+        rtt: Number(formData.rttAGO || 0),
+      })
+      const pmsBandCheck = validatePriceBandsForProduct({
+        bands: priceBandsPMS,
+        totalSalesLiters: previewPmsLiters,
+        productLabel: 'PMS',
+        multiPriceEnabled: pmsMultiPrice === 'yes',
+      })
+      if (!pmsBandCheck.ok) {
+        setSubmitError(pmsBandCheck.message)
+        window.alert(pmsBandCheck.message)
+        return
+      }
+      const agoBandCheck = validatePriceBandsForProduct({
+        bands: priceBandsAGO,
+        totalSalesLiters: previewAgoLiters,
+        productLabel: 'AGO',
+        multiPriceEnabled: agoMultiPrice === 'yes',
+      })
+      if (!agoBandCheck.ok) {
+        setSubmitError(agoBandCheck.message)
+        window.alert(agoBandCheck.message)
         return
       }
     }
@@ -197,14 +254,47 @@ const StaffClosingReportForm = ({
     const totalAmount = Number(carriedCashBf || 0) + cashSales
     const closingBalance = totalAmount - totalPaymentDeposits - posValue
 
+    const resolvedPriceBandsPMS = isNoSalesDay
+      ? []
+      : pmsMultiPrice === 'yes'
+        ? normalizePriceBands(priceBandsPMS)
+        : totalSalesLitersPMS > 0
+          ? [{ price: Number(formData.pmsPrice), liters: totalSalesLitersPMS }]
+          : []
+    const resolvedPriceBandsAGO = isNoSalesDay
+      ? []
+      : agoMultiPrice === 'yes'
+        ? normalizePriceBands(priceBandsAGO)
+        : totalSalesLitersAGO > 0
+          ? [{ price: Number(formData.agoPrice), liters: totalSalesLitersAGO }]
+          : []
+    const salesAmountPMS = computeSalesAmountFromBands(resolvedPriceBandsPMS)
+    const salesAmountAGO = computeSalesAmountFromBands(resolvedPriceBandsAGO)
+    const pmsPrice = isNoSalesDay
+      ? 0
+      : pmsMultiPrice === 'yes'
+        ? weightedAveragePrice(resolvedPriceBandsPMS, totalSalesLitersPMS)
+        : Number(formData.pmsPrice || 0)
+    const agoPrice = isNoSalesDay
+      ? 0
+      : agoMultiPrice === 'yes'
+        ? weightedAveragePrice(resolvedPriceBandsAGO, totalSalesLitersAGO)
+        : Number(formData.agoPrice || 0)
+
     const payload = {
       stationId,
       openingStockPMS,
       openingStockAGO,
       closingStockPMS,
       closingStockAGO,
-      pmsPrice: Number(formData.pmsPrice),
-      agoPrice: Number(formData.agoPrice),
+      pmsPrice,
+      agoPrice,
+      multiPricing: !isNoSalesDay && (pmsMultiPrice === 'yes' || agoMultiPrice === 'yes'),
+      priceBandsPMS: resolvedPriceBandsPMS,
+      priceBandsAGO: resolvedPriceBandsAGO,
+      salesAmountPMS,
+      salesAmountAGO,
+      totalSalesAmount: salesAmountPMS + salesAmountAGO,
       receivedProduct: !isNoSalesDay && formData.receivedProduct === 'yes',
       receivedProductType: receivedProductType === 'BOTH' ? null : receivedProductType,
       quantityReceived: receivedQuantity,
@@ -283,6 +373,12 @@ const StaffClosingReportForm = ({
       setPaymentBreakdown([])
       setPumpDraft(DEFAULT_PUMP_READING)
       setPumpReadings([])
+      setPmsMultiPrice('no')
+      setAgoMultiPrice('no')
+      setPriceBandDraftPMS(DEFAULT_PRICE_BAND_DRAFT)
+      setPriceBandDraftAGO(DEFAULT_PRICE_BAND_DRAFT)
+      setPriceBandsPMS([])
+      setPriceBandsAGO([])
       setSuccess(true)
       setTimeout(() => setSuccess(false), 2500)
       await Promise.resolve(onSubmitted?.())
@@ -331,6 +427,24 @@ const StaffClosingReportForm = ({
       },
     ])
     setPumpDraft(DEFAULT_PUMP_READING)
+  }
+
+  const handleAddPriceBand = (product) => {
+    const isPms = product === 'pms'
+    const draft = isPms ? priceBandDraftPMS : priceBandDraftAGO
+    const price = Number(draft.price || 0)
+    const liters = Number(draft.liters || 0)
+    if (price <= 0 || liters <= 0) {
+      return
+    }
+    const entry = { id: `band-${product}-${Date.now()}`, price, liters }
+    if (isPms) {
+      setPriceBandsPMS((prev) => [...prev, entry])
+      setPriceBandDraftPMS(DEFAULT_PRICE_BAND_DRAFT)
+    } else {
+      setPriceBandsAGO((prev) => [...prev, entry])
+      setPriceBandDraftAGO(DEFAULT_PRICE_BAND_DRAFT)
+    }
   }
 
   const detailText =
@@ -402,8 +516,9 @@ const StaffClosingReportForm = ({
             </label>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {fields.map((field) => (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {stockFields.map((field) => (
               <FormInput
                 key={field.name}
                 type="number"
@@ -413,7 +528,39 @@ const StaffClosingReportForm = ({
                 value={formData[field.name]}
                 onChange={(event) => setFormData((prev) => ({ ...prev, [field.name]: event.target.value }))}
               />
-            ))}
+              ))}
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+              Computed sales today: PMS <span className="font-semibold">{previewSales.pms.toLocaleString()} L</span>
+              {' · '}
+              AGO <span className="font-semibold">{previewSales.ago.toLocaleString()} L</span>
+            </div>
+            <ProductPriceSection
+              productLabel="PMS"
+              multiPrice={pmsMultiPrice}
+              onMultiPriceChange={setPmsMultiPrice}
+              singlePrice={formData.pmsPrice}
+              onSinglePriceChange={(value) => setFormData((prev) => ({ ...prev, pmsPrice: value }))}
+              bands={priceBandsPMS}
+              bandDraft={priceBandDraftPMS}
+              onBandDraftChange={setPriceBandDraftPMS}
+              onAddBand={() => handleAddPriceBand('pms')}
+              onRemoveBand={(id) => setPriceBandsPMS((prev) => prev.filter((band) => band.id !== id))}
+              totalSalesLiters={previewSales.pms}
+            />
+            <ProductPriceSection
+              productLabel="AGO"
+              multiPrice={agoMultiPrice}
+              onMultiPriceChange={setAgoMultiPrice}
+              singlePrice={formData.agoPrice}
+              onSinglePriceChange={(value) => setFormData((prev) => ({ ...prev, agoPrice: value }))}
+              bands={priceBandsAGO}
+              bandDraft={priceBandDraftAGO}
+              onBandDraftChange={setPriceBandDraftAGO}
+              onAddBand={() => handleAddPriceBand('ago')}
+              onRemoveBand={(id) => setPriceBandsAGO((prev) => prev.filter((band) => band.id !== id))}
+              totalSalesLiters={previewSales.ago}
+            />
           </div>
         )}
         {formData.noSalesDay !== 'yes' && (

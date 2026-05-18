@@ -521,7 +521,6 @@ const ChatPanel = () => {
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-1">
                             <p className="truncate text-[14px] font-medium text-slate-900 dark:text-slate-100">{item.user.name}</p>
-                            {item.isPinned && <span className="text-[10px]">📌</span>}
                           </div>
                           <div className="flex items-center gap-1.5">
                             <p className={`text-[11px] ${item.unreadCount > 0 ? 'text-[#4caf50] font-medium' : 'text-slate-500'}`}>
@@ -539,17 +538,6 @@ const ChatPanel = () => {
                                 {item.unreadCount}
                               </span>
                             )}
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                togglePinnedChatUser(item.user.id)
-                              }}
-                              className="rounded px-1 py-0.5 text-[10px] text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-300"
-                              title={pinnedChatUserIds.includes(item.user.id) ? 'Unpin' : 'Pin'}
-                            >
-                              {pinnedChatUserIds.includes(item.user.id) ? 'Unpin' : 'Pin'}
-                            </button>
                           </div>
                         </div>
                       </div>
