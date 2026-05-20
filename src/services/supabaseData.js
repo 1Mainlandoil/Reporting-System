@@ -6,7 +6,7 @@ const mapStation = (row) => ({
   location: row.location,
 })
 
-const mapUser = (row) => ({
+export const mapUserRow = (row) => ({
   id: row.id,
   name: row.name,
   role: row.role,
@@ -17,7 +17,9 @@ const mapUser = (row) => ({
   managerPasswordHash: row.manager_password_hash || '',
 })
 
-const mapReport = (row) => {
+const mapUser = mapUserRow
+
+export const mapReportRow = (row) => {
   const receivedQuantity = Number(row.quantity_received ?? 0) || 0
   const receivedProductType = row.received_product_type || null
   const explicitReceivedPMS = Number(row.received_pms ?? 0) || 0
@@ -103,13 +105,17 @@ const mapReport = (row) => {
   }
 }
 
-const mapChat = (row) => ({
+const mapReport = mapReportRow
+
+export const mapChatMessageRow = (row) => ({
   id: row.id,
   fromUserId: row.from_user_id,
   toUserId: row.to_user_id,
   text: row.text,
   createdAt: row.created_at,
 })
+
+const mapChat = mapChatMessageRow
 
 const mapAdminDailyReview = (row) => ({
   id: row.id,

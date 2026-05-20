@@ -1057,6 +1057,62 @@ export const useAppStore = create(
             })
           })
       },
+      applyRemoteChatMessage: (remoteMessage) => {
+        if (!remoteMessage?.id) {
+          return
+        }
+        set((state) => {
+          if (state.chatMessages.some((message) => message.id === remoteMessage.id)) {
+            return state
+          }
+          const currentUserId = state.currentUser?.id
+          const isIncoming =
+            remoteMessage.toUserId === currentUserId && remoteMessage.fromUserId !== currentUserId
+          const enriched = {
+            ...remoteMessage,
+            status: isIncoming ? 'delivered' : 'sent',
+            deliveredAt: isIncoming ? new Date().toISOString() : remoteMessage.deliveredAt || null,
+            seenAt: null,
+          }
+          return {
+            chatMessages: [...state.chatMessages, enriched].sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            ),
+          }
+        })
+      },
+      applyRemoteReport: (remoteReport) => {
+        if (!remoteReport?.stationId || !remoteReport?.date) {
+          return
+        }
+        set((state) => {
+          const index = state.reports.findIndex(
+            (report) => report.stationId === remoteReport.stationId && report.date === remoteReport.date,
+          )
+          if (index >= 0) {
+            const reports = [...state.reports]
+            reports[index] = { ...reports[index], ...remoteReport }
+            return { reports }
+          }
+          return {
+            reports: [...state.reports, remoteReport].sort((a, b) => {
+              const byDate = a.date.localeCompare(b.date)
+              if (byDate !== 0) {
+                return byDate
+              }
+              return String(a.stationId).localeCompare(String(b.stationId))
+            }),
+          }
+        })
+      },
+      applyRemoteUser: (remoteUser) => {
+        if (!remoteUser?.id) {
+          return
+        }
+        set((state) => ({
+          users: mergeUsersById(state.users, [remoteUser]),
+        }))
+      },
       refreshFromSupabase: async () => {
         const state = get()
         if (state.isHydrating) {

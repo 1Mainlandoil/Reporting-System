@@ -24,9 +24,8 @@ const defaultForm = {
   receivedProduct: 'no',
   receivedQuantityPMS: '',
   receivedQuantityAGO: '',
-  noSalesDay: 'no',
-  noSalesReason: '',
-  noSalesNote: '',
+  soldToday: 'yes',
+  noSalesRemark: '',
   rttPMS: '',
   rttAGO: '',
   cashSales: '',
@@ -73,8 +72,10 @@ const StaffClosingReportForm = ({
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
+  const isNoSalesDay = formData.soldToday === 'no'
+
   const previewSales = useMemo(() => {
-    if (formData.noSalesDay === 'yes') {
+    if (isNoSalesDay) {
       return { pms: 0, ago: 0 }
     }
     const receivedPMS = formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0
@@ -97,7 +98,7 @@ const StaffClosingReportForm = ({
         rtt: rttAGO,
       }),
     }
-  }, [carriedOpening, formData])
+  }, [carriedOpening, formData, isNoSalesDay])
 
   const stockFields = useMemo(
     () => [
@@ -125,9 +126,9 @@ const StaffClosingReportForm = ({
       window.alert(message)
       return
     }
-    if (formData.noSalesDay === 'yes') {
-      if (!String(formData.noSalesReason || '').trim()) {
-        const message = 'Select a reason for No Sales Day.'
+    if (isNoSalesDay) {
+      if (!String(formData.noSalesRemark || '').trim()) {
+        const message = 'Enter a reason for no sales today.'
         setSubmitError(message)
         window.alert(message)
         return
@@ -205,7 +206,6 @@ const StaffClosingReportForm = ({
       }
     }
     setSubmitting(true)
-    const isNoSalesDay = formData.noSalesDay === 'yes'
     const receivedPMS = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0
     const receivedAGO = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0
     const receivedQuantity = receivedPMS + receivedAGO
@@ -305,21 +305,17 @@ const StaffClosingReportForm = ({
       expenseItems: effectiveExpenseItems,
       expenseAmount: totalExpense,
       expenseDescription,
-      remark: isNoSalesDay
-        ? `No Sales Day - ${formData.noSalesReason}${formData.noSalesNote ? `: ${formData.noSalesNote}` : ''}`
-        : formData.remark,
+      remark: isNoSalesDay ? `No Sales Day: ${String(formData.noSalesRemark || '').trim()}` : formData.remark,
       noSalesDay: isNoSalesDay,
-      noSalesReason: isNoSalesDay ? String(formData.noSalesReason || '').trim() : '',
-      noSalesNote: isNoSalesDay ? String(formData.noSalesNote || '').trim() : '',
+      noSalesReason: isNoSalesDay ? String(formData.noSalesRemark || '').trim() : '',
+      noSalesNote: '',
       openingPMS: openingStockPMS,
       openingAGO: openingStockAGO,
       receivedPMS,
       receivedAGO,
       salesPMS: totalSalesLitersPMS,
       salesAGO: totalSalesLitersAGO,
-      remarks: isNoSalesDay
-        ? `No Sales Day - ${formData.noSalesReason}${formData.noSalesNote ? `: ${formData.noSalesNote}` : ''}`
-        : formData.remark,
+      remarks: isNoSalesDay ? `No Sales Day: ${String(formData.noSalesRemark || '').trim()}` : formData.remark,
       paymentBreakdown: normalizedPaymentBreakdown,
       totalPaymentDeposits,
       posValue,
@@ -469,51 +465,42 @@ const StaffClosingReportForm = ({
         <label className="space-y-1">
           <span className="text-sm font-medium">DID YOU SELL TODAY?</span>
           <select
-            value={formData.noSalesDay}
+            value={formData.soldToday}
             onChange={(event) =>
               setFormData((prev) => ({
                 ...prev,
-                noSalesDay: event.target.value,
-                receivedProduct: event.target.value === 'yes' ? 'no' : prev.receivedProduct,
+                soldToday: event.target.value,
+                receivedProduct: event.target.value === 'no' ? 'no' : prev.receivedProduct,
               }))
             }
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
           >
+            <option value="yes">Yes</option>
             <option value="no">No</option>
-            <option value="yes">Yes - station did not sell</option>
           </select>
         </label>
-        {formData.noSalesDay === 'yes' && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">
-            This will submit a no-sales day and carry opening stock/cash forward to the next day.
-          </div>
-        )}
-        {formData.noSalesDay === 'yes' ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {isNoSalesDay ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">
+              No sales today — add a short reason below, then send. Opening stock and cash carry forward.
+            </div>
             <label className="space-y-1">
-              <span className="text-sm font-medium">NO SALES REASON</span>
-              <select
-                value={formData.noSalesReason}
-                onChange={(event) => setFormData((prev) => ({ ...prev, noSalesReason: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
-              >
-                <option value="">Select reason</option>
-                <option value="Sunday">Sunday</option>
-                <option value="Public Holiday">Public Holiday</option>
-                <option value="Station Closed">Station Closed</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="Other">Other</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-sm font-medium">NO SALES NOTE (OPTIONAL)</span>
-              <input
-                value={formData.noSalesNote}
-                onChange={(event) => setFormData((prev) => ({ ...prev, noSalesNote: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
-                placeholder="Add extra context"
+              <span className="text-sm font-medium">REASON</span>
+              <textarea
+                value={formData.noSalesRemark}
+                onChange={(event) => setFormData((prev) => ({ ...prev, noSalesRemark: event.target.value }))}
+                className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                placeholder="e.g. Sunday, public holiday, station closed, maintenance..."
               />
             </label>
+            <button
+              type="submit"
+              disabled={submitting || formDisabled || !reportingConfiguration.dailyOpeningStockFormatEnabled}
+              className="rounded-lg bg-blue-600 px-5 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? 'Sending...' : 'Send'}
+            </button>
+            {submitError ? <p className="text-sm font-medium text-rose-600">{submitError}</p> : null}
           </div>
         ) : (
           <div className="space-y-4">
@@ -563,7 +550,7 @@ const StaffClosingReportForm = ({
             />
           </div>
         )}
-        {formData.noSalesDay !== 'yes' && (
+        {!isNoSalesDay && (
           <label className="space-y-1">
             <span className="text-sm font-medium">RECEIVED PRODUCT</span>
             <select
@@ -576,7 +563,7 @@ const StaffClosingReportForm = ({
             </select>
           </label>
         )}
-        {formData.noSalesDay !== 'yes' && formData.receivedProduct === 'yes' && (
+        {!isNoSalesDay && formData.receivedProduct === 'yes' && (
           <>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormInput
@@ -600,7 +587,7 @@ const StaffClosingReportForm = ({
             </div>
           </>
         )}
-        {reportingConfiguration.expenseLineItemsEnabled && formData.noSalesDay !== 'yes' && (
+        {reportingConfiguration.expenseLineItemsEnabled && !isNoSalesDay && (
           <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
             <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">EXPENSE REPORTING</p>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -681,7 +668,7 @@ const StaffClosingReportForm = ({
             </div>
           </div>
         )}
-        {formData.noSalesDay !== 'yes' && (
+        {!isNoSalesDay && (
         <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
           <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">CASH MOVEMENT (NGN)</p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -702,7 +689,7 @@ const StaffClosingReportForm = ({
           </div>
         </div>
         )}
-        {formData.noSalesDay !== 'yes' && (
+        {!isNoSalesDay && (
         <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
           <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
             PAYMENT BREAKDOWN (BANK/CHANNEL + NGN)
@@ -785,7 +772,7 @@ const StaffClosingReportForm = ({
           </div>
         </div>
         )}
-        {formData.noSalesDay !== 'yes' && (
+        {!isNoSalesDay && (
         <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
           <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
             PUMP READINGS (e.g. P4, P5, AGO1)
@@ -864,22 +851,26 @@ const StaffClosingReportForm = ({
           </div>
         </div>
         )}
-        <label className="space-y-1">
-          <span className="text-sm font-medium">REMARK</span>
-          <textarea
-            value={formData.remark}
-            onChange={(event) => setFormData((prev) => ({ ...prev, remark: event.target.value }))}
-            className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={submitting || formDisabled || !reportingConfiguration.dailyOpeningStockFormatEnabled}
-          className="rounded-lg bg-blue-600 px-5 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? 'Submitting...' : submitButtonLabel}
-        </button>
-        {submitError ? <p className="text-sm font-medium text-rose-600">{submitError}</p> : null}
+        {!isNoSalesDay && (
+          <>
+            <label className="space-y-1">
+              <span className="text-sm font-medium">REMARK</span>
+              <textarea
+                value={formData.remark}
+                onChange={(event) => setFormData((prev) => ({ ...prev, remark: event.target.value }))}
+                className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={submitting || formDisabled || !reportingConfiguration.dailyOpeningStockFormatEnabled}
+              className="rounded-lg bg-blue-600 px-5 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? 'Submitting...' : submitButtonLabel}
+            </button>
+            {submitError ? <p className="text-sm font-medium text-rose-600">{submitError}</p> : null}
+          </>
+        )}
       </form>
       {success && <p className="mt-4 text-sm font-medium text-emerald-600">Report submitted successfully.</p>}
     </>

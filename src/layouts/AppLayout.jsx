@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
 import ChatPanel from '../components/layout/ChatPanel'
+import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime'
 import { useAppStore } from '../store/useAppStore'
 
 const AppLayout = () => {
@@ -13,6 +14,8 @@ const AppLayout = () => {
   useEffect(() => {
     hydrateFromSupabase()
   }, [hydrateFromSupabase])
+
+  useSupabaseRealtime()
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#a9cd39]/90 text-slate-900 dark:bg-[#a9cd39]/90 dark:text-slate-100">

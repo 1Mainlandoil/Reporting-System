@@ -238,7 +238,6 @@ begin
         cash_sales >= 0 and
         total_amount >= 0 and
         total_payment_deposits >= 0 and
-        pos_value >= 0 and
         closing_balance >= 0 and
         coalesce(closing_stock_pms, 0) >= 0 and
         coalesce(closing_stock_ago, 0) >= 0
@@ -309,3 +308,37 @@ create policy "allow all interventions" on public.interventions for all using (t
 create policy "allow all admin replenishment workflows" on public.admin_replenishment_workflows for all using (true) with check (true);
 create policy "allow all admin report resolutions" on public.admin_report_resolutions for all using (true) with check (true);
 create policy "allow all month end finalizations" on public.month_end_finalizations for all using (true) with check (true);
+
+-- Realtime: push chat + report (+ user contact) changes to connected clients
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_messages'
+  ) then
+    alter publication supabase_realtime add table public.chat_messages;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'daily_reports'
+  ) then
+    alter publication supabase_realtime add table public.daily_reports;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'users'
+  ) then
+    alter publication supabase_realtime add table public.users;
+  end if;
+end $$;
