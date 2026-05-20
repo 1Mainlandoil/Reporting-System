@@ -1,5 +1,7 @@
 create extension if not exists "pgcrypto";
 
+-- Safe to re-run in Supabase SQL Editor: uses IF NOT EXISTS / idempotent alters throughout.
+
 create table if not exists public.stations (
   id text primary key,
   name text not null,
@@ -120,9 +122,14 @@ create table if not exists public.chat_messages (
   created_at timestamptz not null default now()
 );
 
+-- Chat delivery/read tracking (persist seen state across refresh and devices)
 alter table public.chat_messages
   add column if not exists status text not null default 'delivered',
   add column if not exists seen_at timestamptz;
+
+update public.chat_messages
+set status = 'delivered'
+where status is null;
 
 create table if not exists public.admin_daily_reviews (
   id uuid primary key default gen_random_uuid(),
@@ -217,39 +224,53 @@ create index if not exists idx_interventions_station_updated on public.intervent
 create index if not exists idx_admin_replenishment_status on public.admin_replenishment_workflows(status, updated_at desc);
 create index if not exists idx_admin_report_resolutions_updated on public.admin_report_resolutions(updated_at desc);
 
+-- Non-negative report values: enforced from the 2nd report onward per station (first report exempt).
 do $$
 begin
-  if not exists (
+  if exists (
     select 1 from pg_constraint where conname = 'chk_daily_reports_non_negative'
   ) then
-    alter table public.daily_reports
-      add constraint chk_daily_reports_non_negative
-      check (
-        opening_stock_pms >= 0 and
-        opening_stock_ago >= 0 and
-        pms_price >= 0 and
-        ago_price >= 0 and
-        sales_amount_pms >= 0 and
-        sales_amount_ago >= 0 and
-        total_sales_amount >= 0 and
-        quantity_received >= 0 and
-        received_pms >= 0 and
-        received_ago >= 0 and
-        total_sales_liters_pms >= 0 and
-        total_sales_liters_ago >= 0 and
-        rtt_pms >= 0 and
-        rtt_ago >= 0 and
-        expense_amount >= 0 and
-        cash_bf >= 0 and
-        cash_sales >= 0 and
-        total_amount >= 0 and
-        total_payment_deposits >= 0 and
-        closing_balance >= 0 and
-        coalesce(closing_stock_pms, 0) >= 0 and
-        coalesce(closing_stock_ago, 0) >= 0
-      ) not valid;
+    alter table public.daily_reports drop constraint chk_daily_reports_non_negative;
   end if;
 end $$;
+
+create or replace function public.enforce_daily_reports_non_negative()
+returns trigger
+language plpgsql
+as $$
+begin
+  if exists (
+    select 1
+    from public.daily_reports dr
+    where dr.station_id = new.station_id
+      and dr.id is distinct from new.id
+  ) then
+    if new.opening_stock_pms < 0 or new.opening_stock_ago < 0 or
+       new.pms_price < 0 or new.ago_price < 0 or
+       new.sales_amount_pms < 0 or new.sales_amount_ago < 0 or
+       new.total_sales_amount < 0 or
+       new.quantity_received < 0 or new.received_pms < 0 or new.received_ago < 0 or
+       new.total_sales_liters_pms < 0 or new.total_sales_liters_ago < 0 or
+       new.rtt_pms < 0 or new.rtt_ago < 0 or
+       new.expense_amount < 0 or
+       new.cash_bf < 0 or new.cash_sales < 0 or
+       new.total_amount < 0 or new.total_payment_deposits < 0 or
+       new.closing_balance < 0 or
+       coalesce(new.closing_stock_pms, 0) < 0 or coalesce(new.closing_stock_ago, 0) < 0 then
+      raise exception 'daily report values must be non-negative after the first submission for this station';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_daily_reports_non_negative on public.daily_reports;
+
+create trigger trg_daily_reports_non_negative
+  before insert or update on public.daily_reports
+  for each row
+  execute function public.enforce_daily_reports_non_negative();
 
 do $$
 begin

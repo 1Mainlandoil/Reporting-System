@@ -156,29 +156,7 @@ const StaffClosingReportForm = ({
         window.alert(message)
         return
       }
-      if (isFirstReport) {
-        const missingOpening = ['openingStockPMS', 'openingStockAGO'].find(
-          (key) => String(formData[key] ?? '').trim() === '',
-        )
-        if (missingOpening) {
-          const message = 'Enter opening stock PMS and AGO for this first report.'
-          setSubmitError(message)
-          window.alert(message)
-          return
-        }
-      }
     } else {
-      if (isFirstReport) {
-        const missingOpening = ['openingStockPMS', 'openingStockAGO'].find(
-          (key) => String(formData[key] ?? '').trim() === '',
-        )
-        if (missingOpening) {
-          const message = 'Enter opening stock PMS and AGO for this first report.'
-          setSubmitError(message)
-          window.alert(message)
-          return
-        }
-      }
       const requiredNumericFields = [
         ['closingStockPMS', 'Closing stock PMS'],
         ['closingStockAGO', 'Closing stock AGO'],
@@ -227,7 +205,7 @@ const StaffClosingReportForm = ({
         closing: Number(formData.closingStockAGO || 0),
         rtt: Number(formData.rttAGO || 0),
       })
-      if (previewPmsLiters < 0 || previewAgoLiters < 0) {
+      if (!isFirstReport && (previewPmsLiters < 0 || previewAgoLiters < 0)) {
         const parts = []
         if (previewPmsLiters < 0) {
           parts.push(`PMS sales would be ${previewPmsLiters.toLocaleString()} L`)
@@ -245,7 +223,7 @@ const StaffClosingReportForm = ({
         Number(formData.cashSales || 0) -
         paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0) -
         Number(formData.posValue || 0)
-      if (previewCashBalance < 0) {
+      if (!isFirstReport && previewCashBalance < 0) {
         const message = `Closing cash balance would be NGN ${previewCashBalance.toLocaleString()}. Cash B/F + cash sales must cover bank deposits and POS.`
         setSubmitError(message)
         window.alert(message)
@@ -533,8 +511,7 @@ const StaffClosingReportForm = ({
         )}
         {isFirstReport && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">
-            First report for this station — enter today&apos;s opening dip readings below. Future days will carry
-            forward from your closing stock.
+            First report for this station — opening dips are optional but recommended. Future days carry forward from closing stock.
           </div>
         )}
         {isFirstReport && (
@@ -542,16 +519,16 @@ const StaffClosingReportForm = ({
             <FormInput
               type="number"
               min="0"
-              required
-              label="OPENING STOCK PMS (L)"
+              required={false}
+              label="OPENING STOCK PMS (L) — optional"
               value={formData.openingStockPMS}
               onChange={(event) => setFormData((prev) => ({ ...prev, openingStockPMS: event.target.value }))}
             />
             <FormInput
               type="number"
               min="0"
-              required
-              label="OPENING STOCK AGO (L)"
+              required={false}
+              label="OPENING STOCK AGO (L) — optional"
               value={formData.openingStockAGO}
               onChange={(event) => setFormData((prev) => ({ ...prev, openingStockAGO: event.target.value }))}
             />
