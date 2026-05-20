@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
+import DailyOpeningReportModal from '../components/reports/DailyOpeningReportModal'
 import DataTable from '../components/ui/DataTable'
 import StatusBadge from '../components/ui/StatusBadge'
 import FilterBar from '../components/ui/FilterBar'
@@ -12,6 +13,7 @@ import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics } from '../utils/stock'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
+import { buildDailyReportViewRow } from '../utils/dailyReportViewRow'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
 
 const renderTodaySubmissionStatus = (status) => (
@@ -60,6 +62,7 @@ const AdminDashboardPage = () => {
   const [inventoryVisibleKeys, setInventoryVisibleKeys] = useState(
     () => new Set(['stationName', 'stockRemaining', 'daysRemaining', 'status']),
   )
+  const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
 
   const metrics = useMemo(
     () =>
@@ -121,19 +124,36 @@ const AdminDashboardPage = () => {
   const todaySubmissionRows = useMemo(
     () =>
       stations
-        .map((station) => ({
-          stationId: station.id,
-          stationName: station.name,
-          managerName: stationManagerById.get(station.id) || 'Unassigned',
-          submissionStatus: submittedTodayStationIds.has(station.id) ? 'Submitted' : 'Pending',
-        }))
+        .map((station) => {
+          const latestToday = todayReports.filter((report) => report.stationId === station.id).at(-1)
+          const previousReport = [...reports]
+            .filter((report) => report.stationId === station.id && report.date < today)
+            .sort((a, b) => b.date.localeCompare(a.date))[0]
+          const managerName = stationManagerById.get(station.id) || 'Unassigned'
+
+          return {
+            stationId: station.id,
+            stationName: station.name,
+            managerName,
+            submissionStatus: submittedTodayStationIds.has(station.id) ? 'Submitted' : 'Pending',
+            viewReportRow: latestToday
+              ? buildDailyReportViewRow({
+                  stationId: station.id,
+                  stationName: station.name,
+                  managerName,
+                  latestToday,
+                  previousReport,
+                })
+              : null,
+          }
+        })
         .sort((a, b) => {
           if (a.submissionStatus !== b.submissionStatus) {
             return a.submissionStatus === 'Submitted' ? -1 : 1
           }
           return a.stationName.localeCompare(b.stationName)
         }),
-    [stations, stationManagerById, submittedTodayStationIds],
+    [stations, stationManagerById, submittedTodayStationIds, todayReports, reports, today],
   )
 
   const totalSalesToday = useMemo(
@@ -416,6 +436,26 @@ const AdminDashboardPage = () => {
       header: 'Today Report',
       minWidth: 140,
       render: (row) => renderTodaySubmissionStatus(row.submissionStatus),
+    },
+    {
+      key: 'viewReport',
+      header: 'View Report',
+      minWidth: 130,
+      render: (row) =>
+        row.viewReportRow ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              setSelectedDailyOpeningReport(row.viewReportRow)
+            }}
+            className="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
+          >
+            View Report
+          </button>
+        ) : (
+          <span className="text-xs text-slate-400">—</span>
+        ),
     },
   ]
 
@@ -1083,9 +1123,14 @@ const AdminDashboardPage = () => {
               columns={todaySubmissionColumns}
               rows={todaySubmissionRows}
               onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
-              tableClassName="min-w-[520px]"
+              tableClassName="min-w-[650px]"
             />
           </Card>
+
+          <DailyOpeningReportModal
+            report={selectedDailyOpeningReport}
+            onClose={() => setSelectedDailyOpeningReport(null)}
+          />
         </>
       )}
 

@@ -1,0 +1,200 @@
+const DailyOpeningReportModal = ({ report, onClose }) => {
+  if (!report) {
+    return null
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
+              Full Daily Report - {report.stationName}
+            </h4>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {report.managerName} | {report.reportDate}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Submission Status</p>
+            <p className="font-medium">{report.reportStatus}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Received Product (PMS/AGO)</p>
+            <p className="font-medium">{report.receivedProduct}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Opening Stock PMS</p>
+            <p className="font-medium">{report.openingStockPMS}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Opening Stock AGO</p>
+            <p className="font-medium">{report.openingStockAGO}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Closing Stock PMS</p>
+            <p className="font-medium">{report.closingStockPMS}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Closing Stock AGO</p>
+            <p className="font-medium">{report.closingStockAGO}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">PMS Price</p>
+            <p className="font-medium">
+              {report.multiPricing && (report.priceBandsPMS || []).length > 1
+                ? `Avg ₦${Number(report.pmsPrice || 0).toLocaleString()}/L`
+                : report.pmsPrice}
+            </p>
+            {(report.priceBandsPMS || []).length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                {report.priceBandsPMS.map((band, index) => (
+                  <li key={`pms-band-${index}`}>
+                    ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">AGO Price</p>
+            <p className="font-medium">
+              {report.multiPricing && (report.priceBandsAGO || []).length > 1
+                ? `Avg ₦${Number(report.agoPrice || 0).toLocaleString()}/L`
+                : report.agoPrice}
+            </p>
+            {(report.priceBandsAGO || []).length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                {report.priceBandsAGO.map((band, index) => (
+                  <li key={`ago-band-${index}`}>
+                    ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Input Quantity Received (L)</p>
+            <p className="font-medium">{report.quantityReceived}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Total Sales in Liters PMS</p>
+            <p className="font-medium">{report.totalSalesLitersPMS}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Total Sales in Liters AGO</p>
+            <p className="font-medium">{report.totalSalesLitersAGO}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">RTT PMS</p>
+            <p className="font-medium">{report.rttPMS}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">RTT AGO</p>
+            <p className="font-medium">{report.rttAGO}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800 md:col-span-2">
+            <p className="text-xs uppercase text-slate-500">Remark</p>
+            <p className="font-medium">{report.managerRemark}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Expense Total (NGN)</p>
+            <p className="font-medium">{Math.round(report.expenseAmount).toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800 md:col-span-2">
+            <p className="text-xs uppercase text-slate-500">Expense Description</p>
+            <p className="font-medium">{report.expenseDescription}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Bank/Channel Deposits Total (NGN)</p>
+            <p className="font-medium">
+              {Math.round(Number(report.totalPaymentDeposits || 0)).toLocaleString()}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Cash B/F (NGN)</p>
+            <p className="font-medium">{Math.round(Number(report.cashBf || 0)).toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Cash Sales (NGN)</p>
+            <p className="font-medium">{Math.round(Number(report.cashSales || 0)).toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Total Amount (NGN)</p>
+            <p className="font-medium">{Math.round(Number(report.totalAmount || 0)).toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">POS (NGN)</p>
+            <p className="font-medium">{Math.round(Number(report.posValue || 0)).toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Closing Balance (NGN)</p>
+            <p className="font-medium">{Math.round(Number(report.closingBalance || 0)).toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Variance (NGN)</p>
+            <p className="font-medium">
+              {Math.round(Number(report.cashMovementVariance || 0)).toLocaleString()}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Pump Reading Lines</p>
+            <p className="font-medium">{Number(report.pumpReadingsCount || 0)}</p>
+          </div>
+        </div>
+
+        {report.expenseItems.length > 0 && (
+          <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="mb-2 text-xs uppercase text-slate-500">Expense Lines</p>
+            <div className="space-y-2">
+              {report.expenseItems.map((item, index) => (
+                <p key={`${item.label}-${index}`} className="text-sm text-slate-700 dark:text-slate-200">
+                  {item.label}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+        {report.paymentBreakdown?.length > 0 && (
+          <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="mb-2 text-xs uppercase text-slate-500">Bank/Channel Breakdown</p>
+            <div className="space-y-2">
+              {report.paymentBreakdown.map((item, index) => (
+                <p key={`${item.channel}-${index}`} className="text-sm text-slate-700 dark:text-slate-200">
+                  {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+        {report.pumpMeterRows?.length > 0 && (
+          <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="mb-2 text-xs uppercase text-slate-500">Pump Readings</p>
+            <div className="space-y-2">
+              {report.pumpMeterRows.map((item, index) => (
+                <p key={`${item.label}-${index}`} className="text-sm text-slate-700 dark:text-slate-200">
+                  {item.label}:{' '}
+                  {item.noBaseline
+                    ? 'No baseline'
+                    : `${item.opening ?? '-'} - ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default DailyOpeningReportModal
