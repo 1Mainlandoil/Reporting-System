@@ -1,6 +1,19 @@
-create extension if not exists "pgcrypto";
+-- =============================================================================
+-- MAINLAND REPORT SYSTEM — FULL SUPABASE SCHEMA (run this file only)
+-- =============================================================================
+-- WHERE:  Supabase Dashboard → SQL Editor → New query
+-- HOW:    Paste this entire file → click Run
+-- SAFE:   Re-run anytime; uses IF NOT EXISTS / idempotent alters throughout.
+--
+-- Includes:
+--   • All tables, columns, indexes
+--   • Chat seen/delivered status (status + seen_at)
+--   • First report per station exempt from non-negative checks (trigger)
+--   • Row-level security policies
+--   • Realtime publication for chat, reports, users
+-- =============================================================================
 
--- Safe to re-run in Supabase SQL Editor: uses IF NOT EXISTS / idempotent alters throughout.
+create extension if not exists "pgcrypto";
 
 create table if not exists public.stations (
   id text primary key,
