@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
@@ -12,6 +13,19 @@ import { buildStationMetrics } from '../utils/stock'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
+
+const renderTodaySubmissionStatus = (status) => (
+  <span
+    className={clsx(
+      'rounded-full px-3 py-1 text-xs font-semibold',
+      status === 'Submitted'
+        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+        : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300',
+    )}
+  >
+    {status}
+  </span>
+)
 
 const AdminDashboardPage = () => {
   const navigate = useNavigate()
@@ -84,6 +98,10 @@ const AdminDashboardPage = () => {
   )
 
   const todayReports = useMemo(() => reports.filter((report) => report.date === today), [reports, today])
+  const submittedTodayStationIds = useMemo(
+    () => new Set(todayReports.map((report) => report.stationId)),
+    [todayReports],
+  )
   const reportDatesByStation = useMemo(() => {
     const byStation = new Map()
     for (const report of reports) {
@@ -97,8 +115,26 @@ const AdminDashboardPage = () => {
     }
     return byStation
   }, [reports])
-  const submittedTodayCount = new Set(todayReports.map((report) => report.stationId)).size
+  const submittedTodayCount = submittedTodayStationIds.size
   const pendingTodayCount = stations.length - submittedTodayCount
+
+  const todaySubmissionRows = useMemo(
+    () =>
+      stations
+        .map((station) => ({
+          stationId: station.id,
+          stationName: station.name,
+          managerName: stationManagerById.get(station.id) || 'Unassigned',
+          submissionStatus: submittedTodayStationIds.has(station.id) ? 'Submitted' : 'Pending',
+        }))
+        .sort((a, b) => {
+          if (a.submissionStatus !== b.submissionStatus) {
+            return a.submissionStatus === 'Submitted' ? -1 : 1
+          }
+          return a.stationName.localeCompare(b.stationName)
+        }),
+    [stations, stationManagerById, submittedTodayStationIds],
+  )
 
   const totalSalesToday = useMemo(
     () =>
@@ -126,9 +162,7 @@ const AdminDashboardPage = () => {
       metrics
         .filter((item) => item.status !== 'safe')
         .map((item) => {
-          const submissionStatus = todayReports.some((report) => report.stationId === item.stationId)
-            ? 'Submitted'
-            : 'Pending'
+          const submissionStatus = submittedTodayStationIds.has(item.stationId) ? 'Submitted' : 'Pending'
           const dates = reportDatesByStation.get(item.stationId) ?? new Set()
           const pendingInfo = getDailyReportPendingInfo(today, dates)
           const pendingFmt = formatPendingSubmissionSummary(pendingInfo, today)
@@ -150,7 +184,7 @@ const AdminDashboardPage = () => {
           const priority = { critical: 0, warning: 1, safe: 2 }
           return priority[a.status] - priority[b.status]
         }),
-    [metrics, stationManagerById, todayReports, reportDatesByStation, today],
+    [metrics, stationManagerById, submittedTodayStationIds, reportDatesByStation, today],
   )
 
   const supervisorReviewRows = useMemo(
@@ -335,7 +369,12 @@ const AdminDashboardPage = () => {
       minWidth: 170,
       render: (row) => row.expectedDaysRemaining.toFixed(2),
     },
-    { key: 'submissionStatus', header: 'Today Report', minWidth: 140 },
+    {
+      key: 'submissionStatus',
+      header: 'Today Report',
+      minWidth: 140,
+      render: (row) => renderTodaySubmissionStatus(row.submissionStatus),
+    },
     {
       key: 'submissionBacklog',
       header: 'Submission backlog',
@@ -366,6 +405,17 @@ const AdminDashboardPage = () => {
           </div>
         )
       },
+    },
+  ]
+
+  const todaySubmissionColumns = [
+    { key: 'stationName', header: 'Station', minWidth: 200 },
+    { key: 'managerName', header: 'Manager', minWidth: 160 },
+    {
+      key: 'submissionStatus',
+      header: 'Today Report',
+      minWidth: 140,
+      render: (row) => renderTodaySubmissionStatus(row.submissionStatus),
     },
   ]
 
@@ -1021,6 +1071,21 @@ const AdminDashboardPage = () => {
               <p className="text-2xl font-bold">{Math.round(totalCashToday).toLocaleString()}</p>
             </Card>
           </div>
+
+          <Card className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Today&apos;s Report Status</h2>
+              <p className="text-sm text-slate-500">
+                {submittedTodayCount} submitted · {pendingTodayCount} pending
+              </p>
+            </div>
+            <DataTable
+              columns={todaySubmissionColumns}
+              rows={todaySubmissionRows}
+              onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
+              tableClassName="min-w-[520px]"
+            />
+          </Card>
         </>
       )}
 
