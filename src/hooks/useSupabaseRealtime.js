@@ -9,6 +9,8 @@ export const useSupabaseRealtime = () => {
   const hydratedFromSupabase = useAppStore((state) => state.hydratedFromSupabase)
   const applyRemoteChatMessage = useAppStore((state) => state.applyRemoteChatMessage)
   const applyRemoteChatUpdate = useAppStore((state) => state.applyRemoteChatUpdate)
+  const applyRemoteReport = useAppStore((state) => state.applyRemoteReport)
+  const applyRemoteUser = useAppStore((state) => state.applyRemoteUser)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
 
   useEffect(() => {
