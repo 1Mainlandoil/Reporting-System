@@ -131,6 +131,7 @@ const StaffDashboardPage = () => {
           stationId={currentUser?.stationId}
           carriedOpening={carriedOpening}
           carriedCashBf={carriedCashBf}
+          isFirstReport={stationReportDates.size === 0}
           reportingConfiguration={reportingConfiguration}
           submitReport={submitReport}
           formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled}

@@ -8,8 +8,7 @@ export const useSupabaseRealtime = () => {
   const role = useAppStore((state) => state.role)
   const hydratedFromSupabase = useAppStore((state) => state.hydratedFromSupabase)
   const applyRemoteChatMessage = useAppStore((state) => state.applyRemoteChatMessage)
-  const applyRemoteReport = useAppStore((state) => state.applyRemoteReport)
-  const applyRemoteUser = useAppStore((state) => state.applyRemoteUser)
+  const applyRemoteChatUpdate = useAppStore((state) => state.applyRemoteChatUpdate)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
 
   useEffect(() => {
@@ -19,6 +18,7 @@ export const useSupabaseRealtime = () => {
 
     startSupabaseRealtime({
       onChatMessage: applyRemoteChatMessage,
+      onChatMessageUpdate: applyRemoteChatUpdate,
       onReport: applyRemoteReport,
       onUser: applyRemoteUser,
     })
@@ -26,7 +26,7 @@ export const useSupabaseRealtime = () => {
     return () => {
       stopSupabaseRealtime()
     }
-  }, [role, hydratedFromSupabase, applyRemoteChatMessage, applyRemoteReport, applyRemoteUser])
+  }, [role, hydratedFromSupabase, applyRemoteChatMessage, applyRemoteChatUpdate, applyRemoteReport, applyRemoteUser])
 
   useEffect(() => {
     if (!role || !hasSupabaseEnv) {

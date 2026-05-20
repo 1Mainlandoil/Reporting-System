@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
 import { linksByRole } from '../../constants/navigation'
+import { isChatMessageUnread } from '../../utils/chatMessages'
 
 const mobileMenuByRole = {
   supervisor: [
@@ -33,9 +34,7 @@ const mobileMenuByRole = {
 const chatUnreadSelector = (state) => {
   const uid = state.currentUser?.id
   if (!uid) return 0
-  return state.chatMessages.filter(
-    (m) => m.toUserId === uid && m.fromUserId !== uid && String(m.status || '') !== 'seen',
-  ).length
+  return state.chatMessages.filter((m) => isChatMessageUnread(m, uid)).length
 }
 
 const Navbar = () => {

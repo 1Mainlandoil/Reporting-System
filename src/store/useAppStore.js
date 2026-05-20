@@ -15,6 +15,7 @@ import {
   insertChatMessage,
   insertReport,
   loadInitialData,
+  markChatMessagesSeenInSupabase,
   upsertAdminReportResolution,
   upsertAdminReplenishmentWorkflow,
   upsertDailyFinalization,
@@ -26,6 +27,7 @@ import {
   upsertUser,
 } from '../services/supabaseData'
 import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
+import { mergeChatMessages } from '../utils/chatMessages'
 
 const initialFilters = {
   stationIds: [],
@@ -979,6 +981,10 @@ export const useAppStore = create(
             [`${withUserId}:${currentUserId}`]: false,
           },
         }))
+        markChatMessagesSeenInSupabase({
+          readerUserId: currentUserId,
+          senderUserId: withUserId,
+        }).catch(() => {})
       },
       sendChatMessage: ({ toUserId, text }) => {
         const state = get()
@@ -1004,6 +1010,7 @@ export const useAppStore = create(
             [`${fromUserId}:${toUserId}`]: false,
           },
         })
+        get().markConversationSeen(toUserId)
         setTimeout(() => {
           set((currentState) => ({
             chatMessages: currentState.chatMessages.map((message) =>
@@ -1068,11 +1075,13 @@ export const useAppStore = create(
           const currentUserId = state.currentUser?.id
           const isIncoming =
             remoteMessage.toUserId === currentUserId && remoteMessage.fromUserId !== currentUserId
+          const viewingConversation =
+            state.isChatOpen && state.activeChatUserId === remoteMessage.fromUserId && isIncoming
           const enriched = {
             ...remoteMessage,
-            status: isIncoming ? 'delivered' : 'sent',
+            status: viewingConversation || remoteMessage.status === 'seen' ? 'seen' : isIncoming ? 'delivered' : 'sent',
             deliveredAt: isIncoming ? new Date().toISOString() : remoteMessage.deliveredAt || null,
-            seenAt: null,
+            seenAt: viewingConversation || remoteMessage.status === 'seen' ? remoteMessage.seenAt || new Date().toISOString() : null,
           }
           return {
             chatMessages: [...state.chatMessages, enriched].sort(
@@ -1080,6 +1089,31 @@ export const useAppStore = create(
             ),
           }
         })
+        const latest = get()
+        if (
+          latest.isChatOpen &&
+          latest.activeChatUserId === remoteMessage.fromUserId &&
+          remoteMessage.toUserId === latest.currentUser?.id
+        ) {
+          get().markConversationSeen(remoteMessage.fromUserId)
+        }
+      },
+      applyRemoteChatUpdate: (remoteMessage) => {
+        if (!remoteMessage?.id) {
+          return
+        }
+        set((state) => ({
+          chatMessages: state.chatMessages.map((message) =>
+            message.id === remoteMessage.id
+              ? {
+                  ...message,
+                  ...remoteMessage,
+                  status: remoteMessage.status === 'seen' || message.status === 'seen' ? 'seen' : remoteMessage.status || message.status,
+                  seenAt: remoteMessage.seenAt || message.seenAt || null,
+                }
+              : message,
+          ),
+        }))
       },
       applyRemoteReport: (remoteReport) => {
         if (!remoteReport?.stationId || !remoteReport?.date) {
@@ -1123,19 +1157,7 @@ export const useAppStore = create(
           const remoteData = await loadInitialData()
           const latestState = get()
           if (remoteData) {
-            const mergedChatMessages = (() => {
-              const remoteMessages = Array.isArray(remoteData.chatMessages) ? remoteData.chatMessages : []
-              const localMessages = Array.isArray(latestState.chatMessages) ? latestState.chatMessages : []
-              const remoteById = new Map(remoteMessages.map((message) => [message.id, message]))
-              const preservedLocal = localMessages.filter(
-                (message) =>
-                  !remoteById.has(message.id) &&
-                  ['sent', 'delivered', 'failed'].includes(String(message.status || '')),
-              )
-              return [...remoteMessages, ...preservedLocal].sort(
-                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-              )
-            })()
+            const mergedChatMessages = mergeChatMessages(latestState.chatMessages, remoteData.chatMessages)
 
             set({
               stations: mergeStationCatalog(canonicalStations, remoteData.stations),

@@ -518,6 +518,7 @@ const StationReportHistoryPage = () => {
                 stationId={stationId}
                 carriedOpening={reportSubmitOpening}
                 carriedCashBf={reportSubmitCashBf}
+                isFirstReport={!chronAsc.some((report) => report.date < historyFilterDate)}
                 reportingConfiguration={reportingConfiguration}
                 submitReport={submitReport}
                 reportDate={historyFilterDate}

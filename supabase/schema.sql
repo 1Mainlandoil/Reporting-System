@@ -115,8 +115,14 @@ create table if not exists public.chat_messages (
   from_user_id text not null references public.users(id) on delete cascade,
   to_user_id text not null references public.users(id) on delete cascade,
   text text not null,
+  status text not null default 'delivered',
+  seen_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.chat_messages
+  add column if not exists status text not null default 'delivered',
+  add column if not exists seen_at timestamptz;
 
 create table if not exists public.admin_daily_reviews (
   id uuid primary key default gen_random_uuid(),

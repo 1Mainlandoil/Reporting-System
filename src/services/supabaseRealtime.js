@@ -13,7 +13,7 @@ const attachPostgresListener = (channel, config, handler) => {
   })
 }
 
-export const subscribeToLiveData = ({ onChatMessage, onReport, onUser }) => {
+export const subscribeToLiveData = ({ onChatMessage, onChatMessageUpdate, onReport, onUser }) => {
   if (!hasSupabaseEnv || !supabase) {
     return () => {}
   }
@@ -29,6 +29,14 @@ export const subscribeToLiveData = ({ onChatMessage, onReport, onUser }) => {
       channel,
       { event: 'INSERT', schema: 'public', table: 'chat_messages' },
       (row) => onChatMessage(mapChatMessageRow(row)),
+    )
+  }
+
+  if (onChatMessageUpdate) {
+    attachPostgresListener(
+      channel,
+      { event: 'UPDATE', schema: 'public', table: 'chat_messages' },
+      (row) => onChatMessageUpdate(mapChatMessageRow(row)),
     )
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
+import { isChatMessageUnread } from '../../utils/chatMessages'
 
 const toTimestamp = (value) => new Date(value || 0).getTime()
 
@@ -132,9 +133,7 @@ const ChatPanel = () => {
   const chatUnreadTotal = useMemo(() => {
     const uid = currentUser?.id
     if (!uid) return 0
-    return messages.filter(
-      (m) => m.toUserId === uid && m.fromUserId !== uid && String(m.status || '') !== 'seen',
-    ).length
+    return messages.filter((m) => isChatMessageUnread(m, uid)).length
   }, [currentUser?.id, messages])
 
   const [draft, setDraft] = useState('')
@@ -180,9 +179,7 @@ const ChatPanel = () => {
           .sort((a, b) => toTimestamp(a.createdAt) - toTimestamp(b.createdAt))
         const lastMessage = conversation.at(-1)
         const hasUnreplied = Boolean(lastMessage && lastMessage.fromUserId === user.id)
-        const unreadCount = conversation.filter(
-          (message) => message.fromUserId === user.id && message.toUserId === currentUser.id && message.status !== 'seen',
-        ).length
+        const unreadCount = conversation.filter((message) => isChatMessageUnread(message, currentUser.id)).length
         const isPriorityRole = user.role === 'supervisor' || user.role === 'admin'
         const isPinned = isPriorityRole || pinnedChatUserIds.includes(user.id)
         return { user, conversation, lastMessage, hasUnreplied, unreadCount, isPinned, lastTimestamp: toTimestamp(lastMessage?.createdAt) }
@@ -333,8 +330,7 @@ const ChatPanel = () => {
       knownIds.add(message.id)
       if (
         hasBootstrappedMessagesRef.current &&
-        message.toUserId === currentUser.id &&
-        message.fromUserId !== currentUser.id
+        isChatMessageUnread(message, currentUser.id)
       ) {
         newlyArrivedIncoming.push(message)
       }

@@ -113,6 +113,9 @@ export const mapChatMessageRow = (row) => ({
   toUserId: row.to_user_id,
   text: row.text,
   createdAt: row.created_at,
+  status: row.status || 'delivered',
+  seenAt: row.seen_at || null,
+  deliveredAt: row.seen_at || row.created_at || null,
 })
 
 const mapChat = mapChatMessageRow
@@ -399,9 +402,30 @@ export const insertChatMessage = async (message) => {
     to_user_id: message.toUserId,
     text: message.text,
     created_at: message.createdAt,
+    status: 'delivered',
   }
 
   const { error } = await supabase.from('chat_messages').insert(payload)
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return true
+}
+
+export const markChatMessagesSeenInSupabase = async ({ readerUserId, senderUserId }) => {
+  if (!hasSupabaseEnv || !supabase || !readerUserId || !senderUserId) {
+    return null
+  }
+
+  const seenAt = new Date().toISOString()
+  const { error } = await supabase
+    .from('chat_messages')
+    .update({ status: 'seen', seen_at: seenAt })
+    .eq('from_user_id', senderUserId)
+    .eq('to_user_id', readerUserId)
+    .neq('status', 'seen')
+
   if (error) {
     throw new Error(error.message)
   }

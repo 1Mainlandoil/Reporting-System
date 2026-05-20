@@ -17,6 +17,8 @@ const DEFAULT_PUMP_READING = { label: 'P1', otherLabel: '', closing: '' }
 const DEFAULT_PRICE_BAND_DRAFT = { price: '', liters: '' }
 
 const defaultForm = {
+  openingStockPMS: '',
+  openingStockAGO: '',
   closingStockPMS: '',
   closingStockAGO: '',
   pmsPrice: '',
@@ -50,6 +52,7 @@ const StaffClosingReportForm = ({
   onSubmitted,
   submitButtonLabel = 'Submit Report',
   carriedCashBf = 0,
+  isFirstReport = false,
 }) => {
   const [formData, setFormData] = useState(defaultForm)
   const [expenseDraft, setExpenseDraft] = useState({
@@ -74,6 +77,16 @@ const StaffClosingReportForm = ({
 
   const isNoSalesDay = formData.soldToday === 'no'
 
+  const effectiveOpening = useMemo(() => {
+    if (!isFirstReport) {
+      return carriedOpening
+    }
+    return {
+      pms: Number(formData.openingStockPMS || 0),
+      ago: Number(formData.openingStockAGO || 0),
+    }
+  }, [carriedOpening, formData.openingStockPMS, formData.openingStockAGO, isFirstReport])
+
   const previewSales = useMemo(() => {
     if (isNoSalesDay) {
       return { pms: 0, ago: 0 }
@@ -86,19 +99,29 @@ const StaffClosingReportForm = ({
     const rttAGO = Number(formData.rttAGO || 0)
     return {
       pms: computeSalesFromMovement({
-        opening: carriedOpening.pms,
+        opening: effectiveOpening.pms,
         received: receivedPMS,
         closing: closingPMS,
         rtt: rttPMS,
       }),
       ago: computeSalesFromMovement({
-        opening: carriedOpening.ago,
+        opening: effectiveOpening.ago,
         received: receivedAGO,
         closing: closingAGO,
         rtt: rttAGO,
       }),
     }
-  }, [carriedOpening, formData, isNoSalesDay])
+  }, [effectiveOpening, formData, isNoSalesDay])
+
+  const previewClosingBalance = useMemo(() => {
+    if (isNoSalesDay) {
+      return Number(carriedCashBf || 0)
+    }
+    const cashSales = Number(formData.cashSales || 0)
+    const posValue = Number(formData.posValue || 0)
+    const totalDeposits = paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    return Number(carriedCashBf || 0) + cashSales - totalDeposits - posValue
+  }, [carriedCashBf, formData.cashSales, formData.posValue, isNoSalesDay, paymentBreakdown])
 
   const stockFields = useMemo(
     () => [
@@ -133,7 +156,29 @@ const StaffClosingReportForm = ({
         window.alert(message)
         return
       }
+      if (isFirstReport) {
+        const missingOpening = ['openingStockPMS', 'openingStockAGO'].find(
+          (key) => String(formData[key] ?? '').trim() === '',
+        )
+        if (missingOpening) {
+          const message = 'Enter opening stock PMS and AGO for this first report.'
+          setSubmitError(message)
+          window.alert(message)
+          return
+        }
+      }
     } else {
+      if (isFirstReport) {
+        const missingOpening = ['openingStockPMS', 'openingStockAGO'].find(
+          (key) => String(formData[key] ?? '').trim() === '',
+        )
+        if (missingOpening) {
+          const message = 'Enter opening stock PMS and AGO for this first report.'
+          setSubmitError(message)
+          window.alert(message)
+          return
+        }
+      }
       const requiredNumericFields = [
         ['closingStockPMS', 'Closing stock PMS'],
         ['closingStockAGO', 'Closing stock AGO'],
@@ -171,17 +216,41 @@ const StaffClosingReportForm = ({
       }
 
       const previewPmsLiters = computeSalesFromMovement({
-        opening: carriedOpening.pms,
+        opening: effectiveOpening.pms,
         received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0,
         closing: Number(formData.closingStockPMS || 0),
         rtt: Number(formData.rttPMS || 0),
       })
       const previewAgoLiters = computeSalesFromMovement({
-        opening: carriedOpening.ago,
+        opening: effectiveOpening.ago,
         received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0,
         closing: Number(formData.closingStockAGO || 0),
         rtt: Number(formData.rttAGO || 0),
       })
+      if (previewPmsLiters < 0 || previewAgoLiters < 0) {
+        const parts = []
+        if (previewPmsLiters < 0) {
+          parts.push(`PMS sales would be ${previewPmsLiters.toLocaleString()} L`)
+        }
+        if (previewAgoLiters < 0) {
+          parts.push(`AGO sales would be ${previewAgoLiters.toLocaleString()} L`)
+        }
+        const message = `Stock movement is invalid: ${parts.join('; ')}. Opening + received must be at least closing + RTT.`
+        setSubmitError(message)
+        window.alert(message)
+        return
+      }
+      const previewCashBalance =
+        Number(carriedCashBf || 0) +
+        Number(formData.cashSales || 0) -
+        paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0) -
+        Number(formData.posValue || 0)
+      if (previewCashBalance < 0) {
+        const message = `Closing cash balance would be NGN ${previewCashBalance.toLocaleString()}. Cash B/F + cash sales must cover bank deposits and POS.`
+        setSubmitError(message)
+        window.alert(message)
+        return
+      }
       const pmsBandCheck = validatePriceBandsForProduct({
         bands: priceBandsPMS,
         totalSalesLiters: previewPmsLiters,
@@ -211,8 +280,8 @@ const StaffClosingReportForm = ({
     const receivedQuantity = receivedPMS + receivedAGO
     const receivedProductType =
       receivedPMS > 0 && receivedAGO > 0 ? 'BOTH' : receivedAGO > 0 ? 'AGO' : receivedPMS > 0 ? 'PMS' : null
-    const openingStockPMS = carriedOpening.pms
-    const openingStockAGO = carriedOpening.ago
+    const openingStockPMS = effectiveOpening.pms
+    const openingStockAGO = effectiveOpening.ago
     const closingStockPMS = isNoSalesDay ? Number(openingStockPMS || 0) : Number(formData.closingStockPMS)
     const closingStockAGO = isNoSalesDay ? Number(openingStockAGO || 0) : Number(formData.closingStockAGO)
     const rttPMS = isNoSalesDay ? 0 : Number(formData.rttPMS || 0)
@@ -462,6 +531,40 @@ const StaffClosingReportForm = ({
             Station ID: <span className="font-semibold">{stationId || 'N/A'}</span>
           </div>
         )}
+        {isFirstReport && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">
+            First report for this station — enter today&apos;s opening dip readings below. Future days will carry
+            forward from your closing stock.
+          </div>
+        )}
+        {isFirstReport && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormInput
+              type="number"
+              min="0"
+              required
+              label="OPENING STOCK PMS (L)"
+              value={formData.openingStockPMS}
+              onChange={(event) => setFormData((prev) => ({ ...prev, openingStockPMS: event.target.value }))}
+            />
+            <FormInput
+              type="number"
+              min="0"
+              required
+              label="OPENING STOCK AGO (L)"
+              value={formData.openingStockAGO}
+              onChange={(event) => setFormData((prev) => ({ ...prev, openingStockAGO: event.target.value }))}
+            />
+          </div>
+        )}
+        {!isFirstReport && !isNoSalesDay && (
+          <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+            {openingBannerTitle}: PMS{' '}
+            <span className="font-semibold">{carriedOpening.pms.toLocaleString()} L</span>
+            {' · '}AGO <span className="font-semibold">{carriedOpening.ago.toLocaleString()} L</span>
+            {openingBannerDetail ? ` · ${openingBannerDetail}` : null}
+          </div>
+        )}
         <label className="space-y-1">
           <span className="text-sm font-medium">DID YOU SELL TODAY?</span>
           <select
@@ -521,6 +624,11 @@ const StaffClosingReportForm = ({
               Computed sales today: PMS <span className="font-semibold">{previewSales.pms.toLocaleString()} L</span>
               {' · '}
               AGO <span className="font-semibold">{previewSales.ago.toLocaleString()} L</span>
+              {(previewSales.pms < 0 || previewSales.ago < 0) && (
+                <span className="mt-1 block font-medium text-rose-700 dark:text-rose-300">
+                  Negative sales — check opening, closing, received, and RTT.
+                </span>
+              )}
             </div>
             <ProductPriceSection
               productLabel="PMS"
@@ -687,6 +795,12 @@ const StaffClosingReportForm = ({
               onChange={(event) => setFormData((prev) => ({ ...prev, posValue: event.target.value }))}
             />
           </div>
+          <p
+            className={`mt-3 text-sm font-medium ${previewClosingBalance < 0 ? 'text-rose-600' : 'text-slate-600 dark:text-slate-300'}`}
+          >
+            Closing cash balance: NGN {previewClosingBalance.toLocaleString()}
+            {previewClosingBalance < 0 ? ' (deposits + POS exceed available cash)' : ''}
+          </p>
         </div>
         )}
         {!isNoSalesDay && (
