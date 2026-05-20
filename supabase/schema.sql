@@ -8,7 +8,7 @@
 -- Includes:
 --   • All tables, columns, indexes
 --   • Chat seen/delivered status (status + seen_at)
---   • First report per station exempt from non-negative checks (trigger)
+--   • Drops stock/cash non-negative report enforcement (no blocking on save)
 --   • Row-level security policies
 --   • Realtime publication for chat, reports, users
 -- =============================================================================
@@ -237,7 +237,10 @@ create index if not exists idx_interventions_station_updated on public.intervent
 create index if not exists idx_admin_replenishment_status on public.admin_replenishment_workflows(status, updated_at desc);
 create index if not exists idx_admin_report_resolutions_updated on public.admin_report_resolutions(updated_at desc);
 
--- Non-negative report values: enforced from the 2nd report onward per station (first report exempt).
+-- Stock/cash non-negative enforcement removed — reports save as entered.
+drop trigger if exists trg_daily_reports_non_negative on public.daily_reports;
+drop function if exists public.enforce_daily_reports_non_negative();
+
 do $$
 begin
   if exists (
@@ -246,44 +249,6 @@ begin
     alter table public.daily_reports drop constraint chk_daily_reports_non_negative;
   end if;
 end $$;
-
-create or replace function public.enforce_daily_reports_non_negative()
-returns trigger
-language plpgsql
-as $$
-begin
-  if exists (
-    select 1
-    from public.daily_reports dr
-    where dr.station_id = new.station_id
-      and dr.id is distinct from new.id
-  ) then
-    if new.opening_stock_pms < 0 or new.opening_stock_ago < 0 or
-       new.pms_price < 0 or new.ago_price < 0 or
-       new.sales_amount_pms < 0 or new.sales_amount_ago < 0 or
-       new.total_sales_amount < 0 or
-       new.quantity_received < 0 or new.received_pms < 0 or new.received_ago < 0 or
-       new.total_sales_liters_pms < 0 or new.total_sales_liters_ago < 0 or
-       new.rtt_pms < 0 or new.rtt_ago < 0 or
-       new.expense_amount < 0 or
-       new.cash_bf < 0 or new.cash_sales < 0 or
-       new.total_amount < 0 or new.total_payment_deposits < 0 or
-       new.closing_balance < 0 or
-       coalesce(new.closing_stock_pms, 0) < 0 or coalesce(new.closing_stock_ago, 0) < 0 then
-      raise exception 'daily report values must be non-negative after the first submission for this station';
-    end if;
-  end if;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_daily_reports_non_negative on public.daily_reports;
-
-create trigger trg_daily_reports_non_negative
-  before insert or update on public.daily_reports
-  for each row
-  execute function public.enforce_daily_reports_non_negative();
 
 do $$
 begin

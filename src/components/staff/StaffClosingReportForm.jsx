@@ -205,30 +205,6 @@ const StaffClosingReportForm = ({
         closing: Number(formData.closingStockAGO || 0),
         rtt: Number(formData.rttAGO || 0),
       })
-      if (!isFirstReport && (previewPmsLiters < 0 || previewAgoLiters < 0)) {
-        const parts = []
-        if (previewPmsLiters < 0) {
-          parts.push(`PMS sales would be ${previewPmsLiters.toLocaleString()} L`)
-        }
-        if (previewAgoLiters < 0) {
-          parts.push(`AGO sales would be ${previewAgoLiters.toLocaleString()} L`)
-        }
-        const message = `Stock movement is invalid: ${parts.join('; ')}. Opening + received must be at least closing + RTT.`
-        setSubmitError(message)
-        window.alert(message)
-        return
-      }
-      const previewCashBalance =
-        Number(carriedCashBf || 0) +
-        Number(formData.cashSales || 0) -
-        paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0) -
-        Number(formData.posValue || 0)
-      if (!isFirstReport && previewCashBalance < 0) {
-        const message = `Closing cash balance would be NGN ${previewCashBalance.toLocaleString()}. Cash B/F + cash sales must cover bank deposits and POS.`
-        setSubmitError(message)
-        window.alert(message)
-        return
-      }
       const pmsBandCheck = validatePriceBandsForProduct({
         bands: priceBandsPMS,
         totalSalesLiters: previewPmsLiters,
