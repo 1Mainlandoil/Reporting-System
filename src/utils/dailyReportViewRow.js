@@ -108,9 +108,8 @@ export const buildDailyReportViewRow = ({
     receivedProduct: latestToday.receivedProduct
       ? `Yes (${receivedProductType || 'Not specified'})`
       : 'No',
-    quantityReceived: Math.round(
-      Number(latestToday.receivedPMS ?? 0) + Number(latestToday.receivedAGO ?? 0),
-    ).toLocaleString(),
+    receivedPMS: Math.round(Number(latestToday.receivedPMS ?? 0)).toLocaleString(),
+    receivedAGO: Math.round(Number(latestToday.receivedAGO ?? 0)).toLocaleString(),
     closingStockPMS: Math.round(getClosingForProduct(latestToday, 'pms')).toLocaleString(),
     closingStockAGO: Math.round(getClosingForProduct(latestToday, 'ago')).toLocaleString(),
     totalSalesLitersPMS: Math.round(

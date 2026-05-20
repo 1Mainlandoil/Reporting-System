@@ -326,9 +326,14 @@ const StationReportHistoryPage = () => {
       render: (row) => getReceivedProductType(row),
     },
     {
-      key: 'receivedQuantity',
-      header: 'Received Quantity (L)',
-      render: (row) => Math.round(Number(row.receivedPMS ?? 0) + Number(row.receivedAGO ?? 0)).toLocaleString(),
+      key: 'receivedPMS',
+      header: 'Received PMS (L)',
+      render: (row) => Math.round(Number(row.receivedPMS ?? 0)).toLocaleString(),
+    },
+    {
+      key: 'receivedAGO',
+      header: 'Received AGO (L)',
+      render: (row) => Math.round(Number(row.receivedAGO ?? 0)).toLocaleString(),
     },
     {
       key: 'sales',

@@ -132,7 +132,8 @@ const SupervisorDashboardPage = () => {
         'closingStockPMS',
         'closingStockAGO',
         'receivedProduct',
-        'quantityReceived',
+        'receivedPMS',
+        'receivedAGO',
         'totalSalesLitersPMS',
         'totalSalesLitersAGO',
         'reportDate',
@@ -331,8 +332,11 @@ const SupervisorDashboardPage = () => {
               ? `Yes (${receivedProductType || 'Not specified'})`
               : 'No'
             : 'Not Submitted',
-          quantityReceived: latestToday
-            ? Math.round(Number(latestToday.receivedPMS ?? 0) + Number(latestToday.receivedAGO ?? 0)).toLocaleString()
+          receivedPMS: latestToday
+            ? Math.round(Number(latestToday.receivedPMS ?? 0)).toLocaleString()
+            : 'Not Submitted',
+          receivedAGO: latestToday
+            ? Math.round(Number(latestToday.receivedAGO ?? 0)).toLocaleString()
             : 'Not Submitted',
           closingStockPMS: latestToday
             ? Math.round(getClosingForProduct(latestToday, 'pms')).toLocaleString()
@@ -983,12 +987,20 @@ const SupervisorDashboardPage = () => {
         exportPick: (row) => row.receivedProduct,
       },
       {
-        key: 'quantityReceived',
-        header: 'Input Quantity Received (L)',
-        minWidth: 180,
+        key: 'receivedPMS',
+        header: 'Received PMS (L)',
+        minWidth: 160,
         pickable: true,
-        exportHeader: 'input_quantity_received_litres',
-        exportPick: (row) => row.quantityReceived,
+        exportHeader: 'received_pms_litres',
+        exportPick: (row) => row.receivedPMS,
+      },
+      {
+        key: 'receivedAGO',
+        header: 'Received AGO (L)',
+        minWidth: 160,
+        pickable: true,
+        exportHeader: 'received_ago_litres',
+        exportPick: (row) => row.receivedAGO,
       },
       {
         key: 'totalSalesLitersPMS',
@@ -2049,8 +2061,12 @@ const SupervisorDashboardPage = () => {
                     )}
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Input Quantity Received (L)</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.quantityReceived}</p>
+                    <p className="text-xs uppercase text-slate-500">Received PMS (L)</p>
+                    <p className="font-medium">{selectedDailyOpeningReport.receivedPMS ?? '0'}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                    <p className="text-xs uppercase text-slate-500">Received AGO (L)</p>
+                    <p className="font-medium">{selectedDailyOpeningReport.receivedAGO ?? '0'}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <p className="text-xs uppercase text-slate-500">Total Sales in Liters PMS</p>

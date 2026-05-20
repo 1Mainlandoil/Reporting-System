@@ -65,7 +65,7 @@ export const mapReportRow = (row) => {
   totalSalesAmount: Number(row.total_sales_amount ?? 0) || 0,
   receivedProduct: row.received_product,
   receivedProductType: resolvedReceivedType,
-  quantityReceived: receivedQuantity || receivedPMS + receivedAGO,
+  quantityReceived: receivedQuantity,
   noSalesDay: Boolean(row.no_sales_day),
   noSalesReason: row.no_sales_reason || '',
   noSalesNote: row.no_sales_note || '',
@@ -312,7 +312,7 @@ export const insertReport = async (report) => {
             ? 'PMS'
             : null
       : null,
-    quantity_received: Number(report.quantityReceived ?? Number(report.receivedPMS || 0) + Number(report.receivedAGO || 0)),
+    quantity_received: Number(report.quantityReceived ?? 0),
     total_sales_liters_pms: report.totalSalesLitersPMS,
     total_sales_liters_ago: report.totalSalesLitersAGO,
     closing_stock_pms: report.closingStockPMS,

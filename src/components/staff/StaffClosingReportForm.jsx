@@ -231,7 +231,6 @@ const StaffClosingReportForm = ({
     setSubmitting(true)
     const receivedPMS = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0
     const receivedAGO = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0
-    const receivedQuantity = receivedPMS + receivedAGO
     const receivedProductType =
       receivedPMS > 0 && receivedAGO > 0 ? 'BOTH' : receivedAGO > 0 ? 'AGO' : receivedPMS > 0 ? 'PMS' : null
     const openingStockPMS = effectiveOpening.pms
@@ -320,7 +319,7 @@ const StaffClosingReportForm = ({
       totalSalesAmount: salesAmountPMS + salesAmountAGO,
       receivedProduct: !isNoSalesDay && formData.receivedProduct === 'yes',
       receivedProductType: receivedProductType === 'BOTH' ? null : receivedProductType,
-      quantityReceived: receivedQuantity,
+      quantityReceived: 0,
       totalSalesLitersPMS,
       totalSalesLitersAGO,
       rttPMS,

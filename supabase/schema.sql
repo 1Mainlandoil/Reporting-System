@@ -266,16 +266,13 @@ end $$;
 
 do $$
 begin
-  if not exists (
+  if exists (
     select 1 from pg_constraint where conname = 'chk_daily_reports_received_consistency'
   ) then
-    alter table public.daily_reports
-      add constraint chk_daily_reports_received_consistency
-      check (
-        quantity_received = (received_pms + received_ago)
-      ) not valid;
+    alter table public.daily_reports drop constraint chk_daily_reports_received_consistency;
   end if;
 end $$;
+
 create index if not exists idx_month_end_finalizations_month on public.month_end_finalizations(month_key desc);
 
 alter table public.stations enable row level security;

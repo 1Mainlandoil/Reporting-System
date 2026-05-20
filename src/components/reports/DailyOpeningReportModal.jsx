@@ -84,8 +84,12 @@ const DailyOpeningReportModal = ({ report, onClose }) => {
             )}
           </div>
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-            <p className="text-xs uppercase text-slate-500">Input Quantity Received (L)</p>
-            <p className="font-medium">{report.quantityReceived}</p>
+            <p className="text-xs uppercase text-slate-500">Received PMS (L)</p>
+            <p className="font-medium">{report.receivedPMS ?? '0'}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="text-xs uppercase text-slate-500">Received AGO (L)</p>
+            <p className="font-medium">{report.receivedAGO ?? '0'}</p>
           </div>
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <p className="text-xs uppercase text-slate-500">Total Sales in Liters PMS</p>
