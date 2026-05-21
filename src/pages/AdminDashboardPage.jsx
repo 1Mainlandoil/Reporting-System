@@ -40,8 +40,6 @@ const AdminDashboardPage = () => {
   const clearFilters = useAppStore((state) => state.clearFilters)
   const reports = useAppStore((state) => state.reports)
   const stockThresholds = useAppStore((state) => state.appSettings.stockThresholds)
-  const productRequests = useAppStore((state) => state.productRequests)
-  const resolveProductRequestByAdmin = useAppStore((state) => state.resolveProductRequestByAdmin)
   const dailyFinalizations = useAppStore((state) => state.dailyFinalizations)
   const monthEndFinalizations = useAppStore((state) => state.monthEndFinalizations)
   const adminDailyReviews = useAppStore((state) => state.adminDailyReviews)
@@ -55,7 +53,6 @@ const AdminDashboardPage = () => {
   const currentUser = useAppStore((state) => state.currentUser)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [reviewAdminDrafts, setReviewAdminDrafts] = useState({})
-  const [adminRequestDrafts, setAdminRequestDrafts] = useState({})
   const [selectedFinalizationDate, setSelectedFinalizationDate] = useState('')
   const [adminGeneralReviewDrafts, setAdminGeneralReviewDrafts] = useState({})
   const [adminStationReviewDrafts, setAdminStationReviewDrafts] = useState({})
@@ -275,34 +272,6 @@ const AdminDashboardPage = () => {
       note: nextState.note ?? row.note,
     })
   }
-
-  const adminPendingRequestRows = useMemo(
-    () =>
-      productRequests
-        .filter((request) => request.status === 'pending_admin')
-        .map((request) => ({
-          ...request,
-          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
-          createdDate: request.createdAt?.split('T')[0] || '-',
-        }))
-        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
-    [productRequests, stations],
-  )
-
-  const requestHistoryRows = useMemo(
-    () =>
-      productRequests
-        .filter((request) => request.status === 'approved' || request.status === 'declined')
-        .map((request) => ({
-          ...request,
-          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
-          createdDate: request.createdAt?.split('T')[0] || '-',
-          finalStatus: request.status === 'approved' ? 'Approved' : 'Declined',
-          reasonOrRemark: request.status === 'approved' ? request.adminRemark || '-' : request.adminRemark || request.supervisorRemark || '-',
-        }))
-        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
-    [productRequests, stations],
-  )
 
   const columns = useMemo(
     () => [
@@ -685,132 +654,6 @@ const AdminDashboardPage = () => {
     },
   ]
 
-  const adminPendingColumns = [
-    { key: 'createdDate', header: 'Date', minWidth: 110 },
-    { key: 'stationName', header: 'Station', minWidth: 180 },
-    { key: 'managerName', header: 'Manager', minWidth: 160 },
-    { key: 'requestedProductType', header: 'Requested Product', minWidth: 160 },
-    {
-      key: 'requestedLiters',
-      header: 'Requested Liters',
-      minWidth: 140,
-      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
-    },
-    { key: 'supervisorRemark', header: 'Supervisor Remark', minWidth: 220 },
-    {
-      key: 'adminInput',
-      header: 'Admin Approval',
-      minWidth: 420,
-      render: (row) => {
-        const draft = adminRequestDrafts[row.id] || {
-          approvedProductType: row.requestedProductType,
-          approvedLiters: row.requestedLiters,
-          remark: 'Expect product in 24hrs',
-        }
-        return (
-          <div
-            className="space-y-2"
-            onClick={(event) => {
-              event.stopPropagation()
-            }}
-          >
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={draft.approvedProductType}
-                onChange={(event) =>
-                  setAdminRequestDrafts((prev) => ({
-                    ...prev,
-                    [row.id]: { ...draft, approvedProductType: event.target.value },
-                  }))
-                }
-                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
-              >
-                <option value="PMS">PMS</option>
-                <option value="AGO">AGO</option>
-              </select>
-              <input
-                type="number"
-                min="1"
-                value={draft.approvedLiters}
-                onChange={(event) =>
-                  setAdminRequestDrafts((prev) => ({
-                    ...prev,
-                    [row.id]: { ...draft, approvedLiters: event.target.value },
-                  }))
-                }
-                className="w-28 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
-              />
-            </div>
-            <input
-              value={draft.remark}
-              onChange={(event) =>
-                setAdminRequestDrafts((prev) => ({
-                  ...prev,
-                  [row.id]: { ...draft, remark: event.target.value },
-                }))
-              }
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
-              placeholder="Admin remark"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  resolveProductRequestByAdmin({
-                    requestId: row.id,
-                    decision: 'approve',
-                    approvedProductType: draft.approvedProductType,
-                    approvedLiters: Number(draft.approvedLiters || 0),
-                    remark: draft.remark,
-                    approvedBy: currentUser?.name || 'Admin',
-                  })
-                }
-                className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700"
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  resolveProductRequestByAdmin({
-                    requestId: row.id,
-                    decision: 'decline',
-                    remark: draft.remark || 'Declined by admin',
-                  })
-                }
-                className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700"
-              >
-                Decline
-              </button>
-            </div>
-          </div>
-        )
-      },
-    },
-  ]
-
-  const requestHistoryColumns = [
-    { key: 'createdDate', header: 'Date', minWidth: 110 },
-    { key: 'stationName', header: 'Station', minWidth: 180 },
-    { key: 'managerName', header: 'Manager', minWidth: 160 },
-    { key: 'requestedProductType', header: 'Requested Product', minWidth: 150 },
-    {
-      key: 'requestedLiters',
-      header: 'Requested Liters',
-      minWidth: 140,
-      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
-    },
-    { key: 'finalStatus', header: 'Final Status', minWidth: 130 },
-    { key: 'approvedProductType', header: 'Approved Product', minWidth: 150 },
-    {
-      key: 'approvedLiters',
-      header: 'Approved Liters',
-      minWidth: 140,
-      render: (row) => (row.approvedLiters ? Math.round(row.approvedLiters).toLocaleString() : '-'),
-    },
-    { key: 'reasonOrRemark', header: 'Reason / Remark', minWidth: 260 },
-  ]
-
   const pendingDailyFinalizationRows = useMemo(
     () =>
       dailyFinalizations
@@ -1014,7 +857,6 @@ const AdminDashboardPage = () => {
     : 'dashboard'
   const isDashboardView = adminView === 'dashboard'
   const isReportsView = adminView === 'reports'
-  const isProductRequestsView = adminView === 'product-requests'
   const isHistoryView = adminView === 'history'
 
   const openInventoryFiltersScreen = () => {
@@ -1067,7 +909,7 @@ const AdminDashboardPage = () => {
             {isHistoryView && 'History Archive'}
           </h2>
           <p className="text-sm text-slate-200">
-            {isHistoryView && 'Completed request and daily finalization records.'}
+            {isHistoryView && 'Supervisor daily finalization archive.'}
           </p>
         </Card>
       )}
@@ -1151,40 +993,6 @@ const AdminDashboardPage = () => {
           <EmptyState
             title="No stations currently need attention"
             message="All stations are within safe stock range and reporting on time."
-          />
-        )}
-      </Card>
-      )}
-
-      {isProductRequestsView && (
-      <Card className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">Admin Product Request Queue</h2>
-          <p className="text-sm text-slate-500">{adminPendingRequestRows.length} pending admin decision</p>
-        </div>
-        {adminPendingRequestRows.length ? (
-          <DataTable columns={adminPendingColumns} rows={adminPendingRequestRows} tableClassName="min-w-[1850px]" />
-        ) : (
-          <EmptyState
-            title="No escalated requests"
-            message="Supervisor-approved manager requests will appear here for final admin decision."
-          />
-        )}
-      </Card>
-      )}
-
-      {isHistoryView && (
-      <Card className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">Product Request History</h2>
-          <p className="text-sm text-slate-500">Approved and declined requests with reasons</p>
-        </div>
-        {requestHistoryRows.length ? (
-          <DataTable columns={requestHistoryColumns} rows={requestHistoryRows} tableClassName="min-w-[1650px]" />
-        ) : (
-          <EmptyState
-            title="No product request history yet"
-            message="Completed request decisions will be listed here."
           />
         )}
       </Card>

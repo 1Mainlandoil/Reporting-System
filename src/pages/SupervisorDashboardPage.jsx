@@ -100,8 +100,6 @@ const SupervisorDashboardPage = () => {
   const revertEscalationIntervention = useAppStore((state) => state.revertEscalationIntervention)
   const unflagStationIntervention = useAppStore((state) => state.unflagStationIntervention)
 
-  const productRequests = useAppStore((state) => state.productRequests)
-  const reviewProductRequestBySupervisor = useAppStore((state) => state.reviewProductRequestBySupervisor)
   const dailyFinalizations = useAppStore((state) => state.dailyFinalizations)
   const finalizeSupervisorDailyReview = useAppStore((state) => state.finalizeSupervisorDailyReview)
   const monthEndFinalizations = useAppStore((state) => state.monthEndFinalizations)
@@ -110,7 +108,6 @@ const SupervisorDashboardPage = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [showFullDailyOpeningColumns, setShowFullDailyOpeningColumns] = useState(false)
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
-  const [selectedRequestStationId, setSelectedRequestStationId] = useState(null)
   const [generalFinalizationRemark, setGeneralFinalizationRemark] = useState('')
   const [stationReviewDrafts, setStationReviewDrafts] = useState({})
   const [dailyQueueFilters, setDailyQueueFilters] = useState({
@@ -178,7 +175,7 @@ const SupervisorDashboardPage = () => {
     if (nextView === 'daily-openings') {
       return 'stock-flow'
     }
-    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'product-requests', 'history'].includes(nextView)) {
+    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'history'].includes(nextView)) {
       return nextView
     }
     return 'dashboard'
@@ -1307,109 +1304,6 @@ const SupervisorDashboardPage = () => {
     setExpenseVisibleKeys(new Set(expensePickableKeys))
   }
 
-  const supervisorQueueRows = useMemo(
-    () =>
-      productRequests
-        .filter((request) => request.status === 'submitted')
-        .map((request) => ({
-          ...request,
-          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
-          createdDate: request.createdAt?.split('T')[0] || '-',
-          requestedLitersLabel: Math.round(request.requestedLiters).toLocaleString(),
-        }))
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    [productRequests, stations],
-  )
-
-  const supervisorHistoryRows = useMemo(
-    () =>
-      productRequests
-        .filter((request) => request.supervisorDecision)
-        .map((request) => ({
-          ...request,
-          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
-          createdDate: request.createdAt?.split('T')[0] || '-',
-          supervisorStatus:
-            request.supervisorDecision === 'approved'
-              ? 'Escalated to Admin'
-              : 'Declined',
-          reason: request.supervisorRemark || '-',
-        }))
-        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
-    [productRequests, stations],
-  )
-
-  const filteredSupervisorHistoryRows = useMemo(
-    () =>
-      selectedRequestStationId
-        ? supervisorHistoryRows.filter((row) => row.stationId === selectedRequestStationId)
-        : supervisorHistoryRows,
-    [selectedRequestStationId, supervisorHistoryRows],
-  )
-
-  const supervisorQueueColumns = [
-    { key: 'createdDate', header: 'Date', minWidth: 110 },
-    { key: 'stationName', header: 'Station', minWidth: 190 },
-    { key: 'managerName', header: 'Manager', minWidth: 170 },
-    { key: 'requestedProductType', header: 'Requested Product', minWidth: 160 },
-    { key: 'requestedLitersLabel', header: 'Requested Liters', minWidth: 150 },
-    { key: 'managerRemark', header: 'Manager Remark', minWidth: 220 },
-    {
-      key: 'actions',
-      header: 'Supervisor Action',
-      minWidth: 280,
-      render: (row) => (
-        <div
-          className="flex flex-wrap gap-2"
-          onClick={(event) => {
-            event.stopPropagation()
-          }}
-        >
-          <button
-            type="button"
-            onClick={() =>
-              reviewProductRequestBySupervisor({
-                requestId: row.id,
-                decision: 'approve',
-                remark: `Escalated by ${currentUser?.name || 'Supervisor'}`,
-              })
-            }
-            className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700"
-          >
-            Approve & Escalate
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              reviewProductRequestBySupervisor({
-                requestId: row.id,
-                decision: 'decline',
-                remark: 'Declined by supervisor',
-              })
-            }
-            className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700"
-          >
-            Decline
-          </button>
-        </div>
-      ),
-    },
-  ]
-
-  const supervisorHistoryColumns = [
-    { key: 'createdDate', header: 'Date', minWidth: 110 },
-    { key: 'stationName', header: 'Station', minWidth: 190 },
-    { key: 'requestedProductType', header: 'Requested Product', minWidth: 160 },
-    {
-      key: 'requestedLiters',
-      header: 'Requested Liters',
-      minWidth: 140,
-      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
-    },
-    { key: 'supervisorStatus', header: 'Supervisor Decision', minWidth: 180 },
-    { key: 'reason', header: 'Reason / Remark', minWidth: 260 },
-  ]
-
   const handleFinalizeDailyReview = () => {
     const confirmed = window.confirm(
       `Finalize supervisor review for ${today}? This will send the daily packet to admin.`,
@@ -2533,67 +2427,6 @@ const SupervisorDashboardPage = () => {
             />
           )}
         </Card>
-      )}
-      {activeDashboard === 'product-requests' && (
-        <>
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Manager Requests Awaiting Supervisor Decision</h3>
-              <p className="text-sm text-slate-500">{supervisorQueueRows.length} pending</p>
-            </div>
-            {supervisorQueueRows.length ? (
-              <DataTable
-                columns={supervisorQueueColumns}
-                rows={supervisorQueueRows}
-                onRowClick={(row) => setSelectedRequestStationId(row.stationId)}
-                tableClassName="min-w-[1700px]"
-              />
-            ) : (
-              <EmptyState
-                title="No pending manager requests"
-                message="Submitted product requests from station managers will appear here."
-              />
-            )}
-          </Card>
-          <Card className="space-y-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <h3 className="text-lg font-semibold">
-                Supervisor Request History
-                {selectedRequestStationId &&
-                  ` - ${stations.find((station) => station.id === selectedRequestStationId)?.name || selectedRequestStationId}`}
-              </h3>
-              <div className="flex items-center gap-3">
-                <p className="text-sm text-slate-500">Approved, escalated, and declined records</p>
-                {selectedRequestStationId && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRequestStationId(null)}
-                    className="rounded-md border border-slate-300 px-3 py-1 text-xs dark:border-slate-700"
-                  >
-                    Clear Station Filter
-                  </button>
-                )}
-              </div>
-            </div>
-            {filteredSupervisorHistoryRows.length ? (
-              <DataTable
-                columns={supervisorHistoryColumns}
-                rows={filteredSupervisorHistoryRows}
-                onRowClick={(row) => setSelectedRequestStationId(row.stationId)}
-                tableClassName="min-w-[1300px]"
-              />
-            ) : (
-              <EmptyState
-                title={selectedRequestStationId ? 'No history for selected station' : 'No history yet'}
-                message={
-                  selectedRequestStationId
-                    ? 'This station has no reviewed request records yet.'
-                    : 'Once you review manager product requests, they appear in this history.'
-                }
-              />
-            )}
-          </Card>
-        </>
       )}
       {activeDashboard === 'history' && (
         <Card className="space-y-4">

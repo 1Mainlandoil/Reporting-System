@@ -737,6 +737,70 @@ export const useAppStore = create(
           })
         }
       },
+      resolveProductRequestByTerminalOperator: ({
+        requestId,
+        decision,
+        approvedProductType,
+        approvedLiters,
+        remark,
+      }) => {
+        const state = get()
+        const operatorName = state.currentUser?.name || 'Terminal Operator'
+        const reviewedAt = new Date().toISOString()
+        const normalizedDecision = decision === 'decline' ? 'decline' : 'approve'
+        const normalizedProductType = approvedProductType === 'AGO' ? 'AGO' : 'PMS'
+        const normalizedLiters = Number(approvedLiters || 0)
+        const trimmedRemark = String(remark || '').trim()
+
+        let syncedRequest = null
+        set((currentState) => ({
+          productRequests: currentState.productRequests.map((request) => {
+            if (
+              request.id !== requestId ||
+              !['submitted', 'pending_admin'].includes(request.status)
+            ) {
+              return request
+            }
+
+            if (normalizedDecision === 'decline') {
+              const nextRequest = {
+                ...request,
+                status: 'declined',
+                managerStatusLabel: 'Declined',
+                adminDecision: 'declined',
+                adminRemark: trimmedRemark || 'Declined by terminal operator',
+                adminName: operatorName,
+                adminReviewedAt: reviewedAt,
+                dispatchNote: '',
+                updatedAt: reviewedAt,
+              }
+              syncedRequest = nextRequest
+              return nextRequest
+            }
+
+            const nextRequest = {
+              ...request,
+              status: 'approved',
+              managerStatusLabel: 'Approved',
+              adminDecision: 'approved',
+              adminRemark: trimmedRemark || 'Expect product in 24hrs',
+              adminName: operatorName,
+              adminReviewedAt: reviewedAt,
+              approvedProductType: normalizedProductType,
+              approvedLiters: normalizedLiters > 0 ? normalizedLiters : request.requestedLiters,
+              dispatchNote: 'Expect product in 24hrs',
+              updatedAt: reviewedAt,
+            }
+            syncedRequest = nextRequest
+            return nextRequest
+          }),
+        }))
+        if (syncedRequest) {
+          upsertProductRequest(syncedRequest).catch(() => {
+            // Keep local-first UX; remote sync errors can be surfaced later.
+          })
+        }
+      },
       getStationRequestHistory: (stationId) =>
         get()
           .productRequests.filter((request) => request.stationId === stationId)

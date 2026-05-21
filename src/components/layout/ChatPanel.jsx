@@ -8,6 +8,7 @@ const getChatRoleLabel = (role) => {
   if (role === 'staff') return 'Manager'
   if (role === 'supervisor') return 'Supervisor'
   if (role === 'admin') return 'Admin'
+  if (role === 'terminal_operator') return 'Terminal Operator'
   return role || 'User'
 }
 
@@ -160,7 +161,7 @@ const ChatPanel = () => {
       .filter((user) => user.id !== currentUser?.id)
       .filter((user) => {
         if (currentRole === 'staff') {
-          return user.role === 'supervisor' || user.role === 'admin'
+          return user.role === 'supervisor' || user.role === 'admin' || user.role === 'terminal_operator'
         }
         return true
       })
@@ -180,7 +181,7 @@ const ChatPanel = () => {
         const lastMessage = conversation.at(-1)
         const hasUnreplied = Boolean(lastMessage && lastMessage.fromUserId === user.id)
         const unreadCount = conversation.filter((message) => isChatMessageUnread(message, currentUser.id)).length
-        const isPriorityRole = user.role === 'supervisor' || user.role === 'admin'
+        const isPriorityRole = user.role === 'supervisor' || user.role === 'admin' || user.role === 'terminal_operator'
         const isPinned = isPriorityRole || pinnedChatUserIds.includes(user.id)
         return { user, conversation, lastMessage, hasUnreplied, unreadCount, isPinned, lastTimestamp: toTimestamp(lastMessage?.createdAt) }
       })

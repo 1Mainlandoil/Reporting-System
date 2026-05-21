@@ -9,6 +9,7 @@
 --   • All tables, columns, indexes
 --   • Chat seen/delivered status (status + seen_at)
 --   • Drops stock/cash non-negative report enforcement (no blocking on save)
+--   • Terminal Operator role for product request final approval
 --   • Row-level security policies
 --   • Realtime publication for chat, reports, users
 -- =============================================================================
@@ -25,7 +26,7 @@ create table if not exists public.stations (
 create table if not exists public.users (
   id text primary key,
   name text not null,
-  role text not null check (role in ('staff', 'supervisor', 'admin')),
+  role text not null check (role in ('staff', 'supervisor', 'admin', 'terminal_operator')),
   station_id text references public.stations(id) on delete set null,
   phone_number text,
   email text,
@@ -226,6 +227,12 @@ alter table public.daily_reports
 alter table public.users
   add column if not exists manager_username text,
   add column if not exists manager_password_hash text;
+
+alter table public.users drop constraint if exists users_role_check;
+
+alter table public.users
+  add constraint users_role_check
+  check (role in ('staff', 'supervisor', 'admin', 'terminal_operator'));
 
 create index if not exists idx_daily_reports_station_date on public.daily_reports(station_id, date desc);
 create unique index if not exists ux_daily_reports_station_date on public.daily_reports(station_id, date);

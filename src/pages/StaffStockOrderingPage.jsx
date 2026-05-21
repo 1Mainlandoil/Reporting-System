@@ -30,7 +30,7 @@ const StaffStockOrderingPage = () => {
       <Card className="space-y-4">
         <h3 className="text-lg font-semibold">Order Product</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Submit product requests for supervisor and admin review.
+          Submit product requests for terminal operator review and approval.
         </p>
         <form onSubmit={handleRequestSubmit} className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <label className="space-y-1">

@@ -18,6 +18,7 @@ import AlertsPage from './pages/AlertsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
+import TerminalOperatorDashboardPage from './pages/TerminalOperatorDashboardPage'
 import ITAdminPage from './pages/ITAdminPage'
 
 const RootRoute = () => {
@@ -59,6 +60,17 @@ const App = () => (
     </Route>
 
     <Route
+      path="/terminal-operator"
+      element={
+        <ProtectedRoute allowedRoles={['terminal_operator']}>
+          <AppLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route index element={<TerminalOperatorDashboardPage />} />
+    </Route>
+
+    <Route
       path="/admin"
       element={
         <ProtectedRoute allowedRoles={['admin']}>
@@ -69,13 +81,12 @@ const App = () => (
       <Route index element={<Navigate to="/admin/dashboard" replace />} />
       <Route path="dashboard" element={<AdminDashboardPage />} />
       <Route path="reports" element={<AdminDashboardPage />} />
-      <Route path="product-requests" element={<AdminDashboardPage />} />
       <Route path="history" element={<AdminDashboardPage />} />
     </Route>
 
     <Route
       element={
-        <ProtectedRoute allowedRoles={['admin', 'supervisor', 'staff']}>
+        <ProtectedRoute allowedRoles={['admin', 'supervisor', 'staff', 'terminal_operator']}>
           <AppLayout />
         </ProtectedRoute>
       }

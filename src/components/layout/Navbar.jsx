@@ -8,7 +8,6 @@ const mobileMenuByRole = {
   supervisor: [
     { label: 'Dashboard', path: '/supervisor?view=dashboard' },
     { label: 'Reports', path: '/supervisor?view=daily-openings' },
-    { label: 'Product Requests', path: '/supervisor?view=product-requests' },
     { label: 'History', path: '/supervisor?view=history' },
     { label: 'Reconciliation', path: '/reconciliation' },
     { label: 'Alerts', path: '/alerts' },
@@ -20,12 +19,17 @@ const mobileMenuByRole = {
   admin: [
     { label: 'Dashboard', path: '/admin/dashboard' },
     { label: 'Reports', path: '/admin/reports' },
-    { label: 'Product Requests', path: '/admin/product-requests' },
     { label: 'History', path: '/admin/history' },
     { label: 'Reconciliation', path: '/reconciliation' },
     { label: 'Alerts', path: '/alerts' },
     { label: 'Analytics', path: '/analytics' },
     { label: 'Stations', path: '/stations' },
+    { label: 'Users', path: '/users' },
+    { label: 'Settings', path: '/settings' },
+  ],
+  terminal_operator: [
+    { label: 'Product Requests', path: '/terminal-operator' },
+    { label: 'History', path: '/terminal-operator?view=history' },
     { label: 'Users', path: '/users' },
     { label: 'Settings', path: '/settings' },
   ],

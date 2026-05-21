@@ -20,29 +20,42 @@ const Sidebar = () => {
   const linkMap = Object.fromEntries(links.map((item) => [item.label.toLowerCase(), item.path]))
   const currentView = new URLSearchParams(location.search).get('view')
 
-  const menuItems = [
-    { label: 'Dashboard', icon: '▦', path: role === 'staff' ? '/staff' : linkMap.dashboard },
-    {
-      label: 'Reports',
-      icon: '☰',
-      path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports,
-    },
-    ...(role === 'supervisor'
-      ? [{ label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' }]
-      : []),
-    { label: 'Reconciliation', icon: '◍', path: linkMap.reconciliation },
-    {
-      label: 'Product Requests',
-      icon: '⬒',
-      path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'],
-    },
-    { label: 'History', icon: '🕘', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
-    { label: 'Alerts', icon: '⚑', path: linkMap.alerts },
-    { label: 'Analytics', icon: '◔', path: linkMap.analytics },
-    { label: 'Stations', icon: '⌂', path: linkMap.stations },
-    { label: 'Users', icon: '◌', path: linkMap.users },
-    { label: 'Settings', icon: '⚙', path: linkMap.settings },
-  ]
+  const menuItems =
+    role === 'terminal_operator'
+      ? links.map((link) => ({
+          label: link.label,
+          icon:
+            link.label === 'Product Requests'
+              ? '⬒'
+              : link.label === 'History'
+                ? '🕘'
+                : link.label === 'Users'
+                  ? '◌'
+                  : '⚙',
+          path: link.path,
+        }))
+      : [
+          { label: 'Dashboard', icon: '▦', path: role === 'staff' ? '/staff' : linkMap.dashboard },
+          {
+            label: 'Reports',
+            icon: '☰',
+            path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports,
+          },
+          ...(role === 'supervisor'
+            ? [{ label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' }]
+            : []),
+          { label: 'Reconciliation', icon: '◍', path: linkMap.reconciliation },
+          {
+            label: 'History',
+            icon: '🕘',
+            path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history,
+          },
+          { label: 'Alerts', icon: '⚑', path: linkMap.alerts },
+          { label: 'Analytics', icon: '◔', path: linkMap.analytics },
+          { label: 'Stations', icon: '⌂', path: linkMap.stations },
+          { label: 'Users', icon: '◌', path: linkMap.users },
+          { label: 'Settings', icon: '⚙', path: linkMap.settings },
+        ].filter((item) => item.path)
 
   return (
     <aside className="hidden w-full border-b border-slate-200 bg-white p-4 md:fixed md:left-0 md:top-[73px] md:block md:h-[calc(100vh-73px)] md:w-64 md:overflow-y-auto md:border-b-0 md:border-r md:border-[#c4151d] md:bg-[#f01d26] md:dark:border-[#c4151d] md:dark:bg-[#f01d26]">
@@ -77,29 +90,35 @@ const Sidebar = () => {
                   item.label === 'Month-End Summary' &&
                   location.pathname === '/supervisor' &&
                   currentView === 'month-end-summary'
-                const isSupervisorProductRequests =
-                  role === 'supervisor' &&
+                const isTerminalProductRequests =
+                  role === 'terminal_operator' &&
                   item.label === 'Product Requests' &&
-                  location.pathname === '/supervisor' &&
-                  currentView === 'product-requests'
+                  location.pathname === '/terminal-operator' &&
+                  currentView !== 'history'
+                const isTerminalHistory =
+                  role === 'terminal_operator' &&
+                  item.label === 'History' &&
+                  location.pathname === '/terminal-operator' &&
+                  currentView === 'history'
                 const isSupervisorHistory =
                   role === 'supervisor' &&
                   item.label === 'History' &&
                   location.pathname === '/supervisor' &&
                   currentView === 'history'
                 const isCustomActive =
-                  role === 'supervisor' &&
-                  (item.label === 'Dashboard' ||
-                    item.label === 'Reports' ||
-                    item.label === 'Month-End Summary' ||
-                    item.label === 'Product Requests' ||
-                    item.label === 'History')
-                    ? isSupervisorDashboard ||
-                      isSupervisorReports ||
-                      isSupervisorMonthEnd ||
-                      isSupervisorProductRequests ||
-                      isSupervisorHistory
-                    : isActive
+                  role === 'terminal_operator' &&
+                  (item.label === 'Product Requests' || item.label === 'History')
+                    ? isTerminalProductRequests || isTerminalHistory
+                    : role === 'supervisor' &&
+                        (item.label === 'Dashboard' ||
+                          item.label === 'Reports' ||
+                          item.label === 'Month-End Summary' ||
+                          item.label === 'History')
+                      ? isSupervisorDashboard ||
+                        isSupervisorReports ||
+                        isSupervisorMonthEnd ||
+                        isSupervisorHistory
+                      : isActive
 
                 return (
                 `group flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${

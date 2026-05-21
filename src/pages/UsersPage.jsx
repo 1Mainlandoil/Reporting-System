@@ -16,7 +16,14 @@ const UsersPage = () => {
       users.map((user) => ({
         id: user.id,
         name: user.name,
-        role: user.role === 'staff' ? 'Manager' : user.role === 'supervisor' ? 'Supervisor' : 'Admin',
+        role:
+          user.role === 'staff'
+            ? 'Manager'
+            : user.role === 'supervisor'
+              ? 'Supervisor'
+              : user.role === 'terminal_operator'
+                ? 'Terminal Operator'
+                : 'Admin',
         assignedStation: user.stationId ? stationById.get(user.stationId) || 'Unknown' : 'All Stations',
         status: 'Active',
         canChat: user.id !== currentUser?.id,
