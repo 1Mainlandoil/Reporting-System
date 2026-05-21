@@ -616,6 +616,12 @@ export const useAppStore = create(
           approvedProductType: null,
           approvedLiters: null,
           dispatchNote: '',
+          terminalDecision: null,
+          terminalRemark: '',
+          terminalName: '',
+          terminalReviewedAt: null,
+          truckNumber: '',
+          truckDriver: '',
           createdAt,
           updatedAt: createdAt,
         }
@@ -740,17 +746,19 @@ export const useAppStore = create(
       resolveProductRequestByTerminalOperator: ({
         requestId,
         decision,
-        approvedProductType,
         approvedLiters,
+        truckNumber,
+        truckDriver,
         remark,
       }) => {
         const state = get()
         const operatorName = state.currentUser?.name || 'Terminal Operator'
         const reviewedAt = new Date().toISOString()
         const normalizedDecision = decision === 'decline' ? 'decline' : 'approve'
-        const normalizedProductType = approvedProductType === 'AGO' ? 'AGO' : 'PMS'
         const normalizedLiters = Number(approvedLiters || 0)
         const trimmedRemark = String(remark || '').trim()
+        const trimmedTruckNumber = String(truckNumber || '').trim()
+        const trimmedTruckDriver = String(truckDriver || '').trim()
 
         let syncedRequest = null
         set((currentState) => ({
@@ -767,10 +775,12 @@ export const useAppStore = create(
                 ...request,
                 status: 'declined',
                 managerStatusLabel: 'Declined',
-                adminDecision: 'declined',
-                adminRemark: trimmedRemark || 'Declined by terminal operator',
-                adminName: operatorName,
-                adminReviewedAt: reviewedAt,
+                terminalDecision: 'declined',
+                terminalRemark: trimmedRemark || 'Declined by terminal operator',
+                terminalName: operatorName,
+                terminalReviewedAt: reviewedAt,
+                truckNumber: '',
+                truckDriver: '',
                 dispatchNote: '',
                 updatedAt: reviewedAt,
               }
@@ -782,13 +792,15 @@ export const useAppStore = create(
               ...request,
               status: 'approved',
               managerStatusLabel: 'Approved',
-              adminDecision: 'approved',
-              adminRemark: trimmedRemark || 'Expect product in 24hrs',
-              adminName: operatorName,
-              adminReviewedAt: reviewedAt,
-              approvedProductType: normalizedProductType,
+              terminalDecision: 'approved',
+              terminalRemark: trimmedRemark,
+              terminalName: operatorName,
+              terminalReviewedAt: reviewedAt,
+              approvedProductType: request.requestedProductType,
               approvedLiters: normalizedLiters > 0 ? normalizedLiters : request.requestedLiters,
-              dispatchNote: 'Expect product in 24hrs',
+              truckNumber: trimmedTruckNumber,
+              truckDriver: trimmedTruckDriver,
+              dispatchNote: trimmedRemark,
               updatedAt: reviewedAt,
             }
             syncedRequest = nextRequest
@@ -800,6 +812,16 @@ export const useAppStore = create(
             // Keep local-first UX; remote sync errors can be surfaced later.
           })
         }
+      },
+      getManagerProductRequests: () => {
+        const state = get()
+        const managerId = state.currentUser?.id
+        if (!managerId) {
+          return []
+        }
+        return state.productRequests
+          .filter((request) => request.managerId === managerId)
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       },
       getStationRequestHistory: (stationId) =>
         get()

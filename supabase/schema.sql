@@ -60,6 +60,12 @@ create table if not exists public.product_requests (
   approved_product_type text,
   approved_liters numeric,
   dispatch_note text not null default '',
+  terminal_decision text,
+  terminal_remark text not null default '',
+  terminal_name text not null default '',
+  terminal_reviewed_at timestamptz,
+  truck_number text not null default '',
+  truck_driver text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -227,6 +233,14 @@ alter table public.daily_reports
 alter table public.users
   add column if not exists manager_username text,
   add column if not exists manager_password_hash text;
+
+alter table public.product_requests
+  add column if not exists terminal_decision text,
+  add column if not exists terminal_remark text not null default '',
+  add column if not exists terminal_name text not null default '',
+  add column if not exists terminal_reviewed_at timestamptz,
+  add column if not exists truck_number text not null default '',
+  add column if not exists truck_driver text not null default '';
 
 alter table public.users drop constraint if exists users_role_check;
 
