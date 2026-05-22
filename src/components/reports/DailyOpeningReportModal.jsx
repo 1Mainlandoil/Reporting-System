@@ -1,5 +1,60 @@
 import EvidencePhotoList from '../ui/EvidencePhotoList'
 
+const StockDipVsBookPanel = ({ report }) => {
+  const dipPms = Number(report.tankDipPMSRaw ?? report.closingStockPMSRaw ?? 0)
+  const dipAgo = Number(report.tankDipAGORaw ?? report.closingStockAGORaw ?? 0)
+  const bookPms = Number(report.quantityRemainingPMSRaw ?? 0)
+  const bookAgo = Number(report.quantityRemainingAGORaw ?? 0)
+  const diffPms = dipPms - bookPms
+  const diffAgo = dipAgo - bookAgo
+  const hasDiff = diffPms !== 0 || diffAgo !== 0
+
+  return (
+    <div
+      className={`mt-4 rounded-lg border p-4 ${hasDiff ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30' : 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25'}`}
+    >
+      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+        Stock check — tank dip vs book remaining
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+        <div className="rounded-lg border border-white/60 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="text-xs uppercase text-slate-500">PMS (L)</p>
+          <p>
+            Tank dip: <span className="font-semibold">{dipPms.toLocaleString()}</span>
+          </p>
+          <p>
+            Book remaining: <span className="font-semibold">{bookPms.toLocaleString()}</span>
+          </p>
+          <p className={diffPms !== 0 ? 'font-medium text-amber-800 dark:text-amber-200' : 'text-slate-600 dark:text-slate-300'}>
+            Difference: {diffPms > 0 ? '+' : ''}
+            {diffPms.toLocaleString()} L
+          </p>
+        </div>
+        <div className="rounded-lg border border-white/60 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="text-xs uppercase text-slate-500">AGO (L)</p>
+          <p>
+            Tank dip: <span className="font-semibold">{dipAgo.toLocaleString()}</span>
+          </p>
+          <p>
+            Book remaining: <span className="font-semibold">{bookAgo.toLocaleString()}</span>
+          </p>
+          <p className={diffAgo !== 0 ? 'font-medium text-amber-800 dark:text-amber-200' : 'text-slate-600 dark:text-slate-300'}>
+            Difference: {diffAgo > 0 ? '+' : ''}
+            {diffAgo.toLocaleString()} L
+          </p>
+        </div>
+      </div>
+      {hasDiff ? (
+        <p className="mt-3 text-xs text-amber-900 dark:text-amber-200">
+          Figures differ — chat or call the manager if you need clarification.
+        </p>
+      ) : (
+        <p className="mt-3 text-xs text-emerald-800 dark:text-emerald-200">Tank dip matches book remaining.</p>
+      )}
+    </div>
+  )
+}
+
 const DailyOpeningReportModal = ({ report, onClose }) => {
   if (!report) {
     return null
@@ -167,7 +222,9 @@ const DailyOpeningReportModal = ({ report, onClose }) => {
           </div>
         </div>
 
-        {report.expenseItems.length > 0 && (
+        <StockDipVsBookPanel report={report} />
+
+        {(report.expenseItems || []).length > 0 && (
           <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <p className="mb-2 text-xs uppercase text-slate-500">Expense Lines</p>
             <div className="space-y-2">

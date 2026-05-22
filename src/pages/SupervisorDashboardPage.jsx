@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
+import DailyOpeningReportModal from '../components/reports/DailyOpeningReportModal'
 import ColumnPicker from '../components/ui/ColumnPicker'
 import StatusBadge from '../components/ui/StatusBadge'
 import DataTable from '../components/ui/DataTable'
@@ -328,6 +329,9 @@ const SupervisorDashboardPage = () => {
           paymentBreakdown,
           totalPaymentDeposits,
           posValue,
+          posEodPhotoUrl: latestToday?.posEodPhotoUrl || '',
+          tankDipPMSRaw: latestToday ? getClosingForProduct(latestToday, 'pms') : null,
+          tankDipAGORaw: latestToday ? getClosingForProduct(latestToday, 'ago') : null,
           cashBf,
           cashSales,
           totalAmount,
@@ -1863,214 +1867,10 @@ const SupervisorDashboardPage = () => {
           </Card>
           )}
 
-          {selectedDailyOpeningReport && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-              <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900">
-                <div className="mb-4 flex items-start justify-between gap-4">
-                  <div>
-                    <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
-                      Full Daily Report - {selectedDailyOpeningReport.stationName}
-                    </h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {selectedDailyOpeningReport.managerName} | {selectedDailyOpeningReport.reportDate}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDailyOpeningReport(null)}
-                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700"
-                  >
-                    Close
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Submission Status</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.reportStatus}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Received Product (PMS/AGO)</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.receivedProduct}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Opening Stock PMS</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.openingStockPMS}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Opening Stock AGO</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.openingStockAGO}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Tank Dip PMS</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.closingStockPMS}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Tank Dip AGO</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.closingStockAGO}</p>
-                  </div>
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-                    <p className="text-xs uppercase text-emerald-700 dark:text-emerald-300">Book Remaining PMS</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.quantityRemainingPMS ?? '-'}</p>
-                  </div>
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-                    <p className="text-xs uppercase text-emerald-700 dark:text-emerald-300">Book Remaining AGO</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.quantityRemainingAGO ?? '-'}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">PMS Price</p>
-                    <p className="font-medium">
-                      {selectedDailyOpeningReport.multiPricing &&
-                      (selectedDailyOpeningReport.priceBandsPMS || []).length > 1
-                        ? `Avg ₦${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
-                        : selectedDailyOpeningReport.pmsPrice}
-                    </p>
-                    {(selectedDailyOpeningReport.priceBandsPMS || []).length > 0 && (
-                      <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-                        {selectedDailyOpeningReport.priceBandsPMS.map((band, index) => (
-                          <li key={`pms-band-${index}`}>
-                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">AGO Price</p>
-                    <p className="font-medium">
-                      {selectedDailyOpeningReport.multiPricing &&
-                      (selectedDailyOpeningReport.priceBandsAGO || []).length > 1
-                        ? `Avg ₦${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
-                        : selectedDailyOpeningReport.agoPrice}
-                    </p>
-                    {(selectedDailyOpeningReport.priceBandsAGO || []).length > 0 && (
-                      <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-                        {selectedDailyOpeningReport.priceBandsAGO.map((band, index) => (
-                          <li key={`ago-band-${index}`}>
-                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Received PMS (L)</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.receivedPMS ?? '0'}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Received AGO (L)</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.receivedAGO ?? '0'}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Total Sales in Liters PMS</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.totalSalesLitersPMS}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Total Sales in Liters AGO</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.totalSalesLitersAGO}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">RTT PMS</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.rttPMS}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">RTT AGO</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.rttAGO}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800 md:col-span-2">
-                    <p className="text-xs uppercase text-slate-500">Remark</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.managerRemark}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Expense Total (NGN)</p>
-                    <p className="font-medium">
-                      {Math.round(selectedDailyOpeningReport.expenseAmount).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800 md:col-span-2">
-                    <p className="text-xs uppercase text-slate-500">Expense Description</p>
-                    <p className="font-medium">{selectedDailyOpeningReport.expenseDescription}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Bank/Channel Deposits Total (NGN)</p>
-                    <p className="font-medium">
-                      {Math.round(Number(selectedDailyOpeningReport.totalPaymentDeposits || 0)).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Cash B/F (NGN)</p>
-                    <p className="font-medium">{Math.round(Number(selectedDailyOpeningReport.cashBf || 0)).toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Cash Sales (NGN)</p>
-                    <p className="font-medium">{Math.round(Number(selectedDailyOpeningReport.cashSales || 0)).toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Total Amount (NGN)</p>
-                    <p className="font-medium">{Math.round(Number(selectedDailyOpeningReport.totalAmount || 0)).toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">POS (NGN)</p>
-                    <p className="font-medium">{Math.round(Number(selectedDailyOpeningReport.posValue || 0)).toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Closing Balance (NGN)</p>
-                    <p className="font-medium">{Math.round(Number(selectedDailyOpeningReport.closingBalance || 0)).toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Variance (NGN)</p>
-                    <p className="font-medium">
-                      {Math.round(Number(selectedDailyOpeningReport.cashMovementVariance || 0)).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Pump Reading Lines</p>
-                    <p className="font-medium">{Number(selectedDailyOpeningReport.pumpReadingsCount || 0)}</p>
-                  </div>
-                </div>
-
-                {selectedDailyOpeningReport.expenseItems.length > 0 && (
-                  <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="mb-2 text-xs uppercase text-slate-500">Expense Lines</p>
-                    <div className="space-y-2">
-                      {selectedDailyOpeningReport.expenseItems.map((item, index) => (
-                        <p key={`${item.label}-${index}`} className="text-sm text-slate-700 dark:text-slate-200">
-                          {item.label}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedDailyOpeningReport.paymentBreakdown?.length > 0 && (
-                  <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="mb-2 text-xs uppercase text-slate-500">Bank/Channel Breakdown</p>
-                    <div className="space-y-2">
-                      {selectedDailyOpeningReport.paymentBreakdown.map((item, index) => (
-                        <p key={`${item.channel}-${index}`} className="text-sm text-slate-700 dark:text-slate-200">
-                          {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedDailyOpeningReport.pumpMeterRows?.length > 0 && (
-                  <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="mb-2 text-xs uppercase text-slate-500">Pump Readings</p>
-                    <div className="space-y-2">
-                      {selectedDailyOpeningReport.pumpMeterRows.map((item, index) => (
-                        <p key={`${item.label}-${index}`} className="text-sm text-slate-700 dark:text-slate-200">
-                          {item.label}:{' '}
-                          {item.noBaseline
-                            ? 'No baseline'
-                            : `${item.opening ?? '-'} - ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          <DailyOpeningReportModal
+            report={selectedDailyOpeningReport}
+            onClose={() => setSelectedDailyOpeningReport(null)}
+          />
         </>
       )}
 
