@@ -39,12 +39,18 @@ export const mapReportRow = (row) => {
       ? 'BOTH'
       : receivedProductType || (receivedAGO > 0 ? 'AGO' : row.received_product ? 'PMS' : null)
   const rawPaymentBreakdown = Array.isArray(row.payment_breakdown) ? row.payment_breakdown : []
-  const posValue = rawPaymentBreakdown
-    .filter((item) => String(item?.channel || '').trim().toUpperCase() === 'POS')
-    .reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)
-  const paymentBreakdown = rawPaymentBreakdown.filter(
-    (item) => String(item?.channel || '').trim().toUpperCase() !== 'POS',
+  const posRows = rawPaymentBreakdown.filter(
+    (item) => String(item?.channel || '').trim().toUpperCase() === 'POS',
   )
+  const posValue = posRows.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)
+  const posEodPhotoUrl = posRows.find((item) => item?.eodPhotoUrl)?.eodPhotoUrl || ''
+  const paymentBreakdown = rawPaymentBreakdown
+    .filter((item) => String(item?.channel || '').trim().toUpperCase() !== 'POS')
+    .map((item) => ({
+      channel: item.channel,
+      amount: Number(item.amount || 0),
+      eodPhotoUrl: item.eodPhotoUrl || '',
+    }))
   const totalPaymentDeposits = paymentBreakdown.length
     ? paymentBreakdown.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)
     : Number(row.total_payment_deposits ?? 0) || 0
@@ -73,6 +79,8 @@ export const mapReportRow = (row) => {
   totalSalesLitersAGO: row.total_sales_liters_ago,
   closingStockPMS: row.closing_stock_pms,
   closingStockAGO: row.closing_stock_ago,
+  quantityRemainingPMS: row.quantity_remaining_pms,
+  quantityRemainingAGO: row.quantity_remaining_ago,
   rttPMS: row.rtt_pms,
   rttAGO: row.rtt_ago,
   remark: row.remark,
@@ -82,6 +90,7 @@ export const mapReportRow = (row) => {
   paymentBreakdown,
   totalPaymentDeposits,
   posValue,
+  posEodPhotoUrl,
   pumpReadings: Array.isArray(row.pump_readings) ? row.pump_readings : [],
   cashBf: Number(row.cash_bf ?? 0) || 0,
   cashSales: Number(row.cash_sales ?? 0) || 0,
@@ -159,6 +168,7 @@ const mapProductRequest = (row) => ({
   terminalReviewedAt: row.terminal_reviewed_at || null,
   truckNumber: row.truck_number || '',
   truckDriver: row.truck_driver || '',
+  lowStockPhotoUrls: Array.isArray(row.low_stock_photo_urls) ? row.low_stock_photo_urls : [],
   createdAt: row.created_at,
   updatedAt: row.updated_at || row.created_at,
 })
@@ -323,6 +333,8 @@ export const insertReport = async (report) => {
     total_sales_liters_ago: report.totalSalesLitersAGO,
     closing_stock_pms: report.closingStockPMS,
     closing_stock_ago: report.closingStockAGO,
+    quantity_remaining_pms: report.quantityRemainingPMS,
+    quantity_remaining_ago: report.quantityRemainingAGO,
     rtt_pms: report.rttPMS,
     rtt_ago: report.rttAGO,
     remark: report.remark || report.remarks || '',
@@ -348,7 +360,15 @@ export const insertReport = async (report) => {
     no_sales_note: report.noSalesNote || '',
     payment_breakdown: [
       ...(report.paymentBreakdown || []),
-      ...(Number(report.posValue || 0) > 0 ? [{ channel: 'POS', amount: Number(report.posValue || 0) }] : []),
+      ...(Number(report.posValue || 0) > 0
+        ? [
+            {
+              channel: 'POS',
+              amount: Number(report.posValue || 0),
+              ...(report.posEodPhotoUrl ? { eodPhotoUrl: report.posEodPhotoUrl } : {}),
+            },
+          ]
+        : []),
     ],
     total_payment_deposits: Number(report.totalPaymentDeposits || 0),
     pump_readings: report.pumpReadings || [],
@@ -530,6 +550,7 @@ export const upsertProductRequest = async (request) => {
     terminal_reviewed_at: request.terminalReviewedAt || null,
     truck_number: request.truckNumber || '',
     truck_driver: request.truckDriver || '',
+    low_stock_photo_urls: Array.isArray(request.lowStockPhotoUrls) ? request.lowStockPhotoUrls : [],
     created_at: request.createdAt,
     updated_at: request.updatedAt || request.createdAt || new Date().toISOString(),
   }
@@ -660,6 +681,46 @@ export const upsertAdminReportResolution = async (resolution) => {
     updated_at: resolution.updatedAt || new Date().toISOString(),
   }
   const { error } = await supabase.from('admin_report_resolutions').upsert(payload, { onConflict: 'report_id' })
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
+}
+
+export const countDailyReports = async ({ stationId } = {}) => {
+  if (!hasSupabaseEnv || !supabase) {
+    return 0
+  }
+  let query = supabase.from('daily_reports').select('*', { count: 'exact', head: true })
+  if (stationId) {
+    query = query.eq('station_id', stationId)
+  }
+  const { count, error } = await query
+  if (error) {
+    throw new Error(error.message)
+  }
+  return count ?? 0
+}
+
+export const deleteAllDailyReports = async () => {
+  if (!hasSupabaseEnv || !supabase) {
+    return null
+  }
+  const { error } = await supabase.from('daily_reports').delete().gte('date', '1900-01-01')
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
+}
+
+export const deleteDailyReportsByStation = async (stationId) => {
+  if (!hasSupabaseEnv || !supabase) {
+    return null
+  }
+  if (!stationId) {
+    throw new Error('station_id_required')
+  }
+  const { error } = await supabase.from('daily_reports').delete().eq('station_id', stationId)
   if (error) {
     throw new Error(error.message)
   }

@@ -1,5 +1,5 @@
-const CACHE_NAME = 'mainland-v2'
-const PRECACHE_URLS = ['./']
+const CACHE_NAME = 'mainland-v3'
+const PRECACHE_URLS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './sw.js']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

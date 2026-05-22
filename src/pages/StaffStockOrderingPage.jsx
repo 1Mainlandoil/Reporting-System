@@ -3,7 +3,9 @@ import Card from '../components/ui/Card'
 import DataTable from '../components/ui/DataTable'
 import EmptyState from '../components/ui/EmptyState'
 import FormInput from '../components/ui/FormInput'
+import PhotoUploadInput from '../components/ui/PhotoUploadInput'
 import { useAppStore } from '../store/useAppStore'
+import { uploadReportEvidenceFiles } from '../services/supabaseStorage'
 
 const StaffStockOrderingPage = () => {
   const createProductRequest = useAppStore((state) => state.createProductRequest)
@@ -17,6 +19,9 @@ const StaffStockOrderingPage = () => {
     requestedLiters: '',
     remark: '',
   })
+  const [lowStockPhotoFiles, setLowStockPhotoFiles] = useState([])
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const stationName =
     stations.find((station) => station.id === currentUser?.stationId)?.name || currentUser?.stationId || '-'
@@ -54,20 +59,42 @@ const StaffStockOrderingPage = () => {
   const approvedCount = myRequests.filter((request) => request.status === 'approved').length
   const rejectedCount = myRequests.filter((request) => request.status === 'declined').length
 
-  const handleRequestSubmit = (event) => {
+  const handleRequestSubmit = async (event) => {
     event.preventDefault()
-    createProductRequest({
-      requestedProductType: requestDraft.requestedProductType,
-      requestedLiters: Number(requestDraft.requestedLiters || 0),
-      remark: requestDraft.remark,
-    })
-    setRequestDraft({
-      requestedProductType: 'PMS',
-      requestedLiters: '',
-      remark: '',
-    })
-    setActiveTab('requests')
-    setRequestFilter('pending')
+    setSubmitError('')
+    if (!currentUser?.stationId) {
+      setSubmitError('Your account is not linked to a station.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const requestId = `req-${Date.now()}`
+      const lowStockPhotoUrls = lowStockPhotoFiles.length
+        ? await uploadReportEvidenceFiles(
+            lowStockPhotoFiles,
+            `low-stock/${currentUser.stationId}/${requestId}`,
+          )
+        : []
+      createProductRequest({
+        id: requestId,
+        requestedProductType: requestDraft.requestedProductType,
+        requestedLiters: Number(requestDraft.requestedLiters || 0),
+        remark: requestDraft.remark,
+        lowStockPhotoUrls,
+      })
+      setRequestDraft({
+        requestedProductType: 'PMS',
+        requestedLiters: '',
+        remark: '',
+      })
+      setLowStockPhotoFiles([])
+      setActiveTab('requests')
+      setRequestFilter('pending')
+    } catch (error) {
+      setSubmitError(error?.message || 'Could not upload tank dip photo. Try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const requestColumns = [
@@ -118,7 +145,15 @@ const StaffStockOrderingPage = () => {
         ]
       : []),
     ...(requestFilter === 'pending'
-      ? [{ key: 'managerRemark', header: 'Your Remark', minWidth: 180 }]
+      ? [
+          { key: 'managerRemark', header: 'Your Remark', minWidth: 180 },
+          {
+            key: 'lowStockPhotoUrls',
+            header: 'Tank Proof',
+            minWidth: 100,
+            render: (row) => (row.lowStockPhotoUrls?.length ? 'Photo attached' : '—'),
+          },
+        ]
       : []),
   ]
 
@@ -188,9 +223,19 @@ const StaffStockOrderingPage = () => {
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
               />
             </label>
-            <div className="md:col-span-4">
-              <button className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white">
-                Submit Product Request
+            <div className="md:col-span-4 space-y-3">
+              <PhotoUploadInput
+                label="Tank dip / low stock proof (optional)"
+                value={lowStockPhotoFiles[0] || null}
+                onChange={(file) => setLowStockPhotoFiles(file ? [file] : [])}
+                disabled={submitting}
+              />
+              {submitError ? <p className="text-sm text-rose-600">{submitError}</p> : null}
+              <button
+                disabled={submitting}
+                className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {submitting ? 'Submitting...' : 'Submit Product Request'}
               </button>
             </div>
           </form>

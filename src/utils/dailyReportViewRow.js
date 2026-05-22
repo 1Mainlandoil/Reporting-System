@@ -1,4 +1,4 @@
-import { getClosingForProduct } from './reportFields'
+import { getClosingForProduct, getPumpReadingClosing, getPumpReadingOpening, getQuantityRemainingForProduct, buildLastPumpClosingMap } from './reportFields'
 
 const resolveReceivedProductType = (report) => {
   if (report?.noSalesDay) {
@@ -24,35 +24,31 @@ const resolveReceivedProductType = (report) => {
   return 'PMS'
 }
 
-const getPumpReadingValue = (item) => {
-  if (!item || typeof item !== 'object') return null
-  if (item.closing != null && item.closing !== '') return Number(item.closing)
-  if (item.end != null && item.end !== '') return Number(item.end)
-  if (item.start != null && item.start !== '') return Number(item.start)
-  return null
-}
-
-const buildPumpRowsWithCarry = (previousReadings = [], todayReadings = []) => {
-  const prevMap = new Map()
-  for (const item of previousReadings) {
-    const label = String(item?.label || '').trim()
-    const reading = getPumpReadingValue(item)
-    if (!label || reading == null || Number.isNaN(reading)) continue
-    prevMap.set(label, reading)
-  }
+/** Build pump meter rows; opening uses stored reading or last closing across all prior reports. */
+export const buildPumpRowsWithCarry = (allPriorReports = [], todayReadings = []) => {
+  const prevMap = buildLastPumpClosingMap(allPriorReports)
   const todayMap = new Map()
+  const todayOpeningMap = new Map()
   for (const item of todayReadings) {
     const label = String(item?.label || '').trim()
-    const reading = getPumpReadingValue(item)
+    const reading = getPumpReadingClosing(item)
+    const opening = getPumpReadingOpening(item)
     if (!label || reading == null || Number.isNaN(reading)) continue
     todayMap.set(label, reading)
+    if (opening != null && !Number.isNaN(opening)) {
+      todayOpeningMap.set(label, opening)
+    }
   }
 
   const labels = new Set([...prevMap.keys(), ...todayMap.keys()])
   return [...labels]
     .sort((a, b) => a.localeCompare(b))
     .map((label) => {
-      const opening = prevMap.has(label) ? prevMap.get(label) : null
+      const opening = todayOpeningMap.has(label)
+        ? todayOpeningMap.get(label)
+        : prevMap.has(label)
+          ? prevMap.get(label)
+          : null
       const closing = todayMap.has(label) ? todayMap.get(label) : opening
       const used = todayMap.has(label)
       return {
@@ -73,25 +69,30 @@ export const buildDailyReportViewRow = ({
   managerName,
   latestToday,
   previousReport,
+  allPriorReports,
 }) => {
   if (!latestToday) {
     return null
   }
 
+  const priorReports = allPriorReports ?? (previousReport ? [previousReport] : [])
   const receivedProductType = resolveReceivedProductType(latestToday)
   const paymentBreakdown = Array.isArray(latestToday.paymentBreakdown) ? latestToday.paymentBreakdown : []
   const totalPaymentDeposits = paymentBreakdown.length
     ? paymentBreakdown.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
     : Number(latestToday.totalPaymentDeposits || 0)
   const posValue = Number(latestToday.posValue || 0)
-  const cashBf = Number(previousReport?.closingBalance || 0)
+  const cashBf = Number(latestToday.cashBf ?? previousReport?.closingBalance ?? 0)
   const cashSales = Number(latestToday.cashSales || 0)
-  const totalAmount = cashBf + cashSales
-  const closingBalance = totalAmount - totalPaymentDeposits - posValue
+  const totalAmount = Number(latestToday.totalAmount ?? cashBf + cashSales)
+  const closingBalance = Number(latestToday.closingBalance ?? totalAmount - totalPaymentDeposits - posValue)
   const cashMovementVariance = totalAmount - totalPaymentDeposits - posValue - closingBalance
   const pumpReadings = Array.isArray(latestToday.pumpReadings) ? latestToday.pumpReadings : []
-  const priorPumpReadings = Array.isArray(previousReport?.pumpReadings) ? previousReport.pumpReadings : []
-  const pumpMeterRows = buildPumpRowsWithCarry(priorPumpReadings, pumpReadings)
+  const pumpMeterRows = buildPumpRowsWithCarry(priorReports, pumpReadings)
+  const quantityRemainingPMS = getQuantityRemainingForProduct(latestToday, 'pms')
+  const quantityRemainingAGO = getQuantityRemainingForProduct(latestToday, 'ago')
+  const tankDipPMS = getClosingForProduct(latestToday, 'pms')
+  const tankDipAGO = getClosingForProduct(latestToday, 'ago')
 
   return {
     stationId,
@@ -110,8 +111,14 @@ export const buildDailyReportViewRow = ({
       : 'No',
     receivedPMS: Math.round(Number(latestToday.receivedPMS ?? 0)).toLocaleString(),
     receivedAGO: Math.round(Number(latestToday.receivedAGO ?? 0)).toLocaleString(),
-    closingStockPMS: Math.round(getClosingForProduct(latestToday, 'pms')).toLocaleString(),
-    closingStockAGO: Math.round(getClosingForProduct(latestToday, 'ago')).toLocaleString(),
+    closingStockPMS: Math.round(tankDipPMS).toLocaleString(),
+    closingStockAGO: Math.round(tankDipAGO).toLocaleString(),
+    quantityRemainingPMS: Math.round(quantityRemainingPMS).toLocaleString(),
+    quantityRemainingAGO: Math.round(quantityRemainingAGO).toLocaleString(),
+    tankDipPMSRaw: tankDipPMS,
+    tankDipAGORaw: tankDipAGO,
+    quantityRemainingPMSRaw: quantityRemainingPMS,
+    quantityRemainingAGORaw: quantityRemainingAGO,
     totalSalesLitersPMS: Math.round(
       latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0,
     ).toLocaleString(),
@@ -127,8 +134,9 @@ export const buildDailyReportViewRow = ({
     expenseItems: Array.isArray(latestToday.expenseItems) ? latestToday.expenseItems : [],
     paymentBreakdown,
     totalPaymentDeposits,
-    posValue,
-    cashBf,
+  posValue,
+  posEodPhotoUrl: latestToday.posEodPhotoUrl || '',
+  cashBf,
     cashSales,
     totalAmount,
     closingBalance,

@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
+import {
+  countDailyReports,
+  deleteAllDailyReports,
+  deleteDailyReportsByStation,
+} from '../services/supabaseData'
 
 const CANONICAL_STATIONS = [
   'ABA 1','ABA 2','ABA 3','ABAKALIKI 1','ABAKILIKI 2','ABUJA 1','ABUJA 2',
@@ -75,6 +80,10 @@ export default function ITAdminPage() {
   const [editForm, setEditForm] = useState({})
   const [modalConfig, setModalConfig] = useState(null)
   const modalResolveRef = useRef(null)
+  const [reportCountAll, setReportCountAll] = useState(null)
+  const [reportCountStation, setReportCountStation] = useState(null)
+  const [resetStationId, setResetStationId] = useState('')
+  const [resetBusy, setResetBusy] = useState(false)
 
   const itSecret = String(import.meta.env.VITE_IT_PORTAL_SECRET || '').trim()
 
@@ -115,6 +124,52 @@ export default function ITAdminPage() {
   }, [])
 
   useEffect(() => { if (authed) { loadStations(); loadUsers() } }, [authed, loadStations, loadUsers])
+
+  const loadReportCountAll = useCallback(async () => {
+    if (!hasSupabaseEnv) {
+      setReportCountAll(0)
+      return 0
+    }
+    try {
+      const count = await countDailyReports()
+      setReportCountAll(count)
+      return count
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not count daily reports.', 'error')
+      setReportCountAll(null)
+      return null
+    }
+  }, [])
+
+  const loadReportCountForStation = useCallback(async (stationId) => {
+    if (!hasSupabaseEnv || !stationId) {
+      setReportCountStation(null)
+      return null
+    }
+    try {
+      const count = await countDailyReports({ stationId })
+      setReportCountStation(count)
+      return count
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not count station reports.', 'error')
+      setReportCountStation(null)
+      return null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (authed && tab === 'reset') {
+      loadReportCountAll()
+    }
+  }, [authed, tab, loadReportCountAll])
+
+  useEffect(() => {
+    if (authed && tab === 'reset' && resetStationId) {
+      loadReportCountForStation(resetStationId)
+    } else {
+      setReportCountStation(null)
+    }
+  }, [authed, tab, resetStationId, loadReportCountForStation])
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || id || '-'
   const stationLocation = (id) => stations.find((s) => s.id === id)?.location || '-'
@@ -300,6 +355,75 @@ export default function ITAdminPage() {
     await loadStations()
   }
 
+  const handleResetAllReports = async () => {
+    if (!hasSupabaseEnv) {
+      showNotice('Supabase not configured.', 'error')
+      return
+    }
+    const total = await loadReportCountAll()
+    if (total === 0) {
+      showNotice('No daily reports to delete.', 'error')
+      return
+    }
+    if (
+      !window.confirm(
+        `This permanently deletes ALL ${total} daily report(s) across every station.\n\nManagers must submit a new baseline report (opening stock + cash B/F).\n\nContinue?`,
+      )
+    ) {
+      return
+    }
+    if (!(await runSecurityGate('delete all daily reports', `network-wide (${total} reports)`))) return
+    setResetBusy(true)
+    try {
+      await deleteAllDailyReports()
+      setReportCountAll(0)
+      if (resetStationId) {
+        setReportCountStation(0)
+      }
+      showNotice(`Deleted all ${total} daily report(s). Managers should refresh and submit baseline reports.`)
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not delete daily reports.', 'error')
+    } finally {
+      setResetBusy(false)
+    }
+  }
+
+  const handleResetStationReports = async () => {
+    if (!hasSupabaseEnv) {
+      showNotice('Supabase not configured.', 'error')
+      return
+    }
+    if (!resetStationId) {
+      showNotice('Select a station first.', 'error')
+      return
+    }
+    const label = stationName(resetStationId)
+    const total = await loadReportCountForStation(resetStationId)
+    if (total === 0) {
+      showNotice(`No daily reports for ${label}.`, 'error')
+      return
+    }
+    if (
+      !window.confirm(
+        `Delete ${total} daily report(s) for ${label}?\n\nThat station's next submission becomes a baseline report.\n\nContinue?`,
+      )
+    ) {
+      return
+    }
+    if (!(await runSecurityGate('delete station daily reports', label))) return
+    setResetBusy(true)
+    try {
+      await deleteDailyReportsByStation(resetStationId)
+      await loadReportCountForStation(resetStationId)
+      await loadReportCountAll()
+      showNotice(`Deleted ${total} daily report(s) for ${label}. Manager should refresh and submit a baseline report.`)
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not delete station reports.', 'error')
+    } finally {
+      setResetBusy(false)
+    }
+  }
+
   const handleResetPassword = async (user) => {
     if (!supabase) return
     const isManager = user.role === 'staff'
@@ -422,6 +546,7 @@ export default function ITAdminPage() {
           <button type="button" className={tabBtnClass('users')} onClick={() => setTab('users')}>Users</button>
           <button type="button" className={tabBtnClass('create')} onClick={() => setTab('create')}>Create Users</button>
           <button type="button" className={tabBtnClass('stations')} onClick={() => setTab('stations')}>Stations</button>
+          <button type="button" className={tabBtnClass('reset')} onClick={() => setTab('reset')}>Reporting Reset</button>
         </nav>
 
         {tab === 'users' && (
@@ -566,6 +691,77 @@ export default function ITAdminPage() {
                   <tbody>{stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => <tr key={s.id} className="border-b"><td className="px-3 py-2 font-mono text-xs">{s.id}</td><td className="px-3 py-2 font-medium">{s.name}</td><td className="px-3 py-2">{s.location}</td></tr>)}</tbody>
                 </table>
               </div>
+            </div>
+          </section>
+        )}
+
+        {tab === 'reset' && (
+          <section className="mt-4 grid gap-6 lg:grid-cols-2">
+            <div className="rounded-lg border border-red-200 bg-white p-5 shadow dark:border-red-900/40 dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Reset all stations</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Deletes every daily report in the network. Supervisor review records tied to those reports are removed
+                automatically. Product requests and user accounts are not affected.
+              </p>
+              <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+                Current count:{' '}
+                {reportCountAll == null ? '…' : `${reportCountAll} report(s)`}
+              </p>
+              <button
+                type="button"
+                disabled={resetBusy || !hasSupabaseEnv}
+                onClick={handleResetAllReports}
+                className="mt-4 rounded bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {resetBusy ? 'Working…' : 'Delete all daily reports'}
+              </button>
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-white p-5 shadow dark:border-amber-900/40 dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Reset one station</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Clears report history for a single station only. The manager&apos;s next submission is treated as a
+                baseline report with opening stock and cash B/F.
+              </p>
+              <label className="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                Station
+                <select
+                  value={resetStationId}
+                  onChange={(e) => setResetStationId(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"
+                >
+                  <option value="">Select station</option>
+                  {stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {resetStationId ? (
+                <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+                  Reports for {stationName(resetStationId)}:{' '}
+                  {reportCountStation == null ? '…' : `${reportCountStation} report(s)`}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                disabled={resetBusy || !resetStationId || !hasSupabaseEnv}
+                onClick={handleResetStationReports}
+                className="mt-4 rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {resetBusy ? 'Working…' : 'Delete station reports'}
+              </button>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900/60 lg:col-span-2">
+              <h3 className="font-semibold text-slate-900 dark:text-white">After a reset</h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                <li>Managers should refresh the app (or sign out and back in) before submitting.</li>
+                <li>The first report asks for opening PMS/AGO dips and opening cash B/F — required baseline fields.</li>
+                <li>Day-to-day reporting logic is unchanged after that first baseline submission.</li>
+                <li>Coordinate with supervisors before running a network-wide reset.</li>
+              </ul>
             </div>
           </section>
         )}

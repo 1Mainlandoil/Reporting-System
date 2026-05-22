@@ -1,3 +1,5 @@
+import EvidencePhotoList from '../ui/EvidencePhotoList'
+
 const DailyOpeningReportModal = ({ report, onClose }) => {
   if (!report) {
     return null
@@ -42,12 +44,20 @@ const DailyOpeningReportModal = ({ report, onClose }) => {
             <p className="font-medium">{report.openingStockAGO}</p>
           </div>
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-            <p className="text-xs uppercase text-slate-500">Closing Stock PMS</p>
+            <p className="text-xs uppercase text-slate-500">Tank Dip PMS (L)</p>
             <p className="font-medium">{report.closingStockPMS}</p>
           </div>
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-            <p className="text-xs uppercase text-slate-500">Closing Stock AGO</p>
+            <p className="text-xs uppercase text-slate-500">Tank Dip AGO (L)</p>
             <p className="font-medium">{report.closingStockAGO}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+            <p className="text-xs uppercase text-emerald-700 dark:text-emerald-300">Book Qty Remaining PMS (L)</p>
+            <p className="font-medium">{report.quantityRemainingPMS ?? '-'}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+            <p className="text-xs uppercase text-emerald-700 dark:text-emerald-300">Book Qty Remaining AGO (L)</p>
+            <p className="font-medium">{report.quantityRemainingAGO ?? '-'}</p>
           </div>
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <p className="text-xs uppercase text-slate-500">PMS Price</p>
@@ -172,15 +182,25 @@ const DailyOpeningReportModal = ({ report, onClose }) => {
         {report.paymentBreakdown?.length > 0 && (
           <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <p className="mb-2 text-xs uppercase text-slate-500">Bank/Channel Breakdown</p>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {report.paymentBreakdown.map((item, index) => (
-                <p key={`${item.channel}-${index}`} className="text-sm text-slate-700 dark:text-slate-200">
-                  {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
-                </p>
+                <div key={`${item.channel}-${index}`} className="space-y-2">
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                  </p>
+                  {item.eodPhotoUrl ? (
+                    <EvidencePhotoList title={`${item.channel} EOD proof`} photos={[item.eodPhotoUrl]} />
+                  ) : null}
+                </div>
               ))}
             </div>
           </div>
         )}
+        {report.posEodPhotoUrl ? (
+          <div className="mt-4">
+            <EvidencePhotoList title="POS EOD proof" photos={[report.posEodPhotoUrl]} />
+          </div>
+        ) : null}
         {report.pumpMeterRows?.length > 0 && (
           <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <p className="mb-2 text-xs uppercase text-slate-500">Pump Readings</p>

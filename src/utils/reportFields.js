@@ -58,3 +58,69 @@ export const getSalesForProduct = (report, productType) => {
   }
   return Number(report.totalSalesLitersPMS ?? report.salesPMS ?? 0) || 0
 }
+
+/** Book stock remaining after the report day (stored, or derived for legacy rows). */
+export const getQuantityRemainingForProduct = (report, productType) => {
+  const stored =
+    productType === 'ago' ? report.quantityRemainingAGO : report.quantityRemainingPMS
+  if (stored !== undefined && stored !== null && stored !== '') {
+    const n = Number(stored)
+    if (!Number.isNaN(n)) {
+      return n
+    }
+  }
+  const opening = getOpeningForProduct(report, productType)
+  const received = getReceivedForProduct(report, productType)
+  const sales = getSalesForProduct(report, productType)
+  return opening + received - sales
+}
+
+export const computeQuantityRemaining = ({ previousRemaining, received, salesLiters }) =>
+  Number(previousRemaining || 0) + Number(received || 0) - Number(salesLiters || 0)
+
+export const getPumpReadingClosing = (item) => {
+  if (!item || typeof item !== 'object') {
+    return null
+  }
+  if (item.closing != null && item.closing !== '') {
+    return Number(item.closing)
+  }
+  if (item.end != null && item.end !== '') {
+    return Number(item.end)
+  }
+  return null
+}
+
+export const getPumpReadingOpening = (item) => {
+  if (!item || typeof item !== 'object') {
+    return null
+  }
+  if (item.opening != null && item.opening !== '') {
+    return Number(item.opening)
+  }
+  if (item.start != null && item.start !== '') {
+    return Number(item.start)
+  }
+  return null
+}
+
+/** Last recorded closing per pump label across prior reports (any gap in use). */
+export const buildLastPumpClosingMap = (reports = []) => {
+  const map = new Map()
+  const sorted = [...reports].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+  for (const report of sorted) {
+    const readings = Array.isArray(report.pumpReadings) ? report.pumpReadings : []
+    for (const item of readings) {
+      const label = String(item?.label || '').trim()
+      const closing = getPumpReadingClosing(item)
+      if (!label || closing == null || Number.isNaN(closing)) {
+        continue
+      }
+      map.set(label, closing)
+    }
+  }
+  return map
+}
+
+export const priorPumpReadingsFromMap = (closingMap) =>
+  [...closingMap.entries()].map(([label, closing]) => ({ label, closing }))

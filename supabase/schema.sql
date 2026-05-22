@@ -66,6 +66,7 @@ create table if not exists public.product_requests (
   terminal_reviewed_at timestamptz,
   truck_number text not null default '',
   truck_driver text not null default '',
+  low_stock_photo_urls jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -230,6 +231,10 @@ alter table public.daily_reports
   add column if not exists total_amount numeric not null default 0,
   add column if not exists closing_balance numeric not null default 0;
 
+alter table public.daily_reports
+  add column if not exists quantity_remaining_pms numeric,
+  add column if not exists quantity_remaining_ago numeric;
+
 alter table public.users
   add column if not exists manager_username text,
   add column if not exists manager_password_hash text;
@@ -240,7 +245,23 @@ alter table public.product_requests
   add column if not exists terminal_name text not null default '',
   add column if not exists terminal_reviewed_at timestamptz,
   add column if not exists truck_number text not null default '',
-  add column if not exists truck_driver text not null default '';
+  add column if not exists truck_driver text not null default '',
+  add column if not exists low_stock_photo_urls jsonb not null default '[]'::jsonb;
+
+-- Report evidence photos (EOD bank/POS proofs, low-stock tank dip images)
+insert into storage.buckets (id, name, public)
+values ('report-evidence', 'report-evidence', true)
+on conflict (id) do update set public = excluded.public;
+
+drop policy if exists "Public read report evidence" on storage.objects;
+create policy "Public read report evidence"
+  on storage.objects for select
+  using (bucket_id = 'report-evidence');
+
+drop policy if exists "Upload report evidence" on storage.objects;
+create policy "Upload report evidence"
+  on storage.objects for insert
+  with check (bucket_id = 'report-evidence');
 
 alter table public.users drop constraint if exists users_role_check;
 

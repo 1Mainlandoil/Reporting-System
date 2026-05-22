@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import EmptyState from '../components/ui/EmptyState'
+import EvidencePhotoList from '../components/ui/EvidencePhotoList'
 import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics, getStockRemaining } from '../utils/stock'
 import { getOpeningForProduct, getReceivedForProduct, getSalesForProduct } from '../utils/reportFields'
@@ -261,6 +262,10 @@ const TerminalOperatorDashboardPage = () => {
           </p>
           <p className="mt-2 text-sm leading-relaxed text-slate-800 dark:text-slate-200">{request.managerRemark}</p>
         </div>
+      ) : null}
+
+      {request.lowStockPhotoUrls?.length ? (
+        <EvidencePhotoList title="Tank dip / low stock proof" photos={request.lowStockPhotoUrls} />
       ) : null}
 
       <div className="space-y-3 border-t border-slate-200 pt-5 dark:border-slate-700">

@@ -8,7 +8,7 @@ import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
 import { ROLES } from '../constants/roles'
 import { exportStationHistoryToExcel } from '../utils/exportExcel'
-import { getClosingForProduct } from '../utils/reportFields'
+import { buildLastPumpClosingMap, getQuantityRemainingForProduct } from '../utils/reportFields'
 import { addCalendarDaysIso, formatStaffCalendarDay, getOldestMissingReportDateUpTo } from '../utils/reportPending'
 
 const REVIEW_STATUS_OPTIONS = ['Reviewed', 'Needs Attention', 'Escalated']
@@ -123,9 +123,16 @@ const StationReportHistoryPage = () => {
       .filter((r) => r.date < historyFilterDate)
       .sort((a, b) => b.date.localeCompare(a.date))[0]
     return {
-      pms: prior ? getClosingForProduct(prior, 'pms') : 0,
-      ago: prior ? getClosingForProduct(prior, 'ago') : 0,
+      pms: prior ? getQuantityRemainingForProduct(prior, 'pms') : 0,
+      ago: prior ? getQuantityRemainingForProduct(prior, 'ago') : 0,
     }
+  }, [chronAsc, historyFilterDate])
+  const reportSubmitLastPumpMap = useMemo(() => {
+    if (!historyFilterDate) {
+      return new Map()
+    }
+    const priorReports = chronAsc.filter((r) => r.date < historyFilterDate)
+    return buildLastPumpClosingMap(priorReports)
   }, [chronAsc, historyFilterDate])
   const reportSubmitCashBf = useMemo(() => {
     if (!historyFilterDate) {
@@ -269,18 +276,17 @@ const StationReportHistoryPage = () => {
   }
 
   const reportsWithReview = useMemo(() => {
-    const priorClosings = new Map()
     const enrichedById = new Map()
-    for (const report of chronAsc) {
-      const pumpRows = buildPumpMeterRows(priorClosings, report.pumpReadings)
-      for (const row of pumpRows) {
-        if (row.closing != null) {
-          priorClosings.set(row.label, row.closing)
-        }
-      }
+    for (let index = 0; index < chronAsc.length; index += 1) {
+      const report = chronAsc[index]
+      const priorReports = chronAsc.slice(0, index)
+      const priorMap = buildLastPumpClosingMap(priorReports)
+      const pumpRows = buildPumpMeterRows(priorMap, report.pumpReadings)
       enrichedById.set(report.id, {
         ...report,
         pumpMeterRows: pumpRows,
+        quantityRemainingPMS: getQuantityRemainingForProduct(report, 'pms'),
+        quantityRemainingAGO: getQuantityRemainingForProduct(report, 'ago'),
       })
     }
     return filteredReports.map((report) => {
@@ -523,6 +529,7 @@ const StationReportHistoryPage = () => {
                 stationId={stationId}
                 carriedOpening={reportSubmitOpening}
                 carriedCashBf={reportSubmitCashBf}
+                lastPumpClosingMap={reportSubmitLastPumpMap}
                 isFirstReport={!chronAsc.some((report) => report.date < historyFilterDate)}
                 reportingConfiguration={reportingConfiguration}
                 submitReport={submitReport}

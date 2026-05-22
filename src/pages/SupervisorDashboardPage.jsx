@@ -11,7 +11,8 @@ import { useAppStore } from '../store/useAppStore'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { buildStationMetrics } from '../utils/stock'
-import { getClosingForProduct } from '../utils/reportFields'
+import { getClosingForProduct, getQuantityRemainingForProduct } from '../utils/reportFields'
+import { buildPumpRowsWithCarry } from '../utils/dailyReportViewRow'
 import {
   exportSupervisorDailyOpeningsToExcel,
   exportSupervisorCashFlowToExcel,
@@ -42,48 +43,6 @@ const resolveReceivedProductType = (report) => {
   }
 
   return 'PMS'
-}
-
-const getPumpReadingValue = (item) => {
-  if (!item || typeof item !== 'object') return null
-  if (item.closing != null && item.closing !== '') return Number(item.closing)
-  if (item.end != null && item.end !== '') return Number(item.end)
-  if (item.start != null && item.start !== '') return Number(item.start)
-  return null
-}
-
-const buildPumpRowsWithCarry = (previousReadings = [], todayReadings = []) => {
-  const prevMap = new Map()
-  for (const item of previousReadings) {
-    const label = String(item?.label || '').trim()
-    const reading = getPumpReadingValue(item)
-    if (!label || reading == null || Number.isNaN(reading)) continue
-    prevMap.set(label, reading)
-  }
-  const todayMap = new Map()
-  for (const item of todayReadings) {
-    const label = String(item?.label || '').trim()
-    const reading = getPumpReadingValue(item)
-    if (!label || reading == null || Number.isNaN(reading)) continue
-    todayMap.set(label, reading)
-  }
-
-  const labels = new Set([...prevMap.keys(), ...todayMap.keys()])
-  return [...labels]
-    .sort((a, b) => a.localeCompare(b))
-    .map((label) => {
-      const opening = prevMap.has(label) ? prevMap.get(label) : null
-      const closing = todayMap.has(label) ? todayMap.get(label) : opening
-      const used = todayMap.has(label)
-      return {
-        label,
-        opening,
-        closing,
-        used,
-        delta: used && opening != null && closing != null ? closing - opening : 0,
-        noBaseline: opening == null && !used,
-      }
-    })
 }
 
 const SupervisorDashboardPage = () => {
@@ -283,9 +242,10 @@ const SupervisorDashboardPage = () => {
           (report) => report.stationId === station.id && report.date === today,
         )
         const latestToday = stationReportsToday.at(-1)
-        const previousReport = [...reports]
+        const allPriorReports = [...reports]
           .filter((report) => report.stationId === station.id && report.date < today)
-          .sort((a, b) => b.date.localeCompare(a.date))[0]
+          .sort((a, b) => a.date.localeCompare(b.date))
+        const previousReport = allPriorReports.at(-1)
         const manager = staffByStation.get(station.id)
         const receivedProductType = latestToday ? resolveReceivedProductType(latestToday) : null
         const paymentBreakdown = Array.isArray(latestToday?.paymentBreakdown)
@@ -295,15 +255,16 @@ const SupervisorDashboardPage = () => {
           ? paymentBreakdown.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
           : Number(latestToday?.totalPaymentDeposits || 0)
         const posValue = Number(latestToday?.posValue || 0)
-        const cashBf = Number(previousReport?.closingBalance || 0)
+        const cashBf = Number(latestToday?.cashBf ?? previousReport?.closingBalance ?? 0)
         const cashSales = Number(latestToday?.cashSales || 0)
-        const totalAmount = cashBf + cashSales
-        const closingBalance = totalAmount - totalPaymentDeposits - posValue
+        const totalAmount = Number(latestToday?.totalAmount ?? cashBf + cashSales)
+        const closingBalance = Number(
+          latestToday?.closingBalance ?? totalAmount - totalPaymentDeposits - posValue,
+        )
         // Variance = Total - Bank Lodgements - POS - Closing (should be 0 if rule is followed)
         const cashMovementVariance = totalAmount - totalPaymentDeposits - posValue - closingBalance
         const pumpReadings = Array.isArray(latestToday?.pumpReadings) ? latestToday.pumpReadings : []
-        const priorPumpReadings = Array.isArray(previousReport?.pumpReadings) ? previousReport.pumpReadings : []
-        const pumpMeterRows = buildPumpRowsWithCarry(priorPumpReadings, pumpReadings)
+        const pumpMeterRows = buildPumpRowsWithCarry(allPriorReports, pumpReadings)
 
         return {
           stationId: station.id,
@@ -343,6 +304,14 @@ const SupervisorDashboardPage = () => {
             : 'Not Submitted',
           closingStockPMSRaw: latestToday ? getClosingForProduct(latestToday, 'pms') : null,
           closingStockAGORaw: latestToday ? getClosingForProduct(latestToday, 'ago') : null,
+          quantityRemainingPMS: latestToday
+            ? Math.round(getQuantityRemainingForProduct(latestToday, 'pms')).toLocaleString()
+            : 'Not Submitted',
+          quantityRemainingAGO: latestToday
+            ? Math.round(getQuantityRemainingForProduct(latestToday, 'ago')).toLocaleString()
+            : 'Not Submitted',
+          quantityRemainingPMSRaw: latestToday ? getQuantityRemainingForProduct(latestToday, 'pms') : null,
+          quantityRemainingAGORaw: latestToday ? getQuantityRemainingForProduct(latestToday, 'ago') : null,
           totalSalesLitersPMS: latestToday
             ? Math.round(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0).toLocaleString()
             : 'Not Submitted',
@@ -959,7 +928,7 @@ const SupervisorDashboardPage = () => {
       },
       {
         key: 'closingStockPMS',
-        header: 'Closing Stock PMS',
+        header: 'Tank Dip PMS',
         minWidth: 150,
         pickable: true,
         exportHeader: 'closing_stock_pms',
@@ -968,12 +937,34 @@ const SupervisorDashboardPage = () => {
       },
       {
         key: 'closingStockAGO',
-        header: 'Closing Stock AGO',
+        header: 'Tank Dip AGO',
         minWidth: 150,
         pickable: true,
         exportHeader: 'closing_stock_ago',
         exportPick: (row) =>
           row.closingStockAGORaw != null && row.closingStockAGORaw !== '' ? row.closingStockAGORaw : '',
+      },
+      {
+        key: 'quantityRemainingPMS',
+        header: 'Book Remaining PMS',
+        minWidth: 160,
+        pickable: true,
+        exportHeader: 'quantity_remaining_pms',
+        exportPick: (row) =>
+          row.quantityRemainingPMSRaw != null && row.quantityRemainingPMSRaw !== ''
+            ? row.quantityRemainingPMSRaw
+            : '',
+      },
+      {
+        key: 'quantityRemainingAGO',
+        header: 'Book Remaining AGO',
+        minWidth: 160,
+        pickable: true,
+        exportHeader: 'quantity_remaining_ago',
+        exportPick: (row) =>
+          row.quantityRemainingAGORaw != null && row.quantityRemainingAGORaw !== ''
+            ? row.quantityRemainingAGORaw
+            : '',
       },
       {
         key: 'receivedProduct',
@@ -1911,12 +1902,20 @@ const SupervisorDashboardPage = () => {
                     <p className="font-medium">{selectedDailyOpeningReport.openingStockAGO}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Closing Stock PMS</p>
+                    <p className="text-xs uppercase text-slate-500">Tank Dip PMS</p>
                     <p className="font-medium">{selectedDailyOpeningReport.closingStockPMS}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Closing Stock AGO</p>
+                    <p className="text-xs uppercase text-slate-500">Tank Dip AGO</p>
                     <p className="font-medium">{selectedDailyOpeningReport.closingStockAGO}</p>
+                  </div>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+                    <p className="text-xs uppercase text-emerald-700 dark:text-emerald-300">Book Remaining PMS</p>
+                    <p className="font-medium">{selectedDailyOpeningReport.quantityRemainingPMS ?? '-'}</p>
+                  </div>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+                    <p className="text-xs uppercase text-emerald-700 dark:text-emerald-300">Book Remaining AGO</p>
+                    <p className="font-medium">{selectedDailyOpeningReport.quantityRemainingAGO ?? '-'}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <p className="text-xs uppercase text-slate-500">PMS Price</p>

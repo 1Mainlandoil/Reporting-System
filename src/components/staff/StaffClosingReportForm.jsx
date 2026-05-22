@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import FormInput from '../ui/FormInput'
+import PhotoUploadInput from '../ui/PhotoUploadInput'
 import ProductPriceSection from './ProductPriceSection'
-import { computeSalesFromMovement } from '../../utils/reportFields'
+import { uploadReportEvidence } from '../../services/supabaseStorage'
+import { computeSalesFromMovement, computeQuantityRemaining } from '../../utils/reportFields'
 import {
   computeSalesAmountFromBands,
   normalizePriceBands,
@@ -13,12 +15,20 @@ const EXPENSE_OPTIONS = ['Gas', 'Pms', 'Transport', 'Oil', 'Pos paper', 'Other']
 const PAYMENT_CHANNEL_OPTIONS = ['Signature Bank', 'Moniepoint', 'First Bank', 'FCMB', 'Zenith', 'Other']
 const PUMP_LABEL_OPTIONS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'Other']
 const DEFAULT_PAYMENT_CHANNEL = { channel: '', amount: '' }
-const DEFAULT_PUMP_READING = { label: 'P1', otherLabel: '', closing: '' }
+const DEFAULT_PUMP_READING = { label: 'P1', otherLabel: '', opening: '', closing: '' }
 const DEFAULT_PRICE_BAND_DRAFT = { price: '', liters: '' }
+
+const slugChannel = (value) =>
+  String(value || 'channel')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'channel'
 
 const defaultForm = {
   openingStockPMS: '',
   openingStockAGO: '',
+  openingCashBf: '',
   closingStockPMS: '',
   closingStockAGO: '',
   pmsPrice: '',
@@ -46,13 +56,14 @@ const StaffClosingReportForm = ({
   submitReport,
   reportDate,
   formDisabled,
-  openingBannerTitle = 'Opening stock today (from previous closing)',
+  openingBannerTitle = 'Book opening stock (previous quantity remaining)',
   openingBannerDetail,
   showStationIdRow = true,
   onSubmitted,
   submitButtonLabel = 'Submit Report',
   carriedCashBf = 0,
   isFirstReport = false,
+  lastPumpClosingMap = new Map(),
 }) => {
   const [formData, setFormData] = useState(defaultForm)
   const [expenseDraft, setExpenseDraft] = useState({
@@ -63,6 +74,7 @@ const StaffClosingReportForm = ({
   const [expenseItems, setExpenseItems] = useState([])
   const [paymentDraft, setPaymentDraft] = useState({ channel: PAYMENT_CHANNEL_OPTIONS[0], otherChannel: '', amount: '' })
   const [paymentBreakdown, setPaymentBreakdown] = useState([])
+  const [posEodPhotoFile, setPosEodPhotoFile] = useState(null)
   const [pumpDraft, setPumpDraft] = useState(DEFAULT_PUMP_READING)
   const [pumpReadings, setPumpReadings] = useState([])
   const [pmsMultiPrice, setPmsMultiPrice] = useState('no')
@@ -86,6 +98,13 @@ const StaffClosingReportForm = ({
       ago: Number(formData.openingStockAGO || 0),
     }
   }, [carriedOpening, formData.openingStockPMS, formData.openingStockAGO, isFirstReport])
+
+  const effectiveCashBf = useMemo(() => {
+    if (isFirstReport) {
+      return Number(formData.openingCashBf || 0)
+    }
+    return Number(carriedCashBf || 0)
+  }, [carriedCashBf, formData.openingCashBf, isFirstReport])
 
   const previewSales = useMemo(() => {
     if (isNoSalesDay) {
@@ -113,25 +132,62 @@ const StaffClosingReportForm = ({
     }
   }, [effectiveOpening, formData, isNoSalesDay])
 
+  const previewQuantityRemaining = useMemo(() => {
+    const receivedPMS = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0
+    const receivedAGO = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0
+    return {
+      pms: computeQuantityRemaining({
+        previousRemaining: effectiveOpening.pms,
+        received: receivedPMS,
+        salesLiters: previewSales.pms,
+      }),
+      ago: computeQuantityRemaining({
+        previousRemaining: effectiveOpening.ago,
+        received: receivedAGO,
+        salesLiters: previewSales.ago,
+      }),
+    }
+  }, [effectiveOpening, formData, isNoSalesDay, previewSales])
+
+  const previewTotalAmount = useMemo(() => {
+    if (isNoSalesDay) {
+      return effectiveCashBf
+    }
+    return effectiveCashBf + Number(formData.cashSales || 0)
+  }, [effectiveCashBf, formData.cashSales, isNoSalesDay])
+
   const previewClosingBalance = useMemo(() => {
     if (isNoSalesDay) {
-      return Number(carriedCashBf || 0)
+      return effectiveCashBf
     }
     const cashSales = Number(formData.cashSales || 0)
     const posValue = Number(formData.posValue || 0)
     const totalDeposits = paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    return Number(carriedCashBf || 0) + cashSales - totalDeposits - posValue
-  }, [carriedCashBf, formData.cashSales, formData.posValue, isNoSalesDay, paymentBreakdown])
+    return effectiveCashBf + cashSales - totalDeposits - posValue
+  }, [effectiveCashBf, formData.cashSales, formData.posValue, isNoSalesDay, paymentBreakdown])
 
   const stockFields = useMemo(
     () => [
-      { name: 'closingStockPMS', label: 'CLOSING STOCK PMS (L)' },
-      { name: 'closingStockAGO', label: 'CLOSING STOCK AGO (L)' },
+      { name: 'closingStockPMS', label: 'TANK DIP — CLOSING STOCK PMS (L)' },
+      { name: 'closingStockAGO', label: 'TANK DIP — CLOSING STOCK AGO (L)' },
       { name: 'rttPMS', label: 'RTT PMS' },
       { name: 'rttAGO', label: 'RTT AGO' },
     ],
     [],
   )
+
+  const resolvePumpLabel = (draft) => {
+    const isOther = draft.label === 'Other'
+    return String(isOther ? draft.otherLabel : draft.label || '').trim()
+  }
+
+  const suggestedPumpOpening = (label) => {
+    if (!label || isFirstReport) {
+      return ''
+    }
+    const last = lastPumpClosingMap.get(label)
+    return last != null && !Number.isNaN(last) ? String(last) : ''
+  }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -148,6 +204,20 @@ const StaffClosingReportForm = ({
       setSubmitError(message)
       window.alert(message)
       return
+    }
+    if (isFirstReport) {
+      const baselineFields = [
+        ['openingStockPMS', 'Opening stock PMS'],
+        ['openingStockAGO', 'Opening stock AGO'],
+        ['openingCashBf', 'Opening cash B/F'],
+      ]
+      const missingBaseline = baselineFields.find(([key]) => String(formData[key] ?? '').trim() === '')
+      if (missingBaseline) {
+        const message = `${missingBaseline[1]} is required for the first report after a reset.`
+        setSubmitError(message)
+        window.alert(message)
+        return
+      }
     }
     if (isNoSalesDay) {
       if (!String(formData.noSalesRemark || '').trim()) {
@@ -229,6 +299,49 @@ const StaffClosingReportForm = ({
       }
     }
     setSubmitting(true)
+    const reportDay = reportDate || new Date().toISOString().split('T')[0]
+    const evidenceFolder = `eod/${stationId}/${reportDay}`
+
+    let normalizedPaymentBreakdown = []
+    let posEodPhotoUrl = ''
+    try {
+      normalizedPaymentBreakdown = (
+        await Promise.all(
+          (isNoSalesDay ? [] : paymentBreakdown).map(async (item) => {
+            const channel = String(item.channel || '').trim()
+            const amount = Number(item.amount || 0)
+            if (!channel || amount <= 0 || channel.toUpperCase() === 'POS') {
+              return null
+            }
+            let eodPhotoUrl = item.eodPhotoUrl || ''
+            if (item.eodPhotoFile) {
+              eodPhotoUrl =
+                (await uploadReportEvidence(item.eodPhotoFile, `${evidenceFolder}/${slugChannel(channel)}`)) ||
+                ''
+            }
+            return {
+              channel,
+              amount,
+              ...(eodPhotoUrl ? { eodPhotoUrl } : {}),
+            }
+          }),
+        )
+      ).filter(Boolean)
+
+      if (!isNoSalesDay && posEodPhotoFile) {
+        posEodPhotoUrl =
+          (await uploadReportEvidence(posEodPhotoFile, `${evidenceFolder}/pos`)) || ''
+      }
+    } catch (uploadError) {
+      setSubmitting(false)
+      const message = uploadError?.message
+        ? `Could not upload EOD photo: ${uploadError.message}`
+        : 'Could not upload EOD photo. Check your connection and try again.'
+      setSubmitError(message)
+      window.alert(message)
+      return
+    }
+
     const receivedPMS = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0
     const receivedAGO = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0
     const receivedProductType =
@@ -254,27 +367,34 @@ const StaffClosingReportForm = ({
     const effectiveExpenseItems = isNoSalesDay ? [] : reportingConfiguration.expenseLineItemsEnabled ? expenseItems : []
     const totalExpense = effectiveExpenseItems.reduce((sum, item) => sum + item.amount, 0)
     const expenseDescription = effectiveExpenseItems.map((item) => item.label).join(', ')
-    const normalizedPaymentBreakdown = (isNoSalesDay ? [] : paymentBreakdown)
-      .map((item) => ({
-        channel: String(item.channel || '').trim(),
-        amount: Number(item.amount || 0),
-      }))
-      .filter((item) => item.channel && item.amount > 0 && item.channel.toUpperCase() !== 'POS')
     const totalPaymentDeposits = normalizedPaymentBreakdown.reduce((sum, item) => sum + item.amount, 0)
     const normalizedPumpReadings = (isNoSalesDay ? [] : pumpReadings)
       .map((item) => {
         const label = String(item.label || '').trim()
+        const opening =
+          item.opening != null && item.opening !== '' ? Number(item.opening) : null
         const closing = item.closing != null && item.closing !== '' ? Number(item.closing) : null
         return {
           label,
+          opening,
           closing,
         }
       })
-      .filter((item) => item.label && item.closing != null)
+      .filter((item) => item.label && item.opening != null && item.closing != null)
     const cashSales = isNoSalesDay ? 0 : Number(formData.cashSales || 0)
     const posValue = isNoSalesDay ? 0 : Number(formData.posValue || 0)
-    const totalAmount = Number(carriedCashBf || 0) + cashSales
+    const totalAmount = effectiveCashBf + cashSales
     const closingBalance = totalAmount - totalPaymentDeposits - posValue
+    const quantityRemainingPMS = computeQuantityRemaining({
+      previousRemaining: openingStockPMS,
+      received: receivedPMS,
+      salesLiters: totalSalesLitersPMS,
+    })
+    const quantityRemainingAGO = computeQuantityRemaining({
+      previousRemaining: openingStockAGO,
+      received: receivedAGO,
+      salesLiters: totalSalesLitersAGO,
+    })
 
     const resolvedPriceBandsPMS = isNoSalesDay
       ? []
@@ -309,6 +429,8 @@ const StaffClosingReportForm = ({
       openingStockAGO,
       closingStockPMS,
       closingStockAGO,
+      quantityRemainingPMS,
+      quantityRemainingAGO,
       pmsPrice,
       agoPrice,
       multiPricing: !isNoSalesDay && (pmsMultiPrice === 'yes' || agoMultiPrice === 'yes'),
@@ -341,10 +463,14 @@ const StaffClosingReportForm = ({
       paymentBreakdown: normalizedPaymentBreakdown,
       totalPaymentDeposits,
       posValue,
+      posEodPhotoUrl,
       cashSales,
       totalAmount,
       closingBalance,
       pumpReadings: normalizedPumpReadings,
+    }
+    if (isFirstReport) {
+      payload.cashBf = effectiveCashBf
     }
     if (reportDate) {
       payload.reportDate = reportDate
@@ -389,6 +515,7 @@ const StaffClosingReportForm = ({
       }
       setPaymentDraft(DEFAULT_PAYMENT_CHANNEL)
       setPaymentBreakdown([])
+      setPosEodPhotoFile(null)
       setPumpDraft(DEFAULT_PUMP_READING)
       setPumpReadings([])
       setPmsMultiPrice('no')
@@ -430,10 +557,11 @@ const StaffClosingReportForm = ({
   }
 
   const handleAddPumpReading = () => {
-    const isOther = pumpDraft.label === 'Other'
-    const label = String(isOther ? pumpDraft.otherLabel : pumpDraft.label || '').trim()
-    const hasClosing = pumpDraft.closing !== ''
-    if (!label || !hasClosing) {
+    const label = resolvePumpLabel(pumpDraft)
+    const openingRaw = pumpDraft.opening !== '' ? Number(pumpDraft.opening) : null
+    const closingRaw = pumpDraft.closing !== '' ? Number(pumpDraft.closing) : null
+    if (!label || openingRaw == null || Number.isNaN(openingRaw) || closingRaw == null || Number.isNaN(closingRaw)) {
+      window.alert('Enter pump label, opening reading, and closing reading.')
       return
     }
     setPumpReadings((prev) => [
@@ -441,10 +569,22 @@ const StaffClosingReportForm = ({
       {
         id: `pump-${Date.now()}`,
         label,
-        closing: Number(pumpDraft.closing),
+        opening: openingRaw,
+        closing: closingRaw,
       },
     ])
     setPumpDraft(DEFAULT_PUMP_READING)
+  }
+
+  const handlePumpLabelChange = (labelValue) => {
+    const nextLabel = resolvePumpLabel({ label: labelValue, otherLabel: pumpDraft.otherLabel })
+    const suggested = suggestedPumpOpening(nextLabel)
+    setPumpDraft((prev) => ({
+      ...prev,
+      label: labelValue,
+      otherLabel: labelValue === 'Other' ? prev.otherLabel : '',
+      opening: suggested || prev.opening,
+    }))
   }
 
   const handleAddPriceBand = (product) => {
@@ -478,46 +618,20 @@ const StaffClosingReportForm = ({
           Daily opening stock report format is currently disabled in settings.
         </div>
       )}
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-6">
         {showStationIdRow && (
           <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
             Station ID: <span className="font-semibold">{stationId || 'N/A'}</span>
           </div>
         )}
         {isFirstReport && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">
-            First report for this station — opening dips are optional but recommended. Future days carry forward from closing stock.
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">
+            Baseline report — complete every section below. Opening stock goes in Stock; opening cash B/F goes in Cash
+            Movement.
           </div>
         )}
-        {isFirstReport && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <FormInput
-              type="number"
-              min="0"
-              required={false}
-              label="OPENING STOCK PMS (L) — optional"
-              value={formData.openingStockPMS}
-              onChange={(event) => setFormData((prev) => ({ ...prev, openingStockPMS: event.target.value }))}
-            />
-            <FormInput
-              type="number"
-              min="0"
-              required={false}
-              label="OPENING STOCK AGO (L) — optional"
-              value={formData.openingStockAGO}
-              onChange={(event) => setFormData((prev) => ({ ...prev, openingStockAGO: event.target.value }))}
-            />
-          </div>
-        )}
-        {!isFirstReport && !isNoSalesDay && (
-          <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-            {openingBannerTitle}: PMS{' '}
-            <span className="font-semibold">{carriedOpening.pms.toLocaleString()} L</span>
-            {' · '}AGO <span className="font-semibold">{carriedOpening.ago.toLocaleString()} L</span>
-            {openingBannerDetail ? ` · ${openingBannerDetail}` : null}
-          </div>
-        )}
-        <label className="space-y-1">
+
+        <label className="block space-y-1">
           <span className="text-sm font-medium">DID YOU SELL TODAY?</span>
           <select
             value={formData.soldToday}
@@ -534,18 +648,160 @@ const StaffClosingReportForm = ({
             <option value="no">No</option>
           </select>
         </label>
+
+        <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+          <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">STOCK (LITRES)</p>
+          {isFirstReport ? (
+            <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormInput
+                type="number"
+                min="0"
+                required
+                label="OPENING STOCK PMS (L)"
+                value={formData.openingStockPMS}
+                onChange={(event) => setFormData((prev) => ({ ...prev, openingStockPMS: event.target.value }))}
+              />
+              <FormInput
+                type="number"
+                min="0"
+                required
+                label="OPENING STOCK AGO (L)"
+                value={formData.openingStockAGO}
+                onChange={(event) => setFormData((prev) => ({ ...prev, openingStockAGO: event.target.value }))}
+              />
+            </div>
+          ) : (
+            <div className="mb-4 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+              {openingBannerTitle}: PMS{' '}
+              <span className="font-semibold">{carriedOpening.pms.toLocaleString()} L</span>
+              {' · '}AGO <span className="font-semibold">{carriedOpening.ago.toLocaleString()} L</span>
+            </div>
+          )}
+
+          {isNoSalesDay ? (
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              No sales — book stock carries forward. Add a reason below and submit.
+            </p>
+          ) : (
+            <>
+              <label className="mb-4 block space-y-1">
+                <span className="text-sm font-medium">RECEIVED PRODUCT</span>
+                <select
+                  value={formData.receivedProduct}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, receivedProduct: event.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </label>
+              {formData.receivedProduct === 'yes' && (
+                <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <FormInput
+                    type="number"
+                    min="0"
+                    label="QUANTITY RECEIVED PMS (L)"
+                    value={formData.receivedQuantityPMS}
+                    onChange={(event) =>
+                      setFormData((prev) => ({ ...prev, receivedQuantityPMS: event.target.value }))
+                    }
+                  />
+                  <FormInput
+                    type="number"
+                    min="0"
+                    label="QUANTITY RECEIVED AGO (L)"
+                    value={formData.receivedQuantityAGO}
+                    onChange={(event) =>
+                      setFormData((prev) => ({ ...prev, receivedQuantityAGO: event.target.value }))
+                    }
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {stockFields.map((field) => (
+                  <FormInput
+                    key={field.name}
+                    type="number"
+                    min="0"
+                    required
+                    label={field.label}
+                    value={formData[field.name]}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, [field.name]: event.target.value }))}
+                  />
+                ))}
+              </div>
+              <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                Total sales today: PMS <span className="font-semibold">{previewSales.pms.toLocaleString()} L</span>
+                {' · '}
+                AGO <span className="font-semibold">{previewSales.ago.toLocaleString()} L</span>
+              </div>
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-200">
+                Book quantity remaining: PMS{' '}
+                <span className="font-semibold">{previewQuantityRemaining.pms.toLocaleString()} L</span>
+                {' · '}AGO <span className="font-semibold">{previewQuantityRemaining.ago.toLocaleString()} L</span>
+                <span className="mt-1 block text-xs opacity-90">
+                  Tank dip: PMS {Number(formData.closingStockPMS || 0).toLocaleString()} L · AGO{' '}
+                  {Number(formData.closingStockAGO || 0).toLocaleString()} L
+                </span>
+              </div>
+              <div className="mt-4 space-y-4">
+                <ProductPriceSection
+                  productLabel="PMS"
+                  multiPrice={pmsMultiPrice}
+                  onMultiPriceChange={setPmsMultiPrice}
+                  singlePrice={formData.pmsPrice}
+                  onSinglePriceChange={(value) => setFormData((prev) => ({ ...prev, pmsPrice: value }))}
+                  bands={priceBandsPMS}
+                  bandDraft={priceBandDraftPMS}
+                  onBandDraftChange={setPriceBandDraftPMS}
+                  onAddBand={() => handleAddPriceBand('pms')}
+                  onRemoveBand={(id) => setPriceBandsPMS((prev) => prev.filter((band) => band.id !== id))}
+                  totalSalesLiters={previewSales.pms}
+                />
+                <ProductPriceSection
+                  productLabel="AGO"
+                  multiPrice={agoMultiPrice}
+                  onMultiPriceChange={setAgoMultiPrice}
+                  singlePrice={formData.agoPrice}
+                  onSinglePriceChange={(value) => setFormData((prev) => ({ ...prev, agoPrice: value }))}
+                  bands={priceBandsAGO}
+                  bandDraft={priceBandDraftAGO}
+                  onBandDraftChange={setPriceBandDraftAGO}
+                  onAddBand={() => handleAddPriceBand('ago')}
+                  onRemoveBand={(id) => setPriceBandsAGO((prev) => prev.filter((band) => band.id !== id))}
+                  totalSalesLiters={previewSales.ago}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
         {isNoSalesDay ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">
-              No sales today — add a short reason below, then send. Opening stock and cash carry forward.
+            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+              <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">CASH MOVEMENT (NGN)</p>
+              {isFirstReport ? (
+                <FormInput
+                  type="number"
+                  min="0"
+                  required
+                  label="CASH B/F (OPENING)"
+                  value={formData.openingCashBf}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, openingCashBf: event.target.value }))}
+                />
+              ) : (
+                <p className="text-sm">
+                  Cash B/F: <span className="font-semibold">NGN {effectiveCashBf.toLocaleString()}</span> (carried)
+                </p>
+              )}
             </div>
-            <label className="space-y-1">
-              <span className="text-sm font-medium">REASON</span>
+            <label className="block space-y-1">
+              <span className="text-sm font-medium">REASON FOR NO SALES</span>
               <textarea
                 value={formData.noSalesRemark}
                 onChange={(event) => setFormData((prev) => ({ ...prev, noSalesRemark: event.target.value }))}
                 className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
-                placeholder="e.g. Sunday, public holiday, station closed, maintenance..."
+                placeholder="e.g. Sunday, public holiday, station closed..."
               />
             </label>
             <button
@@ -558,368 +814,291 @@ const StaffClosingReportForm = ({
             {submitError ? <p className="text-sm font-medium text-rose-600">{submitError}</p> : null}
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {stockFields.map((field) => (
-              <FormInput
-                key={field.name}
-                type="number"
-                min="0"
-                required
-                label={field.label}
-                value={formData[field.name]}
-                onChange={(event) => setFormData((prev) => ({ ...prev, [field.name]: event.target.value }))}
-              />
-              ))}
-            </div>
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-              Computed sales today: PMS <span className="font-semibold">{previewSales.pms.toLocaleString()} L</span>
-              {' · '}
-              AGO <span className="font-semibold">{previewSales.ago.toLocaleString()} L</span>
-              {(previewSales.pms < 0 || previewSales.ago < 0) && (
-                <span className="mt-1 block font-medium text-rose-700 dark:text-rose-300">
-                  Negative sales — check opening, closing, received, and RTT.
-                </span>
-              )}
-            </div>
-            <ProductPriceSection
-              productLabel="PMS"
-              multiPrice={pmsMultiPrice}
-              onMultiPriceChange={setPmsMultiPrice}
-              singlePrice={formData.pmsPrice}
-              onSinglePriceChange={(value) => setFormData((prev) => ({ ...prev, pmsPrice: value }))}
-              bands={priceBandsPMS}
-              bandDraft={priceBandDraftPMS}
-              onBandDraftChange={setPriceBandDraftPMS}
-              onAddBand={() => handleAddPriceBand('pms')}
-              onRemoveBand={(id) => setPriceBandsPMS((prev) => prev.filter((band) => band.id !== id))}
-              totalSalesLiters={previewSales.pms}
-            />
-            <ProductPriceSection
-              productLabel="AGO"
-              multiPrice={agoMultiPrice}
-              onMultiPriceChange={setAgoMultiPrice}
-              singlePrice={formData.agoPrice}
-              onSinglePriceChange={(value) => setFormData((prev) => ({ ...prev, agoPrice: value }))}
-              bands={priceBandsAGO}
-              bandDraft={priceBandDraftAGO}
-              onBandDraftChange={setPriceBandDraftAGO}
-              onAddBand={() => handleAddPriceBand('ago')}
-              onRemoveBand={(id) => setPriceBandsAGO((prev) => prev.filter((band) => band.id !== id))}
-              totalSalesLiters={previewSales.ago}
-            />
-          </div>
-        )}
-        {!isNoSalesDay && (
-          <label className="space-y-1">
-            <span className="text-sm font-medium">RECEIVED PRODUCT</span>
-            <select
-              value={formData.receivedProduct}
-              onChange={(event) => setFormData((prev) => ({ ...prev, receivedProduct: event.target.value }))}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
-            >
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-          </label>
-        )}
-        {!isNoSalesDay && formData.receivedProduct === 'yes' && (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormInput
-                type="number"
-                min="0"
-                label="INPUT RECEIVED PMS (L)"
-                value={formData.receivedQuantityPMS}
-                onChange={(event) =>
-                  setFormData((prev) => ({ ...prev, receivedQuantityPMS: event.target.value }))
-                }
-              />
-              <FormInput
-                type="number"
-                min="0"
-                label="INPUT RECEIVED AGO (L)"
-                value={formData.receivedQuantityAGO}
-                onChange={(event) =>
-                  setFormData((prev) => ({ ...prev, receivedQuantityAGO: event.target.value }))
-                }
-              />
-            </div>
-          </>
-        )}
-        {reportingConfiguration.expenseLineItemsEnabled && !isNoSalesDay && (
-          <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-            <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">EXPENSE REPORTING</p>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Expense Type</span>
-                <select
-                  value={expenseDraft.category}
-                  onChange={(event) =>
-                    setExpenseDraft((prev) => ({ ...prev, category: event.target.value, otherLabel: '' }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
-                >
-                  {EXPENSE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <FormInput
-                type="number"
-                min="0"
-                label="Value (NGN)"
-                value={expenseDraft.amount}
-                onChange={(event) => setExpenseDraft((prev) => ({ ...prev, amount: event.target.value }))}
-              />
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={handleAddExpense}
-                  className="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
-                >
-                  Add Expense Line
-                </button>
-              </div>
-            </div>
-            {expenseDraft.category === 'Other' && (
-              <label className="mt-4 block space-y-1">
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  OTHER EXPENSE DETAILS
-                </span>
-                <input
-                  value={expenseDraft.otherLabel}
-                  onChange={(event) =>
-                    setExpenseDraft((prev) => ({ ...prev, otherLabel: event.target.value }))
-                  }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
-                  placeholder="Describe the expense"
-                />
-              </label>
-            )}
-            <div className="mt-4 space-y-2">
-              {!expenseItems.length && (
-                <p className="text-sm text-slate-500">No expense lines added yet.</p>
-              )}
-              {expenseItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-                >
-                  <p>
-                    {item.label} - NGN {item.amount.toLocaleString()}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpenseItems((prev) => prev.filter((expenseItem) => expenseItem.id !== item.id))
-                    }
-                    className="text-red-600"
-                  >
-                    Remove
-                  </button>
+            {reportingConfiguration.expenseLineItemsEnabled && (
+              <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">EXPENSES (INFORMATIONAL)</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium">Expense Type</span>
+                    <select
+                      value={expenseDraft.category}
+                      onChange={(event) =>
+                        setExpenseDraft((prev) => ({ ...prev, category: event.target.value, otherLabel: '' }))
+                      }
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      {EXPENSE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <FormInput
+                    type="number"
+                    min="0"
+                    label="Value (NGN)"
+                    value={expenseDraft.amount}
+                    onChange={(event) => setExpenseDraft((prev) => ({ ...prev, amount: event.target.value }))}
+                  />
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={handleAddExpense}
+                      className="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
+                    >
+                      Add Expense Line
+                    </button>
+                  </div>
                 </div>
-              ))}
-              <p className="text-sm font-semibold">
-                Total Expense: NGN {expenseItems.reduce((sum, item) => sum + item.amount, 0).toLocaleString()}
+                {expenseDraft.category === 'Other' && (
+                  <input
+                    value={expenseDraft.otherLabel}
+                    onChange={(event) => setExpenseDraft((prev) => ({ ...prev, otherLabel: event.target.value }))}
+                    className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                    placeholder="Describe the expense"
+                  />
+                )}
+                <div className="mt-4 space-y-2">
+                  {expenseItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                    >
+                      <p>
+                        {item.label} — NGN {item.amount.toLocaleString()}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpenseItems((prev) => prev.filter((expenseItem) => expenseItem.id !== item.id))
+                        }
+                        className="text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+              <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">CASH MOVEMENT (NGN)</p>
+              {isFirstReport ? (
+                <div className="mb-4 max-w-md">
+                  <FormInput
+                    type="number"
+                    min="0"
+                    required
+                    label="CASH B/F (OPENING)"
+                    value={formData.openingCashBf}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, openingCashBf: event.target.value }))}
+                  />
+                </div>
+              ) : (
+                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                  Cash B/F: <span className="font-semibold">NGN {effectiveCashBf.toLocaleString()}</span>
+                </div>
+              )}
+              <FormInput
+                type="number"
+                min="0"
+                label="CASH SALES"
+                value={formData.cashSales}
+                onChange={(event) => setFormData((prev) => ({ ...prev, cashSales: event.target.value }))}
+              />
+              <p className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-300">
+                Total amount: NGN {previewTotalAmount.toLocaleString()} (B/F + cash sales)
               </p>
             </div>
-          </div>
-        )}
-        {!isNoSalesDay && (
-        <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-          <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">CASH MOVEMENT (NGN)</p>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <FormInput
-              type="number"
-              min="0"
-              label="Cash Sales"
-              value={formData.cashSales}
-              onChange={(event) => setFormData((prev) => ({ ...prev, cashSales: event.target.value }))}
-            />
-            <FormInput
-              type="number"
-              min="0"
-              label="POS Value (NGN)"
-              value={formData.posValue}
-              onChange={(event) => setFormData((prev) => ({ ...prev, posValue: event.target.value }))}
-            />
-          </div>
-          <p
-            className={`mt-3 text-sm font-medium ${previewClosingBalance < 0 ? 'text-rose-600' : 'text-slate-600 dark:text-slate-300'}`}
-          >
-            Closing cash balance: NGN {previewClosingBalance.toLocaleString()}
-            {previewClosingBalance < 0 ? ' (deposits + POS exceed available cash)' : ''}
-          </p>
-        </div>
-        )}
-        {!isNoSalesDay && (
-        <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-          <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            PAYMENT BREAKDOWN (BANK/CHANNEL + NGN)
-          </p>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <label className="space-y-1 md:col-span-2">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Bank / Channel</span>
-              <select
-                value={paymentDraft.channel}
-                onChange={(event) =>
-                  setPaymentDraft((prev) => ({
-                    ...prev,
-                    channel: event.target.value,
-                    otherChannel: event.target.value === 'Other' ? prev.otherChannel : '',
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
-              >
-                {PAYMENT_CHANNEL_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <FormInput
-              type="number"
-              min="0"
-              label="Amount (NGN)"
-              value={paymentDraft.amount}
-              onChange={(event) => setPaymentDraft((prev) => ({ ...prev, amount: event.target.value }))}
-            />
-          </div>
-          {paymentDraft.channel === 'Other' && (
-            <label className="mt-3 block space-y-1">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Other Bank/Channel</span>
-              <input
-                value={paymentDraft.otherChannel}
-                onChange={(event) => setPaymentDraft((prev) => ({ ...prev, otherChannel: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
-                placeholder="Enter bank/channel name"
-              />
-            </label>
-          )}
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              onClick={handleAddPaymentLine}
-              className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
-            >
-              Add Payment Line
-            </button>
-          </div>
-          <div className="mt-4 space-y-2">
-            {!paymentBreakdown.length && (
-              <p className="text-sm text-slate-500">No bank/channel entries added yet.</p>
-            )}
-            {paymentBreakdown.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-              >
-                <p>
-                  {item.channel} - NGN {item.amount.toLocaleString()}
-                </p>
+
+            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+              <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">BANK DEPOSITS</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label className="space-y-1 md:col-span-2">
+                  <span className="text-sm font-medium">Bank / Channel</span>
+                  <select
+                    value={paymentDraft.channel}
+                    onChange={(event) =>
+                      setPaymentDraft((prev) => ({
+                        ...prev,
+                        channel: event.target.value,
+                        otherChannel: event.target.value === 'Other' ? prev.otherChannel : '',
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  >
+                    {PAYMENT_CHANNEL_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <FormInput
+                  type="number"
+                  min="0"
+                  label="Amount (NGN)"
+                  value={paymentDraft.amount}
+                  onChange={(event) => setPaymentDraft((prev) => ({ ...prev, amount: event.target.value }))}
+                />
+              </div>
+              {paymentDraft.channel === 'Other' && (
+                <input
+                  value={paymentDraft.otherChannel}
+                  onChange={(event) => setPaymentDraft((prev) => ({ ...prev, otherChannel: event.target.value }))}
+                  className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  placeholder="Other bank/channel name"
+                />
+              )}
+              <div className="mt-3 flex justify-end">
                 <button
                   type="button"
-                  onClick={() =>
-                    setPaymentBreakdown((prev) => prev.filter((paymentItem) => paymentItem.id !== item.id))
-                  }
-                  className="text-red-600"
+                  onClick={handleAddPaymentLine}
+                  className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
                 >
-                  Remove
+                  Add Deposit Line
                 </button>
               </div>
-            ))}
-            <p className="text-sm font-semibold">
-              Total Deposits: NGN {paymentBreakdown.reduce((sum, item) => sum + item.amount, 0).toLocaleString()}
-            </p>
-          </div>
-        </div>
-        )}
-        {!isNoSalesDay && (
-        <div className="mt-6 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-          <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            PUMP READINGS (e.g. P4, P5, AGO1)
-          </p>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Label</span>
-              <select
-                value={pumpDraft.label}
-                onChange={(event) =>
-                  setPumpDraft((prev) => ({
-                    ...prev,
-                    label: event.target.value,
-                    otherLabel: event.target.value === 'Other' ? prev.otherLabel : '',
-                  }))
-                }
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
-              >
-                {PUMP_LABEL_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
+              <div className="mt-4 space-y-2">
+                {paymentBreakdown.map((item) => (
+                  <div
+                    key={item.id}
+                    className="space-y-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p>
+                        {item.channel} — NGN {item.amount.toLocaleString()}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPaymentBreakdown((prev) => prev.filter((paymentItem) => paymentItem.id !== item.id))
+                        }
+                        className="text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <PhotoUploadInput
+                      label={`${item.channel} EOD proof`}
+                      value={item.eodPhotoFile || null}
+                      onChange={(file) =>
+                        setPaymentBreakdown((prev) =>
+                          prev.map((paymentItem) =>
+                            paymentItem.id === item.id ? { ...paymentItem, eodPhotoFile: file } : paymentItem,
+                          ),
+                        )
+                      }
+                      disabled={submitting}
+                    />
+                  </div>
                 ))}
-              </select>
-            </label>
-            <FormInput
-              type="number"
-              label="Closing Reading"
-              value={pumpDraft.closing}
-              onChange={(event) => setPumpDraft((prev) => ({ ...prev, closing: event.target.value }))}
-            />
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={handleAddPumpReading}
-                className="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
-              >
-                Add Pump Line
-              </button>
+              </div>
             </div>
-          </div>
-          {pumpDraft.label === 'Other' && (
-            <label className="mt-3 block space-y-1">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Other Pump Label</span>
-              <input
-                value={pumpDraft.otherLabel}
-                onChange={(event) => setPumpDraft((prev) => ({ ...prev, otherLabel: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900"
-                placeholder="e.g. AGO1 or P12"
+
+            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+              <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">POS & CLOSING CASH</p>
+              <FormInput
+                type="number"
+                min="0"
+                label="POS VALUE (NGN)"
+                value={formData.posValue}
+                onChange={(event) => setFormData((prev) => ({ ...prev, posValue: event.target.value }))}
               />
-            </label>
-          )}
-          <div className="mt-4 space-y-2">
-            {!pumpReadings.length && (
-              <p className="text-sm text-slate-500">No pump lines added yet.</p>
-            )}
-            {pumpReadings.map((item) => {
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-                >
-                  <p>
-                    {item.label}: Closing {item.closing ?? '-'}
-                  </p>
+              <PhotoUploadInput
+                label="POS EOD proof photo"
+                value={posEodPhotoFile}
+                onChange={setPosEodPhotoFile}
+                disabled={submitting}
+              />
+              <p
+                className={`mt-3 text-sm font-semibold ${previewClosingBalance < 0 ? 'text-rose-600' : 'text-slate-700 dark:text-slate-200'}`}
+              >
+                Closing cash balance: NGN {previewClosingBalance.toLocaleString()}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+              <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">PUMP READINGS</p>
+              <p className="mb-3 text-xs text-slate-500">{detailText}</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+                <label className="space-y-1">
+                  <span className="text-sm font-medium">Pump</span>
+                  <select
+                    value={pumpDraft.label}
+                    onChange={(event) => handlePumpLabelChange(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  >
+                    {PUMP_LABEL_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <FormInput
+                  type="number"
+                  label="Opening"
+                  value={pumpDraft.opening}
+                  onChange={(event) => setPumpDraft((prev) => ({ ...prev, opening: event.target.value }))}
+                />
+                <FormInput
+                  type="number"
+                  label="Closing"
+                  value={pumpDraft.closing}
+                  onChange={(event) => setPumpDraft((prev) => ({ ...prev, closing: event.target.value }))}
+                />
+                <div className="flex items-end md:col-span-2">
                   <button
                     type="button"
-                    onClick={() => setPumpReadings((prev) => prev.filter((pumpItem) => pumpItem.id !== item.id))}
-                    className="text-red-600"
+                    onClick={handleAddPumpReading}
+                    className="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
                   >
-                    Remove
+                    Add Pump Line
                   </button>
                 </div>
-              )
-            })}
-          </div>
-        </div>
-        )}
-        {!isNoSalesDay && (
-          <>
-            <label className="space-y-1">
+              </div>
+              {pumpDraft.label === 'Other' && (
+                <input
+                  value={pumpDraft.otherLabel}
+                  onChange={(event) => {
+                    const otherLabel = event.target.value
+                    const nextLabel = resolvePumpLabel({ label: 'Other', otherLabel })
+                    setPumpDraft((prev) => ({
+                      ...prev,
+                      otherLabel,
+                      opening: suggestedPumpOpening(nextLabel) || prev.opening,
+                    }))
+                  }}
+                  className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  placeholder="e.g. AGO1"
+                />
+              )}
+              <div className="mt-4 space-y-2">
+                {pumpReadings.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                  >
+                    <p>
+                      {item.label}: {item.opening} → {item.closing}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setPumpReadings((prev) => prev.filter((pumpItem) => pumpItem.id !== item.id))}
+                      className="text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <label className="block space-y-1">
               <span className="text-sm font-medium">REMARK</span>
               <textarea
                 value={formData.remark}

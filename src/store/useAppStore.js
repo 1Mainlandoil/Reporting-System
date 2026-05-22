@@ -8,6 +8,10 @@ import {
 } from '../data/mockData'
 import { mergeStationCatalog } from '../utils/stationCatalog'
 import { getOldestMissingReportDateUpTo } from '../utils/reportPending'
+import {
+  computeQuantityRemaining,
+  getQuantityRemainingForProduct,
+} from '../utils/reportFields'
 import { ROLE_ROUTE_MAP, ROLES } from '../constants/roles'
 import { buildStationMetrics } from '../utils/stock'
 import {
@@ -407,19 +411,56 @@ export const useAppStore = create(
           }
         }
 
-        const previousCashReport = [...state.reports]
+        const previousStockReport = [...state.reports]
           .filter((r) => r.stationId === stationId && r.date && r.date < resolvedDate)
           .sort((a, b) => b.date.localeCompare(a.date))[0]
-        const carriedCashBf = Number(previousCashReport?.closingBalance || 0)
+        const previousCashReport = previousStockReport
+        const isFirstStationReport = !previousStockReport
+        const carriedCashBf = previousCashReport
+          ? Number(previousCashReport.closingBalance || 0)
+          : Number(restPayload.cashBf ?? 0)
         const normalizedCashSales = Number(restPayload.cashSales || 0)
         const normalizedPosValue = Number(restPayload.posValue || 0)
         const normalizedBankLodgements = Number(restPayload.totalPaymentDeposits || 0)
         const derivedTotalAmount = carriedCashBf + normalizedCashSales
         const derivedClosingBalance = derivedTotalAmount - normalizedBankLodgements - normalizedPosValue
 
+        const receivedPMS = Number(restPayload.receivedPMS || 0)
+        const receivedAGO = Number(restPayload.receivedAGO || 0)
+        const salesLitersPMS = Number(restPayload.totalSalesLitersPMS || 0)
+        const salesLitersAGO = Number(restPayload.totalSalesLitersAGO || 0)
+        const previousRemainingPMS = previousStockReport
+          ? getQuantityRemainingForProduct(previousStockReport, 'pms')
+          : Number(restPayload.openingStockPMS ?? 0)
+        const previousRemainingAGO = previousStockReport
+          ? getQuantityRemainingForProduct(previousStockReport, 'ago')
+          : Number(restPayload.openingStockAGO ?? 0)
+        const quantityRemainingPMS = computeQuantityRemaining({
+          previousRemaining: previousRemainingPMS,
+          received: receivedPMS,
+          salesLiters: salesLitersPMS,
+        })
+        const quantityRemainingAGO = computeQuantityRemaining({
+          previousRemaining: previousRemainingAGO,
+          received: receivedAGO,
+          salesLiters: salesLitersAGO,
+        })
+        const openingStockPMS = isFirstStationReport
+          ? Number(restPayload.openingStockPMS ?? 0)
+          : previousRemainingPMS
+        const openingStockAGO = isFirstStationReport
+          ? Number(restPayload.openingStockAGO ?? 0)
+          : previousRemainingAGO
+
         const newReport = {
           id: `stn-${stationId}-${Date.now()}`,
           ...restPayload,
+          openingStockPMS,
+          openingStockAGO,
+          openingPMS: openingStockPMS,
+          openingAGO: openingStockAGO,
+          quantityRemainingPMS,
+          quantityRemainingAGO,
           cashBf: carriedCashBf,
           cashSales: normalizedCashSales,
           posValue: normalizedPosValue,
@@ -582,7 +623,7 @@ export const useAppStore = create(
             interventions: state.interventions.filter((item) => item.stationId !== stationId),
           }
         }),
-      createProductRequest: ({ requestedProductType, requestedLiters, remark }) => {
+      createProductRequest: ({ id, requestedProductType, requestedLiters, remark, lowStockPhotoUrls = [] }) => {
         const state = get()
         const stationId = state.currentUser?.stationId
         const manager = state.currentUser
@@ -596,7 +637,7 @@ export const useAppStore = create(
 
         const createdAt = new Date().toISOString()
         const newRequest = {
-          id: `req-${Date.now()}`,
+          id: id || `req-${Date.now()}`,
           stationId,
           managerId: manager.id,
           managerName: manager.name || 'Manager',
@@ -622,6 +663,7 @@ export const useAppStore = create(
           terminalReviewedAt: null,
           truckNumber: '',
           truckDriver: '',
+          lowStockPhotoUrls: Array.isArray(lowStockPhotoUrls) ? lowStockPhotoUrls : [],
           createdAt,
           updatedAt: createdAt,
         }

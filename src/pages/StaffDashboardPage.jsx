@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
-import { getClosingForProduct } from '../utils/reportFields'
+import { getQuantityRemainingForProduct, buildLastPumpClosingMap } from '../utils/reportFields'
 import { getDailyReportPendingInfo, getOldestMissingReportDateUpTo, listMissedReportDatesInclusive } from '../utils/reportPending'
 
 const StaffDashboardPage = () => {
@@ -47,7 +47,7 @@ const StaffDashboardPage = () => {
     }
 
     if (info.noPriorSubmissions) {
-      return { shortLine: 'First report due.' }
+      return { shortLine: 'Baseline report due — enter opening stock and cash B/F.' }
     }
 
     const missedDates = listMissedReportDatesInclusive(info.firstMissingIso, todayIso)
@@ -68,9 +68,17 @@ const StaffDashboardPage = () => {
       return { pms: 0, ago: 0 }
     }
     return {
-      pms: getClosingForProduct(prior, 'pms'),
-      ago: getClosingForProduct(prior, 'ago'),
+      pms: getQuantityRemainingForProduct(prior, 'pms'),
+      ago: getQuantityRemainingForProduct(prior, 'ago'),
     }
+  }, [reports, currentUser?.stationId, todayIso])
+  const lastPumpClosingMap = useMemo(() => {
+    const sid = currentUser?.stationId
+    if (!sid) {
+      return new Map()
+    }
+    const priorReports = reports.filter((r) => r.stationId === sid && r.date < todayIso)
+    return buildLastPumpClosingMap(priorReports)
   }, [reports, currentUser?.stationId, todayIso])
   const carriedCashBf = useMemo(() => {
     const sid = currentUser?.stationId
@@ -131,6 +139,7 @@ const StaffDashboardPage = () => {
           stationId={currentUser?.stationId}
           carriedOpening={carriedOpening}
           carriedCashBf={carriedCashBf}
+          lastPumpClosingMap={lastPumpClosingMap}
           isFirstReport={stationReportDates.size === 0}
           reportingConfiguration={reportingConfiguration}
           submitReport={submitReport}
