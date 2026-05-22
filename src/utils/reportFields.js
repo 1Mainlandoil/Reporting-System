@@ -5,7 +5,7 @@ export const getOpeningForProduct = (report, productType) => {
   return Number(report.openingStockPMS ?? report.openingPMS ?? 0) || 0
 }
 
-/** End-of-day dip reading when stored; for legacy rows derived from opening + receipts − sales − RTT. */
+/** End-of-day dip reading when stored; for legacy rows derived from opening + receipts − sales. */
 export const getClosingForProduct = (report, productType) => {
   const stored =
     productType === 'ago'
@@ -20,14 +20,12 @@ export const getClosingForProduct = (report, productType) => {
   const opening = getOpeningForProduct(report, productType)
   const received = getReceivedForProduct(report, productType)
   const sales = getSalesForProduct(report, productType)
-  const rtt =
-    productType === 'ago' ? Number(report.rttAGO ?? 0) || 0 : Number(report.rttPMS ?? 0) || 0
-  return opening + received - sales - rtt
+  return opening + received - sales
 }
 
-/** Total sales (L) = opening + received − closing − RTT (per product). */
-export const computeSalesFromMovement = ({ opening, received, closing, rtt }) =>
-  Number(opening || 0) + Number(received || 0) - Number(closing || 0) - Number(rtt || 0)
+/** Total sales (L) = opening + received − closing (per product). RTT is stored separately and not used here. */
+export const computeSalesFromMovement = ({ opening, received, closing }) =>
+  Number(opening || 0) + Number(received || 0) - Number(closing || 0)
 
 export const getReceivedForProduct = (report, productType) => {
   const receivedPMS = Number(report.receivedPMS ?? 0) || 0

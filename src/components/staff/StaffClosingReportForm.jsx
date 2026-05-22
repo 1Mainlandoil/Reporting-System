@@ -114,20 +114,16 @@ const StaffClosingReportForm = ({
     const receivedAGO = formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0
     const closingPMS = Number(formData.closingStockPMS || 0)
     const closingAGO = Number(formData.closingStockAGO || 0)
-    const rttPMS = Number(formData.rttPMS || 0)
-    const rttAGO = Number(formData.rttAGO || 0)
     return {
       pms: computeSalesFromMovement({
         opening: effectiveOpening.pms,
         received: receivedPMS,
         closing: closingPMS,
-        rtt: rttPMS,
       }),
       ago: computeSalesFromMovement({
         opening: effectiveOpening.ago,
         received: receivedAGO,
         closing: closingAGO,
-        rtt: rttAGO,
       }),
     }
   }, [effectiveOpening, formData, isNoSalesDay])
@@ -170,8 +166,6 @@ const StaffClosingReportForm = ({
     () => [
       { name: 'closingStockPMS', label: 'TANK DIP — CLOSING STOCK PMS (L)' },
       { name: 'closingStockAGO', label: 'TANK DIP — CLOSING STOCK AGO (L)' },
-      { name: 'rttPMS', label: 'RTT PMS' },
-      { name: 'rttAGO', label: 'RTT AGO' },
     ],
     [],
   )
@@ -230,8 +224,6 @@ const StaffClosingReportForm = ({
       const requiredNumericFields = [
         ['closingStockPMS', 'Closing stock PMS'],
         ['closingStockAGO', 'Closing stock AGO'],
-        ['rttPMS', 'RTT PMS'],
-        ['rttAGO', 'RTT AGO'],
       ]
       const missingRequired = requiredNumericFields.find(([key]) => String(formData[key] ?? '').trim() === '')
       if (missingRequired) {
@@ -267,13 +259,11 @@ const StaffClosingReportForm = ({
         opening: effectiveOpening.pms,
         received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0,
         closing: Number(formData.closingStockPMS || 0),
-        rtt: Number(formData.rttPMS || 0),
       })
       const previewAgoLiters = computeSalesFromMovement({
         opening: effectiveOpening.ago,
         received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0,
         closing: Number(formData.closingStockAGO || 0),
-        rtt: Number(formData.rttAGO || 0),
       })
       const pmsBandCheck = validatePriceBandsForProduct({
         bands: priceBandsPMS,
@@ -350,20 +340,18 @@ const StaffClosingReportForm = ({
     const openingStockAGO = effectiveOpening.ago
     const closingStockPMS = isNoSalesDay ? Number(openingStockPMS || 0) : Number(formData.closingStockPMS)
     const closingStockAGO = isNoSalesDay ? Number(openingStockAGO || 0) : Number(formData.closingStockAGO)
-    const rttPMS = isNoSalesDay ? 0 : Number(formData.rttPMS || 0)
-    const rttAGO = isNoSalesDay ? 0 : Number(formData.rttAGO || 0)
     const totalSalesLitersPMS = computeSalesFromMovement({
       opening: openingStockPMS,
       received: receivedPMS,
       closing: closingStockPMS,
-      rtt: rttPMS,
     })
     const totalSalesLitersAGO = computeSalesFromMovement({
       opening: openingStockAGO,
       received: receivedAGO,
       closing: closingStockAGO,
-      rtt: rttAGO,
     })
+    const rttPMS = isNoSalesDay ? 0 : Number(formData.rttPMS || 0)
+    const rttAGO = isNoSalesDay ? 0 : Number(formData.rttAGO || 0)
     const effectiveExpenseItems = isNoSalesDay ? [] : reportingConfiguration.expenseLineItemsEnabled ? expenseItems : []
     const totalExpense = effectiveExpenseItems.reduce((sum, item) => sum + item.amount, 0)
     const expenseDescription = effectiveExpenseItems.map((item) => item.label).join(', ')
@@ -608,8 +596,8 @@ const StaffClosingReportForm = ({
   const detailText =
     openingBannerDetail ||
     (reportDate
-      ? 'Enter closing dip readings for this calendar date. Sales (L) use opening + receipts − closing − RTT.'
-      : "Enter today's closing dip readings below. Total sales (L) will be computed as opening + receipts − closing − RTT per product.")
+      ? 'Enter closing dip readings for this calendar date. Sales (L) = opening + receipts − closing.'
+      : "Enter today's closing dip readings below. Total sales (L) = opening + receipts − closing per product.")
 
   return (
     <>
@@ -730,6 +718,25 @@ const StaffClosingReportForm = ({
                   />
                 ))}
               </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <FormInput
+                  type="number"
+                  min="0"
+                  label="RTT PMS (L)"
+                  value={formData.rttPMS}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, rttPMS: event.target.value }))}
+                />
+                <FormInput
+                  type="number"
+                  min="0"
+                  label="RTT AGO (L)"
+                  value={formData.rttAGO}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, rttAGO: event.target.value }))}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                RTT is optional — saved for supervisor review and does not affect sales or book stock.
+              </p>
               <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
                 Total sales today: PMS <span className="font-semibold">{previewSales.pms.toLocaleString()} L</span>
                 {' · '}

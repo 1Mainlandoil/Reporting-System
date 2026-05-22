@@ -93,6 +93,8 @@ const SupervisorDashboardPage = () => {
         'receivedAGO',
         'totalSalesLitersPMS',
         'totalSalesLitersAGO',
+        'rttPMS',
+        'rttAGO',
         'reportDate',
       ]),
   )
