@@ -74,6 +74,9 @@ const SupervisorDashboardPage = () => {
     stationIds: [],
     reportStatus: 'all',
   })
+  const [dailyQueueReviewDate, setDailyQueueReviewDate] = useState(() =>
+    new Date().toISOString().split('T')[0],
+  )
   const [expenseQueueFilters, setExpenseQueueFilters] = useState({
     stationIds: [],
     expenseStatus: 'all',
@@ -202,6 +205,16 @@ const SupervisorDashboardPage = () => {
   )
   const today = new Date().toISOString().split('T')[0]
   const todayMonthKey = today.slice(0, 7)
+  const isDailyQueueReviewToday = dailyQueueReviewDate === today
+  const dailyQueueReviewLabel = useMemo(() => {
+    const [year, month, day] = dailyQueueReviewDate.split('-').map(Number)
+    return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }, [dailyQueueReviewDate])
   const monthEndMonthOptions = useMemo(() => {
     const options = []
     const base = new Date()
@@ -239,14 +252,31 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const pendingInfo = getDailyReportPendingInfo(today, stationReportDates)
-        const pendingFmt = formatPendingSubmissionSummary(pendingInfo, today)
-        const stationReportsToday = reports.filter(
-          (report) => report.stationId === station.id && report.date === today,
+        const pendingInfo =
+          dailyQueueReviewDate === today
+            ? getDailyReportPendingInfo(today, stationReportDates)
+            : {
+                pendingDays: null,
+                firstMissingIso: null,
+                lastSubmittedIso: null,
+                noPriorSubmissions: stationReportDates.size === 0,
+              }
+        const pendingFmt =
+          dailyQueueReviewDate === today
+            ? formatPendingSubmissionSummary(pendingInfo, today)
+            : {
+                tableTitle: stationReportDates.has(dailyQueueReviewDate) ? 'Submitted' : 'Not submitted',
+                tableSubtitle: dailyQueueReviewLabel,
+                exportText: stationReportDates.has(dailyQueueReviewDate)
+                  ? `Submitted on ${dailyQueueReviewDate}`
+                  : `No submission on ${dailyQueueReviewDate}`,
+              }
+        const stationReportsForDay = reports.filter(
+          (report) => report.stationId === station.id && report.date === dailyQueueReviewDate,
         )
-        const latestToday = stationReportsToday.at(-1)
+        const latestToday = stationReportsForDay.at(-1)
         const allPriorReports = [...reports]
-          .filter((report) => report.stationId === station.id && report.date < today)
+          .filter((report) => report.stationId === station.id && report.date < dailyQueueReviewDate)
           .sort((a, b) => a.date.localeCompare(b.date))
         const previousReport = allPriorReports.at(-1)
         const manager = staffByStation.get(station.id)
@@ -324,7 +354,7 @@ const SupervisorDashboardPage = () => {
           rttPMS: latestToday ? latestToday.rttPMS ?? 'Not Submitted' : 'Not Submitted',
           rttAGO: latestToday ? latestToday.rttAGO ?? 'Not Submitted' : 'Not Submitted',
           managerRemark: latestToday ? latestToday.remark ?? latestToday.remarks ?? '-' : 'Not Submitted',
-          reportDate: latestToday ? latestToday.date : 'Pending',
+          reportDate: latestToday ? latestToday.date : dailyQueueReviewDate,
           expenseAmount: latestToday ? Number(latestToday.expenseAmount || 0) : 0,
           expenseDescription: latestToday ? latestToday.expenseDescription || '-' : 'Not Submitted',
           expenseItems: Array.isArray(latestToday?.expenseItems) ? latestToday.expenseItems : [],
@@ -350,7 +380,7 @@ const SupervisorDashboardPage = () => {
           pendingSubmissionTableSubtitle: pendingFmt.tableSubtitle || '',
         }
       })
-  }, [reportDatesByStation, reports, stations, today, users])
+  }, [dailyQueueReviewDate, dailyQueueReviewLabel, reportDatesByStation, reports, stations, today, users])
 
   const filteredDailyOpeningQueueRows = useMemo(
     () =>
@@ -740,12 +770,29 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const pendingInfo = getDailyReportPendingInfo(today, stationReportDates)
-        const pendingFmt = formatPendingSubmissionSummary(pendingInfo, today)
-        const stationReportsToday = reports.filter(
-          (report) => report.stationId === station.id && report.date === today,
+        const pendingInfo =
+          dailyQueueReviewDate === today
+            ? getDailyReportPendingInfo(today, stationReportDates)
+            : {
+                pendingDays: null,
+                firstMissingIso: null,
+                lastSubmittedIso: null,
+                noPriorSubmissions: stationReportDates.size === 0,
+              }
+        const pendingFmt =
+          dailyQueueReviewDate === today
+            ? formatPendingSubmissionSummary(pendingInfo, today)
+            : {
+                tableTitle: stationReportDates.has(dailyQueueReviewDate) ? 'Submitted' : 'Not submitted',
+                tableSubtitle: dailyQueueReviewLabel,
+                exportText: stationReportDates.has(dailyQueueReviewDate)
+                  ? `Submitted on ${dailyQueueReviewDate}`
+                  : `No submission on ${dailyQueueReviewDate}`,
+              }
+        const stationReportsForDay = reports.filter(
+          (report) => report.stationId === station.id && report.date === dailyQueueReviewDate,
         )
-        const latestToday = stationReportsToday.at(-1)
+        const latestToday = stationReportsForDay.at(-1)
         const manager = staffByStation.get(station.id)
         const expenseItems = Array.isArray(latestToday?.expenseItems) ? latestToday.expenseItems : []
         const totalExpense = expenseItems.length
@@ -773,7 +820,7 @@ const SupervisorDashboardPage = () => {
           totalExpense,
           expenseLines: expenseItems.length || (latestToday?.expenseDescription ? 1 : 0),
           topCategory,
-          reportDate: latestToday ? latestToday.date : 'Pending',
+          reportDate: latestToday ? latestToday.date : dailyQueueReviewDate,
           pendingSubmissionDays: pendingInfo.pendingDays,
           pendingSubmissionNoHistory: pendingInfo.noPriorSubmissions,
           pendingSubmissionSummaryExport: pendingFmt.exportText,
@@ -781,7 +828,7 @@ const SupervisorDashboardPage = () => {
           pendingSubmissionTableSubtitle: pendingFmt.tableSubtitle || '',
         }
       })
-  }, [reportDatesByStation, reports, stations, today, users])
+  }, [dailyQueueReviewDate, dailyQueueReviewLabel, reportDatesByStation, reports, stations, today, users])
 
   const filteredExpenseQueueRows = useMemo(
     () =>
@@ -1033,11 +1080,12 @@ const SupervisorDashboardPage = () => {
         render: (row) => (
           <button
             type="button"
+            disabled={row.reportStatus === 'Pending'}
             onClick={(event) => {
               event.stopPropagation()
               setSelectedDailyOpeningReport(row)
             }}
-            className="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
+            className="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
           >
             View Report
           </button>
@@ -1325,6 +1373,17 @@ const SupervisorDashboardPage = () => {
     setStationReviewDrafts({})
   }
 
+  const handleReportQueueRowClick = (row) => {
+    const fullReport =
+      row.reportStatus != null
+        ? row
+        : dailyOpeningQueueRows.find((queueRow) => queueRow.stationId === row.stationId)
+    if (!fullReport || fullReport.reportStatus === 'Pending') {
+      return
+    }
+    setSelectedDailyOpeningReport(fullReport)
+  }
+
   const dailyQueueFiltersPanel = (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <ColumnPicker
@@ -1517,6 +1576,39 @@ const SupervisorDashboardPage = () => {
     </div>
   )
 
+  const dailyQueueReviewDatePicker =
+    !filtersScreenOpen ? (
+      <Card className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Review date</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            {isDailyQueueReviewToday
+              ? "Showing today's submissions across all stations."
+              : `Viewing submissions for ${dailyQueueReviewLabel}.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="date"
+            max={today}
+            value={dailyQueueReviewDate}
+            onChange={(event) => setDailyQueueReviewDate(event.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            aria-label="Select review date"
+          />
+          {!isDailyQueueReviewToday && (
+            <button
+              type="button"
+              onClick={() => setDailyQueueReviewDate(today)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-200"
+            >
+              Back to today
+            </button>
+          )}
+        </div>
+      </Card>
+    ) : null
+
   return (
     <div className="space-y-4">
       {(activeDashboard === 'stock-flow' || activeDashboard === 'cash-flow' || activeDashboard === 'expense-monitor') && (
@@ -1556,6 +1648,11 @@ const SupervisorDashboardPage = () => {
           </div>
         </Card>
       )}
+
+      {(activeDashboard === 'stock-flow' ||
+        activeDashboard === 'cash-flow' ||
+        activeDashboard === 'expense-monitor') &&
+        dailyQueueReviewDatePicker}
 
       {activeDashboard === 'dashboard' && (
         <>
@@ -1719,11 +1816,15 @@ const SupervisorDashboardPage = () => {
                 <p className="text-2xl font-bold">{dailyOpeningQueueRows.length}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">Submitted Today</p>
+                <p className="text-sm text-slate-500">
+                  {isDailyQueueReviewToday ? 'Submitted Today' : `Submitted · ${dailyQueueReviewLabel}`}
+                </p>
                 <p className="text-2xl font-bold text-emerald-600">{submittedCount}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">Pending Today</p>
+                <p className="text-sm text-slate-500">
+                  {isDailyQueueReviewToday ? 'Pending Today' : `Not submitted · ${dailyQueueReviewLabel}`}
+                </p>
                 <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
               </Card>
             </div>
@@ -1763,7 +1864,12 @@ const SupervisorDashboardPage = () => {
           ) : (
             <Card className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-semibold">Daily Opening Stock Queue (Alphabetical)</h3>
+                <h3 className="text-lg font-semibold">
+                  Daily Opening Stock Queue (Alphabetical)
+                  {!isDailyQueueReviewToday && (
+                    <span className="ml-2 text-sm font-normal text-slate-500">· {dailyQueueReviewLabel}</span>
+                  )}
+                </h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -1811,7 +1917,7 @@ const SupervisorDashboardPage = () => {
                   <DataTable
                     columns={visibleDailyOpeningColumns}
                     rows={filteredDailyOpeningQueueRows}
-                    onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
+                    onRowClick={handleReportQueueRowClick}
                     tableClassName={
                       showFullDailyOpeningColumns ? 'min-w-[2350px] table-fixed' : 'min-w-[1850px] table-fixed'
                     }
@@ -1839,7 +1945,7 @@ const SupervisorDashboardPage = () => {
             </Card>
           )}
 
-          {!filtersScreenOpen && (
+          {!filtersScreenOpen && isDailyQueueReviewToday && (
           <Card className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Daily Finalization to Admin ({today})</h3>
@@ -1869,10 +1975,6 @@ const SupervisorDashboardPage = () => {
           </Card>
           )}
 
-          <DailyOpeningReportModal
-            report={selectedDailyOpeningReport}
-            onClose={() => setSelectedDailyOpeningReport(null)}
-          />
         </>
       )}
 
@@ -1885,11 +1987,15 @@ const SupervisorDashboardPage = () => {
                 <p className="text-2xl font-bold">{filteredDailyOpeningQueueRows.length}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">Total Bank/Channel Deposits (NGN)</p>
+                <p className="text-sm text-slate-500">
+                  {isDailyQueueReviewToday ? 'Total Bank/Channel Deposits (NGN)' : `Bank Deposits · ${dailyQueueReviewLabel}`}
+                </p>
                 <p className="text-2xl font-bold">{Math.round(totalBankDepositsToday).toLocaleString()}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">Net Variance (NGN)</p>
+                <p className="text-sm text-slate-500">
+                  {isDailyQueueReviewToday ? 'Net Variance (NGN)' : `Net Variance · ${dailyQueueReviewLabel}`}
+                </p>
                 <p className="text-2xl font-bold">{Math.round(totalCashVarianceToday).toLocaleString()}</p>
               </Card>
             </div>
@@ -1928,7 +2034,12 @@ const SupervisorDashboardPage = () => {
           ) : (
             <Card className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-semibold">Cash Flow Queue</h3>
+                <h3 className="text-lg font-semibold">
+                  Cash Flow Queue
+                  {!isDailyQueueReviewToday && (
+                    <span className="ml-2 text-sm font-normal text-slate-500">· {dailyQueueReviewLabel}</span>
+                  )}
+                </h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -1969,7 +2080,7 @@ const SupervisorDashboardPage = () => {
                   <DataTable
                     columns={visibleCashFlowColumns}
                     rows={filteredDailyOpeningQueueRows}
-                    onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
+                    onRowClick={handleReportQueueRowClick}
                     tableClassName="min-w-[1500px]"
                     wrapHeaders
                   />
@@ -1995,11 +2106,15 @@ const SupervisorDashboardPage = () => {
           {!filtersScreenOpen && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Card>
-                <p className="text-sm text-slate-500">Expense Reports Submitted</p>
+                <p className="text-sm text-slate-500">
+                  {isDailyQueueReviewToday ? 'Expense Reports Submitted' : `Expenses submitted · ${dailyQueueReviewLabel}`}
+                </p>
                 <p className="text-2xl font-bold text-emerald-600">{expenseSubmittedCount}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">Total Expense Today (NGN)</p>
+                <p className="text-sm text-slate-500">
+                  {isDailyQueueReviewToday ? 'Total Expense Today (NGN)' : `Total expense · ${dailyQueueReviewLabel}`}
+                </p>
                 <p className="text-2xl font-bold">{Math.round(totalExpenseToday).toLocaleString()}</p>
               </Card>
               <Card>
@@ -2045,7 +2160,12 @@ const SupervisorDashboardPage = () => {
           ) : (
             <Card className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-semibold">Daily Expense Queue</h3>
+                <h3 className="text-lg font-semibold">
+                  Daily Expense Queue
+                  {!isDailyQueueReviewToday && (
+                    <span className="ml-2 text-sm font-normal text-slate-500">· {dailyQueueReviewLabel}</span>
+                  )}
+                </h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -2086,7 +2206,7 @@ const SupervisorDashboardPage = () => {
                   <DataTable
                     columns={visibleExpenseColumns}
                     rows={filteredExpenseQueueRows}
-                    onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
+                    onRowClick={handleReportQueueRowClick}
                     tableClassName="min-w-[1400px]"
                     wrapHeaders
                   />
@@ -2250,6 +2370,10 @@ const SupervisorDashboardPage = () => {
           )}
         </Card>
       )}
+      <DailyOpeningReportModal
+        report={selectedDailyOpeningReport}
+        onClose={() => setSelectedDailyOpeningReport(null)}
+      />
     </div>
   )
 }
