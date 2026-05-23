@@ -8,7 +8,7 @@ import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
 import { ROLES } from '../constants/roles'
 import { exportStationHistoryToExcel } from '../utils/exportExcel'
-import { buildLastPumpClosingMap, getQuantityRemainingForProduct } from '../utils/reportFields'
+import { buildLastPumpClosingMap, getClosingForProduct, getQuantityRemainingForProduct } from '../utils/reportFields'
 import { addCalendarDaysIso, formatStaffCalendarDay, getOldestMissingReportDateUpTo } from '../utils/reportPending'
 
 const REVIEW_STATUS_OPTIONS = ['Reviewed', 'Needs Attention', 'Escalated']
@@ -205,6 +205,32 @@ const StationReportHistoryPage = () => {
     }
     return true
   })
+
+  const reportsWithReview = useMemo(() => {
+    const enrichedById = new Map()
+    for (let index = 0; index < chronAsc.length; index += 1) {
+      const report = chronAsc[index]
+      const priorReports = chronAsc.slice(0, index)
+      const priorMap = buildLastPumpClosingMap(priorReports)
+      const pumpRows = buildPumpMeterRows(priorMap, report.pumpReadings)
+      enrichedById.set(report.id, {
+        ...report,
+        pumpMeterRows: pumpRows,
+        quantityRemainingPMS: getQuantityRemainingForProduct(report, 'pms'),
+        quantityRemainingAGO: getQuantityRemainingForProduct(report, 'ago'),
+      })
+    }
+    return filteredReports.map((report) => {
+      const enriched = enrichedById.get(report.id) || report
+      return {
+        ...enriched,
+        reviewStatus: report.supervisorReview?.status || '-',
+        supervisorNote: report.supervisorReview?.remark || '-',
+        reviewedBy: report.supervisorReview?.reviewedBy || '-',
+      }
+    })
+  }, [chronAsc, filteredReports])
+
   const isSupervisor = role === ROLES.SUPERVISOR
 
   if (!station) {
@@ -275,30 +301,6 @@ const StationReportHistoryPage = () => {
       .join(', ')
   }
 
-  const reportsWithReview = useMemo(() => {
-    const enrichedById = new Map()
-    for (let index = 0; index < chronAsc.length; index += 1) {
-      const report = chronAsc[index]
-      const priorReports = chronAsc.slice(0, index)
-      const priorMap = buildLastPumpClosingMap(priorReports)
-      const pumpRows = buildPumpMeterRows(priorMap, report.pumpReadings)
-      enrichedById.set(report.id, {
-        ...report,
-        pumpMeterRows: pumpRows,
-        quantityRemainingPMS: getQuantityRemainingForProduct(report, 'pms'),
-        quantityRemainingAGO: getQuantityRemainingForProduct(report, 'ago'),
-      })
-    }
-    return filteredReports.map((report) => {
-      const enriched = enrichedById.get(report.id) || report
-      return {
-        ...enriched,
-        reviewStatus: report.supervisorReview?.status || '-',
-        supervisorNote: report.supervisorReview?.remark || '-',
-        reviewedBy: report.supervisorReview?.reviewedBy || '-',
-      }
-    })
-  }, [chronAsc, filteredReports])
   const selectedReport =
     reportsWithReview.find((report) => report.id === selectedReportId) ||
     reports.find((report) => report.id === selectedReportId) ||
