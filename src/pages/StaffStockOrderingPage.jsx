@@ -6,6 +6,12 @@ import FormInput from '../components/ui/FormInput'
 import PhotoUploadInput from '../components/ui/PhotoUploadInput'
 import { useAppStore } from '../store/useAppStore'
 import { uploadReportEvidenceFiles } from '../services/supabaseStorage'
+import {
+  formatPhotoUploadError,
+  formatReportSubmitError,
+  notifyBlockedProcess,
+  withSolution,
+} from '../utils/userErrorMessages'
 
 const StaffStockOrderingPage = () => {
   const createProductRequest = useAppStore((state) => state.createProductRequest)
@@ -63,7 +69,20 @@ const StaffStockOrderingPage = () => {
     event.preventDefault()
     setSubmitError('')
     if (!currentUser?.stationId) {
-      setSubmitError('Your account is not linked to a station.')
+      notifyBlockedProcess(
+        setSubmitError,
+        formatReportSubmitError({ ok: false, error: 'no_station' }),
+      )
+      return
+    }
+    if (!Number(requestDraft.requestedLiters || 0)) {
+      notifyBlockedProcess(
+        setSubmitError,
+        withSolution(
+          'Requested liters are missing.',
+          'Enter how many liters you need, then submit again.',
+        ),
+      )
       return
     }
     setSubmitting(true)
@@ -91,7 +110,7 @@ const StaffStockOrderingPage = () => {
       setActiveTab('requests')
       setRequestFilter('pending')
     } catch (error) {
-      setSubmitError(error?.message || 'Could not upload tank dip photo. Try again.')
+      notifyBlockedProcess(setSubmitError, formatPhotoUploadError(error))
     } finally {
       setSubmitting(false)
     }

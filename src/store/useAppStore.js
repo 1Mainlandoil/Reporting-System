@@ -8,6 +8,7 @@ import {
 } from '../data/mockData'
 import { mergeStationCatalog } from '../utils/stationCatalog'
 import { getOldestMissingReportDateUpTo } from '../utils/reportPending'
+import { extractErrorMessage } from '../utils/userErrorMessages'
 import {
   computeQuantityRemaining,
   getQuantityRemainingForProduct,
@@ -476,7 +477,8 @@ export const useAppStore = create(
           return {
             ok: false,
             error: 'sync_failed',
-            message: err instanceof Error ? err.message : String(err),
+            message: extractErrorMessage(err),
+            rawError: err,
           }
         }
         set({

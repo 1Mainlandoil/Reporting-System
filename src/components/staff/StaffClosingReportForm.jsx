@@ -5,6 +5,12 @@ import ProductPriceSection from './ProductPriceSection'
 import { uploadReportEvidence } from '../../services/supabaseStorage'
 import { computeSalesFromMovement, computeQuantityRemaining } from '../../utils/reportFields'
 import {
+  formatFormValidationError,
+  formatPhotoUploadError,
+  formatReportSubmitError,
+  notifyBlockedProcess,
+} from '../../utils/userErrorMessages'
+import {
   computeSalesAmountFromBands,
   normalizePriceBands,
   validatePriceBandsForProduct,
@@ -188,15 +194,11 @@ const StaffClosingReportForm = ({
     setSubmitError('')
     setSuccess(false)
     if (!stationId) {
-      const message = 'Your account is not linked to a station.'
-      setSubmitError(message)
-      window.alert(message)
+      notifyBlockedProcess(setSubmitError, formatReportSubmitError({ ok: false, error: 'no_station' }))
       return
     }
     if (formDisabled || !reportingConfiguration.dailyOpeningStockFormatEnabled) {
-      const message = 'Daily reporting is disabled in Settings. Re-enable it, then submit again.'
-      setSubmitError(message)
-      window.alert(message)
+      notifyBlockedProcess(setSubmitError, formatFormValidationError('', 'reportingDisabled'))
       return
     }
     if (isFirstReport) {
@@ -207,17 +209,16 @@ const StaffClosingReportForm = ({
       ]
       const missingBaseline = baselineFields.find(([key]) => String(formData[key] ?? '').trim() === '')
       if (missingBaseline) {
-        const message = `${missingBaseline[1]} is required for the first report after a reset.`
-        setSubmitError(message)
-        window.alert(message)
+        notifyBlockedProcess(
+          setSubmitError,
+          formatFormValidationError(missingBaseline[1], 'baseline'),
+        )
         return
       }
     }
     if (isNoSalesDay) {
       if (!String(formData.noSalesRemark || '').trim()) {
-        const message = 'Enter a reason for no sales today.'
-        setSubmitError(message)
-        window.alert(message)
+        notifyBlockedProcess(setSubmitError, formatFormValidationError('', 'noSales'))
         return
       }
     } else {
@@ -227,21 +228,15 @@ const StaffClosingReportForm = ({
       ]
       const missingRequired = requiredNumericFields.find(([key]) => String(formData[key] ?? '').trim() === '')
       if (missingRequired) {
-        const message = `${missingRequired[1]} is required.`
-        setSubmitError(message)
-        window.alert(message)
+        notifyBlockedProcess(setSubmitError, formatFormValidationError(missingRequired[1], 'required'))
         return
       }
       if (pmsMultiPrice === 'no' && String(formData.pmsPrice ?? '').trim() === '') {
-        const message = 'PMS price is required.'
-        setSubmitError(message)
-        window.alert(message)
+        notifyBlockedProcess(setSubmitError, formatFormValidationError('PMS price', 'price'))
         return
       }
       if (agoMultiPrice === 'no' && String(formData.agoPrice ?? '').trim() === '') {
-        const message = 'AGO price is required.'
-        setSubmitError(message)
-        window.alert(message)
+        notifyBlockedProcess(setSubmitError, formatFormValidationError('AGO price', 'price'))
         return
       }
       if (
@@ -249,9 +244,7 @@ const StaffClosingReportForm = ({
         Number(formData.receivedQuantityPMS || 0) <= 0 &&
         Number(formData.receivedQuantityAGO || 0) <= 0
       ) {
-        const message = 'Enter at least one received quantity (PMS or AGO) when received product is Yes.'
-        setSubmitError(message)
-        window.alert(message)
+        notifyBlockedProcess(setSubmitError, formatFormValidationError('', 'received'))
         return
       }
 
@@ -272,8 +265,7 @@ const StaffClosingReportForm = ({
         multiPriceEnabled: pmsMultiPrice === 'yes',
       })
       if (!pmsBandCheck.ok) {
-        setSubmitError(pmsBandCheck.message)
-        window.alert(pmsBandCheck.message)
+        notifyBlockedProcess(setSubmitError, pmsBandCheck.message)
         return
       }
       const agoBandCheck = validatePriceBandsForProduct({
@@ -283,8 +275,7 @@ const StaffClosingReportForm = ({
         multiPriceEnabled: agoMultiPrice === 'yes',
       })
       if (!agoBandCheck.ok) {
-        setSubmitError(agoBandCheck.message)
-        window.alert(agoBandCheck.message)
+        notifyBlockedProcess(setSubmitError, agoBandCheck.message)
         return
       }
     }
@@ -324,11 +315,7 @@ const StaffClosingReportForm = ({
       }
     } catch (uploadError) {
       setSubmitting(false)
-      const message = uploadError?.message
-        ? `Could not upload EOD photo: ${uploadError.message}`
-        : 'Could not upload EOD photo. Check your connection and try again.'
-      setSubmitError(message)
-      window.alert(message)
+      notifyBlockedProcess(setSubmitError, formatPhotoUploadError(uploadError))
       return
     }
 
@@ -472,27 +459,7 @@ const StaffClosingReportForm = ({
         outcome = { ok: false, error: 'unknown' }
       }
       if (outcome && outcome.ok === false) {
-        if (outcome.error === 'duplicate_date') {
-          const message = 'A report for this date already exists.'
-          setSubmitError(message)
-          window.alert(message)
-        } else if (outcome.error === 'catch_up_order') {
-          const message = outcome.allowedPast
-            ? `Submit the oldest missing day first (${outcome.allowedPast}), then work forward.`
-            : 'Use the Daily Report screen for today, or submit missing past dates in order.'
-          setSubmitError(message)
-          window.alert(message)
-        } else if (outcome.error === 'sync_failed') {
-          const message = outcome.message
-            ? `Report could not be saved to Supabase:\n\n${outcome.message}\n\nIf the table or policies are missing, run supabase/schema.sql in the Supabase SQL Editor. Also ensure this station exists in the stations table (foreign key).`
-            : 'Report could not be saved to the server. Check your connection and try again.'
-          setSubmitError(outcome.message || 'Report could not be saved to Supabase.')
-          window.alert(message)
-        } else {
-          const message = 'Could not submit this report. Try again or contact support.'
-          setSubmitError(message)
-          window.alert(message)
-        }
+        notifyBlockedProcess(setSubmitError, formatReportSubmitError(outcome))
         return
       }
 
@@ -549,7 +516,7 @@ const StaffClosingReportForm = ({
     const openingRaw = pumpDraft.opening !== '' ? Number(pumpDraft.opening) : null
     const closingRaw = pumpDraft.closing !== '' ? Number(pumpDraft.closing) : null
     if (!label || openingRaw == null || Number.isNaN(openingRaw) || closingRaw == null || Number.isNaN(closingRaw)) {
-      window.alert('Enter pump label, opening reading, and closing reading.')
+      notifyBlockedProcess(setSubmitError, formatFormValidationError('', 'pump'))
       return
     }
     setPumpReadings((prev) => [

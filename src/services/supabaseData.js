@@ -1,4 +1,5 @@
 import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
+import { extractErrorMessage } from '../utils/userErrorMessages'
 
 const mapStation = (row) => ({
   id: row.id,
@@ -405,12 +406,7 @@ export const insertReport = async (report) => {
       // Backward compatibility: allow submission even if DB schema is behind new optional fields.
       await upsertReport(basePayload)
     } else {
-      const message = String(error?.message || 'Failed to save report')
-      const details = String(error?.details || '')
-      const hint = details.toLowerCase().includes('station_id') || message.toLowerCase().includes('station_id')
-        ? ' Ensure this station exists in Supabase stations table and report insert policy allows this user.'
-        : ''
-      throw new Error(`${message}${hint}`.trim())
+      throw error
     }
   }
 
