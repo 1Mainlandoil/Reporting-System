@@ -20,11 +20,11 @@ const PhotoUploadInput = ({ label = 'Upload photo', value = null, onChange, disa
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           disabled={disabled}
           onChange={(event) => onChange?.(event.target.files?.[0] || null)}
           className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700 dark:text-slate-300 dark:file:bg-slate-700 dark:file:text-slate-100"
         />
+        <p className="text-xs text-slate-500 dark:text-slate-400">Take a new photo or choose an existing image from your phone.</p>
       </label>
       {previewUrl ? (
         <div className="mt-2 flex items-start gap-2">
