@@ -48,7 +48,6 @@ const AdminDashboardPage = () => {
   const acknowledgeMonthEndFinalization = useAppStore((state) => state.acknowledgeMonthEndFinalization)
   const adminReplenishmentWorkflows = useAppStore((state) => state.adminReplenishmentWorkflows)
   const adminReportResolutions = useAppStore((state) => state.adminReportResolutions)
-  const productRequests = useAppStore((state) => state.productRequests)
   const setAdminReplenishmentWorkflow = useAppStore((state) => state.setAdminReplenishmentWorkflow)
   const setAdminReportResolution = useAppStore((state) => state.setAdminReportResolution)
   const currentUser = useAppStore((state) => state.currentUser)
@@ -61,7 +60,6 @@ const AdminDashboardPage = () => {
     () => new Set(['stationName', 'stockRemaining', 'daysRemaining', 'status']),
   )
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
-  const [productRequestView, setProductRequestView] = useState('decisions')
 
   const metrics = useMemo(
     () =>
@@ -716,81 +714,6 @@ const AdminDashboardPage = () => {
     [adminDailyReviews],
   )
 
-  const pendingProductRequestRows = useMemo(
-    () =>
-      productRequests
-        .filter((request) => ['submitted', 'pending_admin'].includes(request.status))
-        .map((request) => ({
-          ...request,
-          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
-          createdDate: request.createdAt?.split('T')[0] || '-',
-        }))
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    [productRequests, stations],
-  )
-
-  const terminalDecisionRows = useMemo(
-    () =>
-      productRequests
-        .filter(
-          (request) =>
-            request.terminalReviewedAt ||
-            (['approved', 'declined'].includes(request.status) && request.adminReviewedAt),
-        )
-        .map((request) => ({
-          ...request,
-          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
-          decidedDate: (request.terminalReviewedAt || request.adminReviewedAt)?.split('T')[0] || '-',
-          finalStatus: request.status === 'approved' ? 'Approved' : 'Declined',
-          decidedBy: request.terminalName || request.adminName || '-',
-          remark: request.terminalRemark || request.adminRemark || '-',
-        }))
-        .sort(
-          (a, b) =>
-            new Date(b.terminalReviewedAt || b.adminReviewedAt) -
-            new Date(a.terminalReviewedAt || a.adminReviewedAt),
-        ),
-    [productRequests, stations],
-  )
-
-  const pendingProductRequestColumns = [
-    { key: 'createdDate', header: 'Submitted', minWidth: 110 },
-    { key: 'stationName', header: 'Station', minWidth: 180 },
-    { key: 'managerName', header: 'Manager', minWidth: 160 },
-    { key: 'requestedProductType', header: 'Product', minWidth: 100 },
-    {
-      key: 'requestedLiters',
-      header: 'Requested Liters',
-      minWidth: 130,
-      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
-    },
-    { key: 'managerRemark', header: 'Manager Remark', minWidth: 220 },
-  ]
-
-  const terminalDecisionColumns = [
-    { key: 'decidedDate', header: 'Decided', minWidth: 110 },
-    { key: 'stationName', header: 'Station', minWidth: 180 },
-    { key: 'managerName', header: 'Manager', minWidth: 160 },
-    { key: 'requestedProductType', header: 'Product', minWidth: 100 },
-    {
-      key: 'requestedLiters',
-      header: 'Requested',
-      minWidth: 110,
-      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
-    },
-    { key: 'finalStatus', header: 'Status', minWidth: 110 },
-    {
-      key: 'approvedLiters',
-      header: 'Sent Liters',
-      minWidth: 110,
-      render: (row) => (row.approvedLiters ? Math.round(row.approvedLiters).toLocaleString() : '-'),
-    },
-    { key: 'truckNumber', header: 'Truck No.', minWidth: 110 },
-    { key: 'truckDriver', header: 'Driver', minWidth: 130 },
-    { key: 'remark', header: 'Remark', minWidth: 200 },
-    { key: 'decidedBy', header: 'Terminal Operator', minWidth: 160 },
-  ]
-
   const pendingDailyFinalizationColumns = [
     { key: 'date', header: 'Date', minWidth: 120 },
     { key: 'finalizedBy', header: 'Supervisor', minWidth: 170 },
@@ -1190,68 +1113,6 @@ const AdminDashboardPage = () => {
           <EmptyState
             title="No finalization history yet"
             message="Supervisor finalized reviews will appear here with date-attached history."
-          />
-        )}
-      </Card>
-      )}
-
-      {isDashboardView && (
-      <Card className="space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-bold">Product Request Oversight</h2>
-            <p className="text-sm text-slate-500">
-              Review pending manager requests and terminal operator dispatch decisions
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setProductRequestView('pending')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                productRequestView === 'pending'
-                  ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200'
-                  : 'border border-slate-300 dark:border-slate-600'
-              }`}
-            >
-              Pending ({pendingProductRequestRows.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setProductRequestView('decisions')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                productRequestView === 'decisions'
-                  ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-500/20 dark:text-indigo-200'
-                  : 'border border-slate-300 dark:border-slate-600'
-              }`}
-            >
-              Terminal Decisions ({terminalDecisionRows.length})
-            </button>
-          </div>
-        </div>
-        {productRequestView === 'pending' ? (
-          pendingProductRequestRows.length ? (
-            <DataTable
-              columns={pendingProductRequestColumns}
-              rows={pendingProductRequestRows}
-              tableClassName="min-w-[1000px]"
-            />
-          ) : (
-            <EmptyState
-              title="No pending product requests"
-              message="Manager requests awaiting terminal operator action will appear here."
-            />
-          )
-        ) : terminalDecisionRows.length ? (
-          <DataTable
-            columns={terminalDecisionColumns}
-            rows={terminalDecisionRows}
-            tableClassName="min-w-[1400px]"
-          />
-        ) : (
-          <EmptyState
-            title="No terminal operator decisions yet"
-            message="Approved and declined dispatch decisions will appear here for admin review."
           />
         )}
       </Card>

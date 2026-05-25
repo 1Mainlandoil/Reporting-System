@@ -41,6 +41,9 @@ const Sidebar = () => {
             icon: '☰',
             path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports,
           },
+          ...(role === 'admin'
+            ? [{ label: 'Product Requests', icon: '⬒', path: linkMap['product requests'] }]
+            : []),
           ...(role === 'supervisor'
             ? [{ label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' }]
             : []),
@@ -105,11 +108,17 @@ const Sidebar = () => {
                   item.label === 'History' &&
                   location.pathname === '/supervisor' &&
                   currentView === 'history'
+                const isAdminProductRequests =
+                  role === 'admin' &&
+                  item.label === 'Product Requests' &&
+                  location.pathname === '/admin/product-requests'
                 const isCustomActive =
                   role === 'terminal_operator' &&
                   (item.label === 'Product Requests' || item.label === 'History')
                     ? isTerminalProductRequests || isTerminalHistory
-                    : role === 'supervisor' &&
+                    : role === 'admin' && item.label === 'Product Requests'
+                      ? isAdminProductRequests
+                      : role === 'supervisor' &&
                         (item.label === 'Dashboard' ||
                           item.label === 'Reports' ||
                           item.label === 'Month-End Summary' ||

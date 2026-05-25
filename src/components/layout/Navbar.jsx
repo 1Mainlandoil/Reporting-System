@@ -19,6 +19,7 @@ const mobileMenuByRole = {
   admin: [
     { label: 'Dashboard', path: '/admin/dashboard' },
     { label: 'Reports', path: '/admin/reports' },
+    { label: 'Product Requests', path: '/admin/product-requests' },
     { label: 'History', path: '/admin/history' },
     { label: 'Reconciliation', path: '/reconciliation' },
     { label: 'Alerts', path: '/alerts' },

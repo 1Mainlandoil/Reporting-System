@@ -744,7 +744,10 @@ export const useAppStore = create(
         let syncedRequest = null
         set((currentState) => ({
           productRequests: currentState.productRequests.map((request) => {
-            if (request.id !== requestId || request.status !== 'pending_admin') {
+            if (
+              request.id !== requestId ||
+              !['submitted', 'pending_admin'].includes(request.status)
+            ) {
               return request
             }
 

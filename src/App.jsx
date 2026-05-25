@@ -10,6 +10,7 @@ import StaffDashboardPage from './pages/StaffDashboardPage'
 import StaffStockOrderingPage from './pages/StaffStockOrderingPage'
 import SupervisorDashboardPage from './pages/SupervisorDashboardPage'
 import AdminDashboardPage from './pages/AdminDashboardPage'
+import AdminProductRequestsPage from './pages/AdminProductRequestsPage'
 import StationsPage from './pages/StationsPage'
 import StationDetailsPage from './pages/StationDetailsPage'
 import StationReportHistoryPage from './pages/StationReportHistoryPage'
@@ -81,6 +82,7 @@ const App = () => (
       <Route index element={<Navigate to="/admin/dashboard" replace />} />
       <Route path="dashboard" element={<AdminDashboardPage />} />
       <Route path="reports" element={<AdminDashboardPage />} />
+      <Route path="product-requests" element={<AdminProductRequestsPage />} />
       <Route path="history" element={<AdminDashboardPage />} />
     </Route>
 

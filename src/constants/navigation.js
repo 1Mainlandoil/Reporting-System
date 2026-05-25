@@ -2,6 +2,7 @@ export const linksByRole = {
   admin: [
     { label: 'Dashboard', path: '/admin/dashboard' },
     { label: 'Reports', path: '/admin/reports' },
+    { label: 'Product Requests', path: '/admin/product-requests' },
     { label: 'History', path: '/admin/history' },
     { label: 'Stations', path: '/stations' },
     { label: 'Reconciliation', path: '/reconciliation' },
