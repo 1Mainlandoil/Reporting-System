@@ -217,6 +217,18 @@ export const formatFormValidationError = (fieldLabel, context = 'default') => {
   if (context === 'pump') {
     return withSolution('Pump reading is incomplete.', solutions.pump)
   }
+  if (context === 'salesQuantity') {
+    return withSolution(
+      'Quantity sold does not match pump readings.',
+      'Recheck today’s pump closing, last reading, RTT, and the liters you entered for PMS and AGO.',
+    )
+  }
 
   return withSolution(`${fieldLabel} is required.`, solutions.required)
 }
+
+export const formatSalesQuantityMismatchError = ({ productLabel, managerLiters, calculatedLiters }) =>
+  withSolution(
+    `${productLabel} quantity sold does not match pump readings (you entered ${Math.round(Number(managerLiters) || 0).toLocaleString()} L; system shows ${Math.round(Number(calculatedLiters) || 0).toLocaleString()} L).`,
+    'Recheck today’s pump closing, last reading, RTT, and your entered quantity sold.',
+  )

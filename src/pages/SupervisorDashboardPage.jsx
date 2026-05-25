@@ -14,6 +14,7 @@ import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { buildStationMetrics } from '../utils/stock'
 import { getClosingForProduct, getQuantityRemainingForProduct } from '../utils/reportFields'
 import { buildPumpRowsWithCarry } from '../utils/dailyReportViewRow'
+import { computePumpProductSales } from '../utils/pumpSales'
 import {
   exportSupervisorDailyOpeningsToExcel,
   exportSupervisorCashFlowToExcel,
@@ -298,6 +299,23 @@ const SupervisorDashboardPage = () => {
         const cashMovementVariance = totalAmount - totalPaymentDeposits - posValue - closingBalance
         const pumpReadings = Array.isArray(latestToday?.pumpReadings) ? latestToday.pumpReadings : []
         const pumpMeterRows = buildPumpRowsWithCarry(allPriorReports, pumpReadings)
+        const calculatedPumpSales = latestToday
+          ? computePumpProductSales(pumpReadings, latestToday.rttPMS, latestToday.rttAGO)
+          : { pms: 0, ago: 0, total: 0 }
+        const managerEnteredSalesPMS = latestToday
+          ? Number(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0)
+          : 0
+        const managerEnteredSalesAGO = latestToday
+          ? Number(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0)
+          : 0
+        const calculatedSalesLitersPMS =
+          latestToday?.calculatedSalesLitersPMS != null
+            ? Number(latestToday.calculatedSalesLitersPMS)
+            : calculatedPumpSales.pms
+        const calculatedSalesLitersAGO =
+          latestToday?.calculatedSalesLitersAGO != null
+            ? Number(latestToday.calculatedSalesLitersAGO)
+            : calculatedPumpSales.ago
 
         return {
           stationId: station.id,
@@ -351,6 +369,12 @@ const SupervisorDashboardPage = () => {
           totalSalesLitersAGO: latestToday
             ? Math.round(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0).toLocaleString()
             : 'Not Submitted',
+          managerEnteredSalesLitersPMS,
+          managerEnteredSalesLitersAGO,
+          calculatedSalesLitersPMS,
+          calculatedSalesLitersAGO,
+          calculatedSalesLitersTotal: calculatedSalesLitersPMS + calculatedSalesLitersAGO,
+          managerEnteredSalesLitersTotal: managerEnteredSalesPMS + managerEnteredSalesAGO,
           rttPMS: latestToday ? latestToday.rttPMS ?? 'Not Submitted' : 'Not Submitted',
           rttAGO: latestToday ? latestToday.rttAGO ?? 'Not Submitted' : 'Not Submitted',
           managerRemark: latestToday ? latestToday.remark ?? latestToday.remarks ?? '-' : 'Not Submitted',

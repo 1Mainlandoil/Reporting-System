@@ -23,7 +23,7 @@ export const getClosingForProduct = (report, productType) => {
   return opening + received - sales
 }
 
-/** Total sales (L) = opening + received − closing (per product). RTT is stored separately and not used here. */
+/** Tank book movement (opening + received − closing dip). Sales liters use pump readings — see pumpSales.js. */
 export const computeSalesFromMovement = ({ opening, received, closing }) =>
   Number(opening || 0) + Number(received || 0) - Number(closing || 0)
 

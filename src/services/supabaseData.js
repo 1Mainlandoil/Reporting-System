@@ -78,6 +78,10 @@ export const mapReportRow = (row) => {
   noSalesNote: row.no_sales_note || '',
   totalSalesLitersPMS: row.total_sales_liters_pms,
   totalSalesLitersAGO: row.total_sales_liters_ago,
+  calculatedSalesLitersPMS:
+    row.calculated_sales_liters_pms != null ? Number(row.calculated_sales_liters_pms) : null,
+  calculatedSalesLitersAGO:
+    row.calculated_sales_liters_ago != null ? Number(row.calculated_sales_liters_ago) : null,
   closingStockPMS: row.closing_stock_pms,
   closingStockAGO: row.closing_stock_ago,
   quantityRemainingPMS: row.quantity_remaining_pms,
@@ -332,6 +336,8 @@ export const insertReport = async (report) => {
     quantity_received: Number(report.quantityReceived ?? 0),
     total_sales_liters_pms: report.totalSalesLitersPMS,
     total_sales_liters_ago: report.totalSalesLitersAGO,
+    calculated_sales_liters_pms: Number(report.calculatedSalesLitersPMS ?? 0),
+    calculated_sales_liters_ago: Number(report.calculatedSalesLitersAGO ?? 0),
     closing_stock_pms: report.closingStockPMS,
     closing_stock_ago: report.closingStockAGO,
     quantity_remaining_pms: report.quantityRemainingPMS,

@@ -1,4 +1,5 @@
 import { getClosingForProduct, getPumpReadingClosing, getPumpReadingOpening, getQuantityRemainingForProduct, buildLastPumpClosingMap } from './reportFields'
+import { computePumpProductSales } from './pumpSales'
 
 const resolveReceivedProductType = (report) => {
   if (report?.noSalesDay) {
@@ -89,6 +90,21 @@ export const buildDailyReportViewRow = ({
   const cashMovementVariance = totalAmount - totalPaymentDeposits - posValue - closingBalance
   const pumpReadings = Array.isArray(latestToday.pumpReadings) ? latestToday.pumpReadings : []
   const pumpMeterRows = buildPumpRowsWithCarry(priorReports, pumpReadings)
+  const calculatedPumpSales = computePumpProductSales(
+    pumpReadings,
+    latestToday.rttPMS,
+    latestToday.rttAGO,
+  )
+  const managerSalesPMS = Number(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0)
+  const managerSalesAGO = Number(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0)
+  const calculatedSalesPMS =
+    latestToday.calculatedSalesLitersPMS != null
+      ? Number(latestToday.calculatedSalesLitersPMS)
+      : calculatedPumpSales.pms
+  const calculatedSalesAGO =
+    latestToday.calculatedSalesLitersAGO != null
+      ? Number(latestToday.calculatedSalesLitersAGO)
+      : calculatedPumpSales.ago
   const quantityRemainingPMS = getQuantityRemainingForProduct(latestToday, 'pms')
   const quantityRemainingAGO = getQuantityRemainingForProduct(latestToday, 'ago')
   const tankDipPMS = getClosingForProduct(latestToday, 'pms')
@@ -119,12 +135,14 @@ export const buildDailyReportViewRow = ({
     tankDipAGORaw: tankDipAGO,
     quantityRemainingPMSRaw: quantityRemainingPMS,
     quantityRemainingAGORaw: quantityRemainingAGO,
-    totalSalesLitersPMS: Math.round(
-      latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0,
-    ).toLocaleString(),
-    totalSalesLitersAGO: Math.round(
-      latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0,
-    ).toLocaleString(),
+    totalSalesLitersPMS: Math.round(managerSalesPMS).toLocaleString(),
+    totalSalesLitersAGO: Math.round(managerSalesAGO).toLocaleString(),
+    managerEnteredSalesLitersPMS: managerSalesPMS,
+    managerEnteredSalesLitersAGO: managerSalesAGO,
+    calculatedSalesLitersPMS: calculatedSalesPMS,
+    calculatedSalesLitersAGO: calculatedSalesAGO,
+    calculatedSalesLitersTotal: calculatedSalesPMS + calculatedSalesAGO,
+    managerEnteredSalesLitersTotal: managerSalesPMS + managerSalesAGO,
     rttPMS: latestToday.rttPMS ?? '-',
     rttAGO: latestToday.rttAGO ?? '-',
     managerRemark: latestToday.remark ?? latestToday.remarks ?? '-',

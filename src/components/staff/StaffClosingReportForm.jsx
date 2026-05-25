@@ -3,11 +3,17 @@ import FormInput from '../ui/FormInput'
 import PhotoUploadInput from '../ui/PhotoUploadInput'
 import ProductPriceSection from './ProductPriceSection'
 import { uploadReportEvidence } from '../../services/supabaseStorage'
-import { computeSalesFromMovement, computeQuantityRemaining } from '../../utils/reportFields'
+import { computeQuantityRemaining } from '../../utils/reportFields'
+import {
+  computePumpProductSales,
+  getSalesQuantityValidation,
+  SALES_QUANTITY_TOLERANCE_LITERS,
+} from '../../utils/pumpSales'
 import {
   formatFormValidationError,
   formatPhotoUploadError,
   formatReportSubmitError,
+  formatSalesQuantityMismatchError,
   notifyBlockedProcess,
 } from '../../utils/userErrorMessages'
 import {
@@ -21,7 +27,7 @@ const EXPENSE_OPTIONS = ['Gas', 'Pms', 'Transport', 'Oil', 'Pos paper', 'Other']
 const PAYMENT_CHANNEL_OPTIONS = ['Signature Bank', 'Moniepoint', 'First Bank', 'FCMB', 'Zenith', 'Other']
 const PUMP_LABEL_OPTIONS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'Other']
 const DEFAULT_PAYMENT_CHANNEL = { channel: '', amount: '' }
-const DEFAULT_PUMP_READING = { label: 'P1', otherLabel: '', opening: '', closing: '' }
+const DEFAULT_PUMP_READING = { label: 'P1', otherLabel: '', productType: 'PMS', opening: '', closing: '' }
 const DEFAULT_PRICE_BAND_DRAFT = { price: '', liters: '' }
 
 const slugChannel = (value) =>
@@ -46,6 +52,8 @@ const defaultForm = {
   noSalesRemark: '',
   rttPMS: '',
   rttAGO: '',
+  managerSalesPMS: '',
+  managerSalesAGO: '',
   cashSales: '',
   posValue: '',
   remark: '',
@@ -112,27 +120,43 @@ const StaffClosingReportForm = ({
     return Number(carriedCashBf || 0)
   }, [carriedCashBf, formData.openingCashBf, isFirstReport])
 
-  const previewSales = useMemo(() => {
+  const systemPumpSales = useMemo(() => {
     if (isNoSalesDay) {
-      return { pms: 0, ago: 0 }
+      return { pms: 0, ago: 0, total: 0 }
     }
-    const receivedPMS = formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0
-    const receivedAGO = formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0
-    const closingPMS = Number(formData.closingStockPMS || 0)
-    const closingAGO = Number(formData.closingStockAGO || 0)
+    const draftReadings = pumpReadings.map((item) => ({
+      label: item.label,
+      opening: item.opening,
+      closing: item.closing,
+      productType: item.productType,
+    }))
+    return computePumpProductSales(
+      draftReadings,
+      Number(formData.rttPMS || 0),
+      Number(formData.rttAGO || 0),
+    )
+  }, [formData.rttAGO, formData.rttPMS, isNoSalesDay, pumpReadings])
+
+  const effectiveManagerSales = useMemo(() => {
+    const pms =
+      formData.managerSalesPMS === '' ? systemPumpSales.pms : Number(formData.managerSalesPMS || 0)
+    const ago =
+      formData.managerSalesAGO === '' ? systemPumpSales.ago : Number(formData.managerSalesAGO || 0)
     return {
-      pms: computeSalesFromMovement({
-        opening: effectiveOpening.pms,
-        received: receivedPMS,
-        closing: closingPMS,
-      }),
-      ago: computeSalesFromMovement({
-        opening: effectiveOpening.ago,
-        received: receivedAGO,
-        closing: closingAGO,
-      }),
+      pms: Number.isNaN(pms) ? 0 : pms,
+      ago: Number.isNaN(ago) ? 0 : ago,
     }
-  }, [effectiveOpening, formData, isNoSalesDay])
+  }, [formData.managerSalesAGO, formData.managerSalesPMS, systemPumpSales.ago, systemPumpSales.pms])
+
+  const pmsSalesValidation = useMemo(
+    () => getSalesQuantityValidation(formData.managerSalesPMS, systemPumpSales.pms),
+    [formData.managerSalesPMS, systemPumpSales.pms],
+  )
+
+  const agoSalesValidation = useMemo(
+    () => getSalesQuantityValidation(formData.managerSalesAGO, systemPumpSales.ago),
+    [formData.managerSalesAGO, systemPumpSales.ago],
+  )
 
   const previewQuantityRemaining = useMemo(() => {
     const receivedPMS = !isNoSalesDay && formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0
@@ -141,15 +165,15 @@ const StaffClosingReportForm = ({
       pms: computeQuantityRemaining({
         previousRemaining: effectiveOpening.pms,
         received: receivedPMS,
-        salesLiters: previewSales.pms,
+        salesLiters: effectiveManagerSales.pms,
       }),
       ago: computeQuantityRemaining({
         previousRemaining: effectiveOpening.ago,
         received: receivedAGO,
-        salesLiters: previewSales.ago,
+        salesLiters: effectiveManagerSales.ago,
       }),
     }
-  }, [effectiveOpening, formData, isNoSalesDay, previewSales])
+  }, [effectiveManagerSales, effectiveOpening, formData, isNoSalesDay])
 
   const previewTotalAmount = useMemo(() => {
     if (isNoSalesDay) {
@@ -247,20 +271,55 @@ const StaffClosingReportForm = ({
         notifyBlockedProcess(setSubmitError, formatFormValidationError('', 'received'))
         return
       }
+      if (!pumpReadings.length) {
+        notifyBlockedProcess(setSubmitError, formatFormValidationError('', 'pump'))
+        return
+      }
+      if (formData.managerSalesPMS === '' || formData.managerSalesAGO === '') {
+        notifyBlockedProcess(setSubmitError, formatFormValidationError('Quantity sold PMS and AGO', 'required'))
+        return
+      }
 
-      const previewPmsLiters = computeSalesFromMovement({
-        opening: effectiveOpening.pms,
-        received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityPMS || 0) : 0,
-        closing: Number(formData.closingStockPMS || 0),
-      })
-      const previewAgoLiters = computeSalesFromMovement({
-        opening: effectiveOpening.ago,
-        received: formData.receivedProduct === 'yes' ? Number(formData.receivedQuantityAGO || 0) : 0,
-        closing: Number(formData.closingStockAGO || 0),
-      })
+      const submitCalculatedSales = computePumpProductSales(
+        pumpReadings.map((item) => ({
+          label: item.label,
+          opening: item.opening,
+          closing: item.closing,
+          productType: item.productType,
+        })),
+        Number(formData.rttPMS || 0),
+        Number(formData.rttAGO || 0),
+      )
+      const submitManagerPms = Number(formData.managerSalesPMS || 0)
+      const submitManagerAgo = Number(formData.managerSalesAGO || 0)
+      const pmsCheck = getSalesQuantityValidation(submitManagerPms, submitCalculatedSales.pms)
+      if (!pmsCheck.withinTolerance) {
+        notifyBlockedProcess(
+          setSubmitError,
+          formatSalesQuantityMismatchError({
+            productLabel: 'PMS',
+            managerLiters: submitManagerPms,
+            calculatedLiters: submitCalculatedSales.pms,
+          }),
+        )
+        return
+      }
+      const agoCheck = getSalesQuantityValidation(submitManagerAgo, submitCalculatedSales.ago)
+      if (!agoCheck.withinTolerance) {
+        notifyBlockedProcess(
+          setSubmitError,
+          formatSalesQuantityMismatchError({
+            productLabel: 'AGO',
+            managerLiters: submitManagerAgo,
+            calculatedLiters: submitCalculatedSales.ago,
+          }),
+        )
+        return
+      }
+
       const pmsBandCheck = validatePriceBandsForProduct({
         bands: priceBandsPMS,
-        totalSalesLiters: previewPmsLiters,
+        totalSalesLiters: submitManagerPms,
         productLabel: 'PMS',
         multiPriceEnabled: pmsMultiPrice === 'yes',
       })
@@ -270,7 +329,7 @@ const StaffClosingReportForm = ({
       }
       const agoBandCheck = validatePriceBandsForProduct({
         bands: priceBandsAGO,
-        totalSalesLiters: previewAgoLiters,
+        totalSalesLiters: submitManagerAgo,
         productLabel: 'AGO',
         multiPriceEnabled: agoMultiPrice === 'yes',
       })
@@ -327,35 +386,32 @@ const StaffClosingReportForm = ({
     const openingStockAGO = effectiveOpening.ago
     const closingStockPMS = isNoSalesDay ? Number(openingStockPMS || 0) : Number(formData.closingStockPMS)
     const closingStockAGO = isNoSalesDay ? Number(openingStockAGO || 0) : Number(formData.closingStockAGO)
-    const totalSalesLitersPMS = computeSalesFromMovement({
-      opening: openingStockPMS,
-      received: receivedPMS,
-      closing: closingStockPMS,
-    })
-    const totalSalesLitersAGO = computeSalesFromMovement({
-      opening: openingStockAGO,
-      received: receivedAGO,
-      closing: closingStockAGO,
-    })
     const rttPMS = isNoSalesDay ? 0 : Number(formData.rttPMS || 0)
     const rttAGO = isNoSalesDay ? 0 : Number(formData.rttAGO || 0)
-    const effectiveExpenseItems = isNoSalesDay ? [] : reportingConfiguration.expenseLineItemsEnabled ? expenseItems : []
-    const totalExpense = effectiveExpenseItems.reduce((sum, item) => sum + item.amount, 0)
-    const expenseDescription = effectiveExpenseItems.map((item) => item.label).join(', ')
-    const totalPaymentDeposits = normalizedPaymentBreakdown.reduce((sum, item) => sum + item.amount, 0)
     const normalizedPumpReadings = (isNoSalesDay ? [] : pumpReadings)
       .map((item) => {
         const label = String(item.label || '').trim()
         const opening =
           item.opening != null && item.opening !== '' ? Number(item.opening) : null
         const closing = item.closing != null && item.closing !== '' ? Number(item.closing) : null
+        const productType = item.productType === 'AGO' ? 'AGO' : 'PMS'
         return {
           label,
           opening,
           closing,
+          productType,
         }
       })
       .filter((item) => item.label && item.opening != null && item.closing != null)
+    const calculatedPumpSales = isNoSalesDay
+      ? { pms: 0, ago: 0, total: 0 }
+      : computePumpProductSales(normalizedPumpReadings, rttPMS, rttAGO)
+    const totalSalesLitersPMS = isNoSalesDay ? 0 : Number(formData.managerSalesPMS || 0)
+    const totalSalesLitersAGO = isNoSalesDay ? 0 : Number(formData.managerSalesAGO || 0)
+    const effectiveExpenseItems = isNoSalesDay ? [] : reportingConfiguration.expenseLineItemsEnabled ? expenseItems : []
+    const totalExpense = effectiveExpenseItems.reduce((sum, item) => sum + item.amount, 0)
+    const expenseDescription = effectiveExpenseItems.map((item) => item.label).join(', ')
+    const totalPaymentDeposits = normalizedPaymentBreakdown.reduce((sum, item) => sum + item.amount, 0)
     const cashSales = isNoSalesDay ? 0 : Number(formData.cashSales || 0)
     const posValue = isNoSalesDay ? 0 : Number(formData.posValue || 0)
     const totalAmount = effectiveCashBf + cashSales
@@ -419,6 +475,8 @@ const StaffClosingReportForm = ({
       quantityReceived: 0,
       totalSalesLitersPMS,
       totalSalesLitersAGO,
+      calculatedSalesLitersPMS: calculatedPumpSales.pms,
+      calculatedSalesLitersAGO: calculatedPumpSales.ago,
       rttPMS,
       rttAGO,
       expenseItems: effectiveExpenseItems,
@@ -524,6 +582,7 @@ const StaffClosingReportForm = ({
       {
         id: `pump-${Date.now()}`,
         label,
+        productType: pumpDraft.productType === 'AGO' ? 'AGO' : 'PMS',
         opening: openingRaw,
         closing: closingRaw,
       },
@@ -563,8 +622,124 @@ const StaffClosingReportForm = ({
   const detailText =
     openingBannerDetail ||
     (reportDate
-      ? 'Enter closing dip readings for this calendar date. Sales (L) = opening + receipts − closing.'
-      : "Enter today's closing dip readings below. Total sales (L) = opening + receipts − closing per product.")
+      ? 'Enter pump readings for this date. System sales (L) = today closing − last reading − RTT, per product.'
+      : "Enter today's pump readings. System sales (L) = today closing − last reading − RTT, separately for PMS and AGO.")
+
+  const renderSalesValidationHint = (validation, calculatedLiters, productLabel) => {
+    if (validation.status === 'empty') {
+      return (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          System calculated {productLabel}: {Math.round(calculatedLiters).toLocaleString()} L (±
+          {SALES_QUANTITY_TOLERANCE_LITERS} L tolerance)
+        </p>
+      )
+    }
+    if (validation.status === 'match') {
+      return (
+        <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+          Matches pump readings — good to go.
+        </p>
+      )
+    }
+    return (
+      <p className="mt-1 text-xs font-medium text-rose-700 dark:text-rose-300">
+        Does not match pump readings — system shows {Math.round(calculatedLiters).toLocaleString()} L. Recheck
+        closing, last reading, and RTT.
+      </p>
+    )
+  }
+
+  const renderPumpReadingsSection = () => (
+    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">PUMP READINGS</p>
+      <p className="mb-3 text-xs text-slate-500">{detailText}</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+        <label className="space-y-1">
+          <span className="text-sm font-medium">Pump</span>
+          <select
+            value={pumpDraft.label}
+            onChange={(event) => handlePumpLabelChange(event.target.value)}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+          >
+            {PUMP_LABEL_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-sm font-medium">Product</span>
+          <select
+            value={pumpDraft.productType}
+            onChange={(event) =>
+              setPumpDraft((prev) => ({ ...prev, productType: event.target.value }))
+            }
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+          >
+            <option value="PMS">PMS</option>
+            <option value="AGO">AGO</option>
+          </select>
+        </label>
+        <FormInput
+          type="number"
+          label="Opening"
+          value={pumpDraft.opening}
+          onChange={(event) => setPumpDraft((prev) => ({ ...prev, opening: event.target.value }))}
+        />
+        <FormInput
+          type="number"
+          label="Closing"
+          value={pumpDraft.closing}
+          onChange={(event) => setPumpDraft((prev) => ({ ...prev, closing: event.target.value }))}
+        />
+        <div className="flex items-end md:col-span-2">
+          <button
+            type="button"
+            onClick={handleAddPumpReading}
+            className="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
+          >
+            Add Pump Line
+          </button>
+        </div>
+      </div>
+      {pumpDraft.label === 'Other' && (
+        <input
+          value={pumpDraft.otherLabel}
+          onChange={(event) => {
+            const otherLabel = event.target.value
+            const nextLabel = resolvePumpLabel({ label: 'Other', otherLabel })
+            setPumpDraft((prev) => ({
+              ...prev,
+              otherLabel,
+              opening: suggestedPumpOpening(nextLabel) || prev.opening,
+            }))
+          }}
+          className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+          placeholder="e.g. AGO1"
+        />
+      )}
+      <div className="mt-4 space-y-2">
+        {pumpReadings.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+          >
+            <p>
+              {item.label} ({item.productType || 'PMS'}): {item.opening} → {item.closing}
+            </p>
+            <button
+              type="button"
+              onClick={() => setPumpReadings((prev) => prev.filter((pumpItem) => pumpItem.id !== item.id))}
+              className="text-red-600"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -702,12 +877,56 @@ const StaffClosingReportForm = ({
                 />
               </div>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                RTT is optional — saved for supervisor review and does not affect sales or book stock.
+                RTT is subtracted from pump-based sales for the matching product.
               </p>
+              {renderPumpReadingsSection()}
               <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-                Total sales today: PMS <span className="font-semibold">{previewSales.pms.toLocaleString()} L</span>
+                System calculated sales: PMS{' '}
+                <span className="font-semibold">{Math.round(systemPumpSales.pms).toLocaleString()} L</span>
                 {' · '}
-                AGO <span className="font-semibold">{previewSales.ago.toLocaleString()} L</span>
+                AGO <span className="font-semibold">{Math.round(systemPumpSales.ago).toLocaleString()} L</span>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <FormInput
+                    type="number"
+                    min="0"
+                    required
+                    label="QUANTITY SOLD PMS (L)"
+                    value={formData.managerSalesPMS}
+                    onChange={(event) =>
+                      setFormData((prev) => ({ ...prev, managerSalesPMS: event.target.value }))
+                    }
+                    className={
+                      pmsSalesValidation.status === 'match'
+                        ? 'border-emerald-400 focus:border-emerald-500 dark:border-emerald-500'
+                        : pmsSalesValidation.status === 'mismatch'
+                          ? 'border-rose-400 focus:border-rose-500 dark:border-rose-500'
+                          : ''
+                    }
+                  />
+                  {renderSalesValidationHint(pmsSalesValidation, systemPumpSales.pms, 'PMS')}
+                </div>
+                <div>
+                  <FormInput
+                    type="number"
+                    min="0"
+                    required
+                    label="QUANTITY SOLD AGO (L)"
+                    value={formData.managerSalesAGO}
+                    onChange={(event) =>
+                      setFormData((prev) => ({ ...prev, managerSalesAGO: event.target.value }))
+                    }
+                    className={
+                      agoSalesValidation.status === 'match'
+                        ? 'border-emerald-400 focus:border-emerald-500 dark:border-emerald-500'
+                        : agoSalesValidation.status === 'mismatch'
+                          ? 'border-rose-400 focus:border-rose-500 dark:border-rose-500'
+                          : ''
+                    }
+                  />
+                  {renderSalesValidationHint(agoSalesValidation, systemPumpSales.ago, 'AGO')}
+                </div>
               </div>
               <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-200">
                 Book quantity remaining: PMS{' '}
@@ -730,7 +949,7 @@ const StaffClosingReportForm = ({
                   onBandDraftChange={setPriceBandDraftPMS}
                   onAddBand={() => handleAddPriceBand('pms')}
                   onRemoveBand={(id) => setPriceBandsPMS((prev) => prev.filter((band) => band.id !== id))}
-                  totalSalesLiters={previewSales.pms}
+                  totalSalesLiters={effectiveManagerSales.pms}
                 />
                 <ProductPriceSection
                   productLabel="AGO"
@@ -743,7 +962,7 @@ const StaffClosingReportForm = ({
                   onBandDraftChange={setPriceBandDraftAGO}
                   onAddBand={() => handleAddPriceBand('ago')}
                   onRemoveBand={(id) => setPriceBandsAGO((prev) => prev.filter((band) => band.id !== id))}
-                  totalSalesLiters={previewSales.ago}
+                  totalSalesLiters={effectiveManagerSales.ago}
                 />
               </div>
             </>
@@ -993,83 +1212,6 @@ const StaffClosingReportForm = ({
               >
                 Closing cash balance: NGN {previewClosingBalance.toLocaleString()}
               </p>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-              <p className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">PUMP READINGS</p>
-              <p className="mb-3 text-xs text-slate-500">{detailText}</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-                <label className="space-y-1">
-                  <span className="text-sm font-medium">Pump</span>
-                  <select
-                    value={pumpDraft.label}
-                    onChange={(event) => handlePumpLabelChange(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
-                  >
-                    {PUMP_LABEL_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <FormInput
-                  type="number"
-                  label="Opening"
-                  value={pumpDraft.opening}
-                  onChange={(event) => setPumpDraft((prev) => ({ ...prev, opening: event.target.value }))}
-                />
-                <FormInput
-                  type="number"
-                  label="Closing"
-                  value={pumpDraft.closing}
-                  onChange={(event) => setPumpDraft((prev) => ({ ...prev, closing: event.target.value }))}
-                />
-                <div className="flex items-end md:col-span-2">
-                  <button
-                    type="button"
-                    onClick={handleAddPumpReading}
-                    className="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white dark:bg-slate-700"
-                  >
-                    Add Pump Line
-                  </button>
-                </div>
-              </div>
-              {pumpDraft.label === 'Other' && (
-                <input
-                  value={pumpDraft.otherLabel}
-                  onChange={(event) => {
-                    const otherLabel = event.target.value
-                    const nextLabel = resolvePumpLabel({ label: 'Other', otherLabel })
-                    setPumpDraft((prev) => ({
-                      ...prev,
-                      otherLabel,
-                      opening: suggestedPumpOpening(nextLabel) || prev.opening,
-                    }))
-                  }}
-                  className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
-                  placeholder="e.g. AGO1"
-                />
-              )}
-              <div className="mt-4 space-y-2">
-                {pumpReadings.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-                  >
-                    <p>
-                      {item.label}: {item.opening} → {item.closing}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setPumpReadings((prev) => prev.filter((pumpItem) => pumpItem.id !== item.id))}
-                      className="text-red-600"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <label className="block space-y-1">

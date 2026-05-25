@@ -235,6 +235,10 @@ alter table public.daily_reports
   add column if not exists quantity_remaining_pms numeric,
   add column if not exists quantity_remaining_ago numeric;
 
+alter table public.daily_reports
+  add column if not exists calculated_sales_liters_pms numeric,
+  add column if not exists calculated_sales_liters_ago numeric;
+
 alter table public.users
   add column if not exists manager_username text,
   add column if not exists manager_password_hash text;

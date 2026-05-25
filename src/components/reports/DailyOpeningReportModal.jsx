@@ -55,6 +55,68 @@ const StockDipVsBookPanel = ({ report }) => {
   )
 }
 
+const SalesQuantityComparisonPanel = ({ report }) => {
+  const calculatedPms = Number(report.calculatedSalesLitersPMS ?? 0)
+  const calculatedAgo = Number(report.calculatedSalesLitersAGO ?? 0)
+  const managerPms = Number(report.managerEnteredSalesLitersPMS ?? report.totalSalesLitersPMS ?? 0)
+  const managerAgo = Number(report.managerEnteredSalesLitersAGO ?? report.totalSalesLitersAGO ?? 0)
+  const calculatedTotal = Number(report.calculatedSalesLitersTotal ?? calculatedPms + calculatedAgo)
+  const managerTotal = Number(report.managerEnteredSalesLitersTotal ?? managerPms + managerAgo)
+  const diffPms = managerPms - calculatedPms
+  const diffAgo = managerAgo - calculatedAgo
+  const diffTotal = managerTotal - calculatedTotal
+  const hasDiff = diffPms !== 0 || diffAgo !== 0
+
+  return (
+    <div
+      className={`mt-4 rounded-lg border p-4 ${hasDiff ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30' : 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25'}`}
+    >
+      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+        Quantity sold — system calculated vs manager entered
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+        <div className="rounded-lg border border-white/60 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="text-xs uppercase text-slate-500">PMS (L)</p>
+          <p>
+            System: <span className="font-semibold">{calculatedPms.toLocaleString()}</span>
+          </p>
+          <p>
+            Manager: <span className="font-semibold">{managerPms.toLocaleString()}</span>
+          </p>
+          <p className={diffPms !== 0 ? 'font-medium text-amber-800 dark:text-amber-200' : 'text-slate-600 dark:text-slate-300'}>
+            Difference: {diffPms > 0 ? '+' : ''}
+            {diffPms.toLocaleString()} L
+          </p>
+        </div>
+        <div className="rounded-lg border border-white/60 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="text-xs uppercase text-slate-500">AGO (L)</p>
+          <p>
+            System: <span className="font-semibold">{calculatedAgo.toLocaleString()}</span>
+          </p>
+          <p>
+            Manager: <span className="font-semibold">{managerAgo.toLocaleString()}</span>
+          </p>
+          <p className={diffAgo !== 0 ? 'font-medium text-amber-800 dark:text-amber-200' : 'text-slate-600 dark:text-slate-300'}>
+            Difference: {diffAgo > 0 ? '+' : ''}
+            {diffAgo.toLocaleString()} L
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
+        Station total — System: <span className="font-semibold">{calculatedTotal.toLocaleString()} L</span>
+        {' · '}
+        Manager: <span className="font-semibold">{managerTotal.toLocaleString()} L</span>
+        {diffTotal !== 0 ? (
+          <span className="ml-1 font-medium text-amber-800 dark:text-amber-200">
+            ({diffTotal > 0 ? '+' : ''}
+            {diffTotal.toLocaleString()} L)
+          </span>
+        ) : null}
+      </p>
+    </div>
+  )
+}
+
 const DailyOpeningReportModal = ({ report, onClose }) => {
   if (!report) {
     return null
@@ -222,6 +284,7 @@ const DailyOpeningReportModal = ({ report, onClose }) => {
           </div>
         </div>
 
+        <SalesQuantityComparisonPanel report={report} />
         <StockDipVsBookPanel report={report} />
 
         {(report.expenseItems || []).length > 0 && (
