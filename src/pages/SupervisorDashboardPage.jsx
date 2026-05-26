@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import DailyOpeningReportModal from '../components/reports/DailyOpeningReportModal'
+import InspectorVisitDetailModal from '../components/reports/InspectorVisitDetailModal'
 import ColumnPicker from '../components/ui/ColumnPicker'
 import StatusBadge from '../components/ui/StatusBadge'
 import DataTable from '../components/ui/DataTable'
@@ -52,6 +53,9 @@ const SupervisorDashboardPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const stations = useAppStore((state) => (Array.isArray(state.stations) ? state.stations : []))
   const reports = useAppStore((state) => (Array.isArray(state.reports) ? state.reports : []))
+  const inspectorVisits = useAppStore((state) =>
+    Array.isArray(state.inspectorVisits) ? state.inspectorVisits : [],
+  )
   const users = useAppStore((state) => (Array.isArray(state.users) ? state.users : []))
   const stockThresholds = useAppStore(
     (state) => state.appSettings?.stockThresholds ?? { criticalMax: 500, warningMax: 999 },
@@ -75,6 +79,8 @@ const SupervisorDashboardPage = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [showFullDailyOpeningColumns, setShowFullDailyOpeningColumns] = useState(false)
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
+  const [selectedInspectorVisit, setSelectedInspectorVisit] = useState(null)
+  const [inspectorVisitStationFilter, setInspectorVisitStationFilter] = useState('')
   const [generalFinalizationRemark, setGeneralFinalizationRemark] = useState('')
   const [stationReviewDrafts, setStationReviewDrafts] = useState({})
   const [dailyQueueFilters, setDailyQueueFilters] = useState({
@@ -147,7 +153,7 @@ const SupervisorDashboardPage = () => {
     if (nextView === 'daily-openings') {
       return 'stock-flow'
     }
-    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'history'].includes(nextView)) {
+    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'history', 'inspector-visits'].includes(nextView)) {
       return nextView
     }
     return 'dashboard'
@@ -194,6 +200,24 @@ const SupervisorDashboardPage = () => {
     }
     return portfolio.filter((station) => station.status === statusFilter)
   }, [portfolio, statusFilter])
+
+  const inspectorVisitRows = useMemo(
+    () =>
+      inspectorVisits
+        .filter((visit) => !inspectorVisitStationFilter || visit.stationId === inspectorVisitStationFilter)
+        .map((visit) => ({
+          ...visit,
+          stationName: stations.find((station) => station.id === visit.stationId)?.name || visit.stationId,
+        }))
+        .sort((a, b) => {
+          const byDate = String(b.visitDate).localeCompare(String(a.visitDate))
+          if (byDate !== 0) {
+            return byDate
+          }
+          return String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+        }),
+    [inspectorVisitStationFilter, inspectorVisits, stations],
+  )
 
   const topRisk = useMemo(
     () =>
@@ -2400,9 +2424,80 @@ const SupervisorDashboardPage = () => {
           )}
         </Card>
       )}
+      {activeDashboard === 'inspector-visits' && (
+        <Card className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold">Visitation Reports</h3>
+              <p className="text-sm text-slate-500">Field inspection snapshots submitted by station inspectors.</p>
+            </div>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Filter by station</span>
+              <select
+                value={inspectorVisitStationFilter}
+                onChange={(event) => setInspectorVisitStationFilter(event.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              >
+                <option value="">All stations</option>
+                {stations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {inspectorVisitRows.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700">
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Station</th>
+                    <th className="px-3 py-2">Inspector</th>
+                    <th className="px-3 py-2">Manager</th>
+                    <th className="px-3 py-2">Arrival</th>
+                    <th className="px-3 py-2">Departure</th>
+                    <th className="px-3 py-2">Cash</th>
+                    <th className="px-3 py-2">POS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inspectorVisitRows.map((visit) => (
+                    <tr
+                      key={visit.id}
+                      onClick={() => setSelectedInspectorVisit(visit)}
+                      className="cursor-pointer border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/60"
+                    >
+                      <td className="px-3 py-3">{visit.visitDate}</td>
+                      <td className="px-3 py-3 font-medium">{visit.stationName}</td>
+                      <td className="px-3 py-3">{visit.inspectorName || '—'}</td>
+                      <td className="px-3 py-3">{visit.managerInCharge || '—'}</td>
+                      <td className="px-3 py-3">{visit.arrivalTime || '—'}</td>
+                      <td className="px-3 py-3">{visit.departureTime || '—'}</td>
+                      <td className="px-3 py-3">{Number(visit.cash || 0).toLocaleString()}</td>
+                      <td className="px-3 py-3">{Number(visit.pos || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              title="No inspector visits yet"
+              message="Visit reports will appear here once inspectors submit them from the field."
+            />
+          )}
+        </Card>
+      )}
       <DailyOpeningReportModal
         report={selectedDailyOpeningReport}
         onClose={() => setSelectedDailyOpeningReport(null)}
+      />
+      <InspectorVisitDetailModal
+        visit={selectedInspectorVisit}
+        onClose={() => setSelectedInspectorVisit(null)}
+        title="Inspector visit report"
       />
     </div>
   )

@@ -23,7 +23,9 @@ const UsersPage = () => {
               ? 'Supervisor'
               : user.role === 'terminal_operator'
                 ? 'Terminal Operator'
-                : 'Admin',
+                : user.role === 'inspector'
+                  ? 'Station Inspector'
+                  : 'Admin',
         assignedStation: user.stationId ? stationById.get(user.stationId) || 'Unknown' : 'All Stations',
         status: 'Active',
         canChat: user.id !== currentUser?.id,

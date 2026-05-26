@@ -19,6 +19,7 @@ import {
   deleteIntervention,
   insertChatMessage,
   insertReport,
+  insertInspectorVisit,
   loadInitialData,
   markChatMessagesSeenInSupabase,
   upsertAdminReportResolution,
@@ -74,6 +75,7 @@ const ensurePersistedCollections = (state, fallback = {}) => ({
     fallback.adminReplenishmentWorkflows,
   ),
   adminReportResolutions: asArray(state.adminReportResolutions, fallback.adminReportResolutions),
+  inspectorVisits: asArray(state.inspectorVisits, fallback.inspectorVisits),
   appSettings: state.appSettings ?? fallback.appSettings ?? defaultAppSettings,
 })
 
@@ -131,6 +133,7 @@ export const useAppStore = create(
       filters: initialFilters,
       interventions: [],
       productRequests: [],
+      inspectorVisits: [],
       dailyFinalizations: [],
       monthEndFinalizations: [],
       adminDailyReviews: [],
@@ -895,6 +898,54 @@ export const useAppStore = create(
         get()
           .productRequests.filter((request) => request.stationId === stationId)
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+      submitInspectorVisit: async (payload) => {
+        const state = get()
+        const inspector = state.currentUser
+        if (!inspector?.id || state.role !== ROLES.INSPECTOR) {
+          return { ok: false, message: 'Only inspectors can submit visit reports.' }
+        }
+        if (!payload?.stationId) {
+          return { ok: false, message: 'Select a station for this visit.' }
+        }
+
+        const now = new Date().toISOString()
+        const newVisit = {
+          id: payload.id || `insp-visit-${Date.now()}`,
+          stationId: payload.stationId,
+          inspectorId: inspector.id,
+          inspectorName: inspector.name || '',
+          visitDate: payload.visitDate,
+          arrivalTime: payload.arrivalTime || '',
+          departureTime: payload.departureTime || '',
+          managerInCharge: payload.managerInCharge || '',
+          cashBf: Number(payload.cashBf || 0),
+          cash: Number(payload.cash || 0),
+          posBf: Number(payload.posBf || 0),
+          pos: Number(payload.pos || 0),
+          tankReadings: Array.isArray(payload.tankReadings) ? payload.tankReadings : [],
+          pumpReadings: Array.isArray(payload.pumpReadings) ? payload.pumpReadings : [],
+          photoEvidence: Array.isArray(payload.photoEvidence) ? payload.photoEvidence : [],
+          remark: payload.remark || '',
+          createdAt: now,
+          updatedAt: now,
+        }
+
+        try {
+          if (hasSupabaseEnv && supabase) {
+            await insertInspectorVisit(newVisit)
+          }
+        } catch (error) {
+          return {
+            ok: false,
+            message: extractErrorMessage(error, 'Could not save visit. Check your connection and try again.'),
+          }
+        }
+
+        set((current) => ({
+          inspectorVisits: [newVisit, ...asArray(current.inspectorVisits)],
+        }))
+        return { ok: true }
+      },
       finalizeSupervisorDailyReview: ({ date, generalRemark, stationReviews }) =>
         set((state) => {
           if (!date) {
@@ -1325,6 +1376,7 @@ export const useAppStore = create(
               adminDailyReviews: asArray(remoteData.adminDailyReviews),
               adminReplenishmentWorkflows: asArray(remoteData.adminReplenishmentWorkflows),
               adminReportResolutions: asArray(remoteData.adminReportResolutions),
+              inspectorVisits: asArray(remoteData.inspectorVisits),
               hydratedFromSupabase: true,
               isHydrating: false,
             })
@@ -1380,6 +1432,7 @@ export const useAppStore = create(
             adminDailyReviews: [],
             adminReplenishmentWorkflows: [],
             adminReportResolutions: [],
+            inspectorVisits: [],
           }
         }
         return persisted
@@ -1396,6 +1449,7 @@ export const useAppStore = create(
         adminDailyReviews: state.adminDailyReviews,
         adminReplenishmentWorkflows: state.adminReplenishmentWorkflows,
         adminReportResolutions: state.adminReportResolutions,
+        inspectorVisits: state.inspectorVisits,
         chatMessages: state.chatMessages,
         appSettings: state.appSettings,
         pinnedChatUserIds: state.pinnedChatUserIds,

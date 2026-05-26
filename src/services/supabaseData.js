@@ -241,6 +241,27 @@ const mapAdminReportResolution = (row) => ({
   updatedAt: row.updated_at || null,
 })
 
+const mapInspectorVisit = (row) => ({
+  id: row.id,
+  stationId: row.station_id,
+  inspectorId: row.inspector_id,
+  inspectorName: row.inspector_name || '',
+  visitDate: row.visit_date,
+  arrivalTime: row.arrival_time || '',
+  departureTime: row.departure_time || '',
+  managerInCharge: row.manager_in_charge || '',
+  cashBf: Number(row.cash_bf ?? 0) || 0,
+  cash: Number(row.cash ?? 0) || 0,
+  posBf: Number(row.pos_bf ?? 0) || 0,
+  pos: Number(row.pos ?? 0) || 0,
+  tankReadings: Array.isArray(row.tank_readings) ? row.tank_readings : [],
+  pumpReadings: Array.isArray(row.pump_readings) ? row.pump_readings : [],
+  photoEvidence: Array.isArray(row.photo_evidence) ? row.photo_evidence : [],
+  remark: row.remark || '',
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+})
+
 const safeSelect = async (builder, mapper, fallback = []) => {
   try {
     const { data, error } = await builder
@@ -258,7 +279,7 @@ export const loadInitialData = async () => {
     return null
   }
 
-  const [stationsRes, usersRes, reportsRes, chatRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions] = await Promise.all([
+  const [stationsRes, usersRes, reportsRes, chatRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits] = await Promise.all([
     supabase.from('stations').select('*').order('name', { ascending: true }),
     supabase.from('users').select('*').order('name', { ascending: true }),
     supabase.from('daily_reports').select('*').order('date', { ascending: true }),
@@ -280,6 +301,11 @@ export const loadInitialData = async () => {
     safeSelect(
       supabase.from('admin_report_resolutions').select('*').order('updated_at', { ascending: false }),
       mapAdminReportResolution,
+      [],
+    ),
+    safeSelect(
+      supabase.from('inspector_visits').select('*').order('visit_date', { ascending: false }),
+      mapInspectorVisit,
       [],
     ),
   ])
@@ -307,6 +333,7 @@ export const loadInitialData = async () => {
     interventions,
     adminReplenishmentWorkflows,
     adminReportResolutions,
+    inspectorVisits,
   }
 }
 
@@ -748,6 +775,38 @@ export const listDailyReportDatesByStation = async (stationId) => {
     id: row.id,
     date: row.date,
   }))
+}
+
+export const insertInspectorVisit = async (visit) => {
+  if (!hasSupabaseEnv || !supabase) {
+    throw new Error('Supabase is not configured for inspector visit sync.')
+  }
+
+  const payload = {
+    id: visit.id,
+    station_id: visit.stationId,
+    inspector_id: visit.inspectorId,
+    inspector_name: visit.inspectorName || '',
+    visit_date: visit.visitDate,
+    arrival_time: visit.arrivalTime || '',
+    departure_time: visit.departureTime || '',
+    manager_in_charge: visit.managerInCharge || '',
+    cash_bf: Number(visit.cashBf ?? 0),
+    cash: Number(visit.cash ?? 0),
+    pos_bf: Number(visit.posBf ?? 0),
+    pos: Number(visit.pos ?? 0),
+    tank_readings: Array.isArray(visit.tankReadings) ? visit.tankReadings : [],
+    pump_readings: Array.isArray(visit.pumpReadings) ? visit.pumpReadings : [],
+    photo_evidence: Array.isArray(visit.photoEvidence) ? visit.photoEvidence : [],
+    remark: visit.remark || '',
+    updated_at: visit.updatedAt || new Date().toISOString(),
+  }
+
+  const { error } = await supabase.from('inspector_visits').upsert(payload, { onConflict: 'id' })
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
 }
 
 export const deleteDailyReportByStationAndDate = async (stationId, date) => {

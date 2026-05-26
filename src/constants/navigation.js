@@ -3,6 +3,7 @@ export const linksByRole = {
     { label: 'Dashboard', path: '/admin/dashboard' },
     { label: 'Reports', path: '/admin/reports' },
     { label: 'Product Requests', path: '/admin/product-requests' },
+    { label: 'Inspector Visits', path: '/admin/inspector-visits' },
     { label: 'History', path: '/admin/history' },
     { label: 'Stations', path: '/stations' },
     { label: 'Reconciliation', path: '/reconciliation' },
@@ -13,6 +14,7 @@ export const linksByRole = {
   ],
   supervisor: [
     { label: 'Dashboard', path: '/supervisor' },
+    { label: 'Visitation Report', path: '/supervisor?view=inspector-visits' },
     { label: 'History', path: '/supervisor?view=history' },
     { label: 'Stations', path: '/stations' },
     { label: 'Reconciliation', path: '/reconciliation' },
@@ -25,6 +27,11 @@ export const linksByRole = {
     { label: 'Product Requests', path: '/terminal-operator' },
     { label: 'History', path: '/terminal-operator?view=history' },
     { label: 'Users', path: '/users' },
+    { label: 'Settings', path: '/settings' },
+  ],
+  inspector: [
+    { label: 'New report', path: '/inspector' },
+    { label: 'History', path: '/inspector?view=history' },
     { label: 'Settings', path: '/settings' },
   ],
   staff: [{ label: 'Manager Dashboard', path: '/staff' }],

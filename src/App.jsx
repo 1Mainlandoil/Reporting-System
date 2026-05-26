@@ -20,6 +20,8 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
 import TerminalOperatorDashboardPage from './pages/TerminalOperatorDashboardPage'
+import InspectorDashboardPage from './pages/InspectorDashboardPage'
+import AdminInspectorVisitsPage from './pages/AdminInspectorVisitsPage'
 import ITAdminPage from './pages/ITAdminPage'
 
 const RootRoute = () => {
@@ -72,6 +74,17 @@ const App = () => (
     </Route>
 
     <Route
+      path="/inspector"
+      element={
+        <ProtectedRoute allowedRoles={['inspector']}>
+          <AppLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route index element={<InspectorDashboardPage />} />
+    </Route>
+
+    <Route
       path="/admin"
       element={
         <ProtectedRoute allowedRoles={['admin']}>
@@ -83,12 +96,13 @@ const App = () => (
       <Route path="dashboard" element={<AdminDashboardPage />} />
       <Route path="reports" element={<AdminDashboardPage />} />
       <Route path="product-requests" element={<AdminProductRequestsPage />} />
+      <Route path="inspector-visits" element={<AdminInspectorVisitsPage />} />
       <Route path="history" element={<AdminDashboardPage />} />
     </Route>
 
     <Route
       element={
-        <ProtectedRoute allowedRoles={['admin', 'supervisor', 'staff', 'terminal_operator']}>
+        <ProtectedRoute allowedRoles={['admin', 'supervisor', 'staff', 'terminal_operator', 'inspector']}>
           <AppLayout />
         </ProtectedRoute>
       }

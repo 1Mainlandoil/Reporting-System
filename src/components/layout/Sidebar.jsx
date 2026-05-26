@@ -34,7 +34,13 @@ const Sidebar = () => {
                   : '⚙',
           path: link.path,
         }))
-      : [
+      : role === 'inspector'
+        ? links.map((link) => ({
+            label: link.label,
+            icon: link.label === 'New report' ? '▦' : link.label === 'History' ? '🕘' : '⚙',
+            path: link.path,
+          }))
+        : [
           { label: 'Dashboard', icon: '▦', path: role === 'staff' ? '/staff' : linkMap.dashboard },
           {
             label: 'Reports',
@@ -42,10 +48,16 @@ const Sidebar = () => {
             path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports,
           },
           ...(role === 'admin'
-            ? [{ label: 'Product Requests', icon: '⬒', path: linkMap['product requests'] }]
+            ? [
+                { label: 'Product Requests', icon: '⬒', path: linkMap['product requests'] },
+                { label: 'Inspector Visits', icon: '◔', path: linkMap['inspector visits'] },
+              ]
             : []),
           ...(role === 'supervisor'
-            ? [{ label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' }]
+            ? [
+                { label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' },
+                { label: 'Visitation Report', icon: '◔', path: '/supervisor?view=inspector-visits' },
+              ]
             : []),
           { label: 'Reconciliation', icon: '◍', path: linkMap.reconciliation },
           {
@@ -93,6 +105,11 @@ const Sidebar = () => {
                   item.label === 'Month-End Summary' &&
                   location.pathname === '/supervisor' &&
                   currentView === 'month-end-summary'
+                const isSupervisorVisitationReport =
+                  role === 'supervisor' &&
+                  item.label === 'Visitation Report' &&
+                  location.pathname === '/supervisor' &&
+                  currentView === 'inspector-visits'
                 const isTerminalProductRequests =
                   role === 'terminal_operator' &&
                   item.label === 'Product Requests' &&
@@ -112,20 +129,40 @@ const Sidebar = () => {
                   role === 'admin' &&
                   item.label === 'Product Requests' &&
                   location.pathname === '/admin/product-requests'
+                const isAdminInspectorVisits =
+                  role === 'admin' &&
+                  item.label === 'Inspector Visits' &&
+                  location.pathname === '/admin/inspector-visits'
+                const isInspectorNewVisit =
+                  role === 'inspector' &&
+                  item.label === 'New report' &&
+                  location.pathname === '/inspector' &&
+                  currentView !== 'history'
+                const isInspectorHistory =
+                  role === 'inspector' &&
+                  item.label === 'History' &&
+                  location.pathname === '/inspector' &&
+                  currentView === 'history'
                 const isCustomActive =
                   role === 'terminal_operator' &&
                   (item.label === 'Product Requests' || item.label === 'History')
                     ? isTerminalProductRequests || isTerminalHistory
-                    : role === 'admin' && item.label === 'Product Requests'
-                      ? isAdminProductRequests
-                      : role === 'supervisor' &&
+                    : role === 'inspector' && (item.label === 'New report' || item.label === 'History')
+                      ? isInspectorNewVisit || isInspectorHistory
+                      : role === 'admin' && item.label === 'Product Requests'
+                        ? isAdminProductRequests
+                        : role === 'admin' && item.label === 'Inspector Visits'
+                          ? isAdminInspectorVisits
+                          : role === 'supervisor' &&
                         (item.label === 'Dashboard' ||
                           item.label === 'Reports' ||
                           item.label === 'Month-End Summary' ||
+                          item.label === 'Visitation Report' ||
                           item.label === 'History')
                       ? isSupervisorDashboard ||
                         isSupervisorReports ||
                         isSupervisorMonthEnd ||
+                        isSupervisorVisitationReport ||
                         isSupervisorHistory
                       : isActive
 

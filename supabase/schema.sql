@@ -26,7 +26,7 @@ create table if not exists public.stations (
 create table if not exists public.users (
   id text primary key,
   name text not null,
-  role text not null check (role in ('staff', 'supervisor', 'admin', 'terminal_operator')),
+  role text not null check (role in ('staff', 'supervisor', 'admin', 'terminal_operator', 'inspector')),
   station_id text references public.stations(id) on delete set null,
   phone_number text,
   email text,
@@ -239,6 +239,33 @@ alter table public.daily_reports
   add column if not exists calculated_sales_liters_pms numeric,
   add column if not exists calculated_sales_liters_ago numeric;
 
+create table if not exists public.inspector_visits (
+  id text primary key,
+  station_id text not null references public.stations(id) on delete cascade,
+  inspector_id text not null references public.users(id) on delete cascade,
+  inspector_name text not null default '',
+  visit_date date not null,
+  arrival_time text not null default '',
+  departure_time text not null default '',
+  manager_in_charge text not null default '',
+  cash_bf numeric not null default 0,
+  cash numeric not null default 0,
+  pos_bf numeric not null default 0,
+  pos numeric not null default 0,
+  tank_readings jsonb not null default '[]'::jsonb,
+  pump_readings jsonb not null default '[]'::jsonb,
+  photo_evidence jsonb not null default '[]'::jsonb,
+  remark text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_inspector_visits_visit_date on public.inspector_visits(visit_date desc);
+create index if not exists idx_inspector_visits_station_date on public.inspector_visits(station_id, visit_date desc);
+
+alter table public.inspector_visits
+  add column if not exists photo_evidence jsonb not null default '[]'::jsonb;
+
 alter table public.users
   add column if not exists manager_username text,
   add column if not exists manager_password_hash text;
@@ -271,7 +298,15 @@ alter table public.users drop constraint if exists users_role_check;
 
 alter table public.users
   add constraint users_role_check
-  check (role in ('staff', 'supervisor', 'admin', 'terminal_operator'));
+  check (role in ('staff', 'supervisor', 'admin', 'terminal_operator', 'inspector'));
+
+insert into public.users (id, name, role, email, approval_status)
+values ('insp-demo-1', 'Demo Inspector', 'inspector', 'inspector@mainlandoil.com', 'approved')
+on conflict (id) do update
+set name = excluded.name,
+    role = excluded.role,
+    email = excluded.email,
+    approval_status = excluded.approval_status;
 
 create index if not exists idx_daily_reports_station_date on public.daily_reports(station_id, date desc);
 create unique index if not exists ux_daily_reports_station_date on public.daily_reports(station_id, date);
@@ -332,6 +367,7 @@ alter table public.interventions enable row level security;
 alter table public.admin_replenishment_workflows enable row level security;
 alter table public.admin_report_resolutions enable row level security;
 alter table public.month_end_finalizations enable row level security;
+alter table public.inspector_visits enable row level security;
 
 drop policy if exists "allow all stations" on public.stations;
 drop policy if exists "allow all users" on public.users;
@@ -344,6 +380,7 @@ drop policy if exists "allow all interventions" on public.interventions;
 drop policy if exists "allow all admin replenishment workflows" on public.admin_replenishment_workflows;
 drop policy if exists "allow all admin report resolutions" on public.admin_report_resolutions;
 drop policy if exists "allow all month end finalizations" on public.month_end_finalizations;
+drop policy if exists "allow all inspector visits" on public.inspector_visits;
 
 create policy "allow all stations" on public.stations for all using (true) with check (true);
 create policy "allow all users" on public.users for all using (true) with check (true);
@@ -356,6 +393,7 @@ create policy "allow all interventions" on public.interventions for all using (t
 create policy "allow all admin replenishment workflows" on public.admin_replenishment_workflows for all using (true) with check (true);
 create policy "allow all admin report resolutions" on public.admin_report_resolutions for all using (true) with check (true);
 create policy "allow all month end finalizations" on public.month_end_finalizations for all using (true) with check (true);
+create policy "allow all inspector visits" on public.inspector_visits for all using (true) with check (true);
 
 -- Realtime: push chat + report (+ user contact) changes to connected clients
 do $$

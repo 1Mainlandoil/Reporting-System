@@ -8,6 +8,7 @@ const mobileMenuByRole = {
   supervisor: [
     { label: 'Dashboard', path: '/supervisor?view=dashboard' },
     { label: 'Reports', path: '/supervisor?view=daily-openings' },
+    { label: 'Visitation Report', path: '/supervisor?view=inspector-visits' },
     { label: 'History', path: '/supervisor?view=history' },
     { label: 'Reconciliation', path: '/reconciliation' },
     { label: 'Alerts', path: '/alerts' },
@@ -20,6 +21,7 @@ const mobileMenuByRole = {
     { label: 'Dashboard', path: '/admin/dashboard' },
     { label: 'Reports', path: '/admin/reports' },
     { label: 'Product Requests', path: '/admin/product-requests' },
+    { label: 'Inspector Visits', path: '/admin/inspector-visits' },
     { label: 'History', path: '/admin/history' },
     { label: 'Reconciliation', path: '/reconciliation' },
     { label: 'Alerts', path: '/alerts' },
@@ -32,6 +34,11 @@ const mobileMenuByRole = {
     { label: 'Product Requests', path: '/terminal-operator' },
     { label: 'History', path: '/terminal-operator?view=history' },
     { label: 'Users', path: '/users' },
+    { label: 'Settings', path: '/settings' },
+  ],
+  inspector: [
+    { label: 'New report', path: '/inspector' },
+    { label: 'History', path: '/inspector?view=history' },
     { label: 'Settings', path: '/settings' },
   ],
 }
@@ -61,7 +68,14 @@ const Navbar = () => {
   const station = getCurrentStation()
   const links = linksByRole[role] || []
   const staffHistoryPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : ''
-  const roleLabel = role === 'staff' ? 'manager' : role
+  const roleLabel =
+    role === 'staff'
+      ? 'manager'
+      : role === 'terminal_operator'
+        ? 'terminal operator'
+        : role === 'inspector'
+          ? 'station inspector'
+          : role
   const mobileLinks = role === 'staff'
     ? [
       ...(staffHistoryPath ? [{ label: 'History', path: staffHistoryPath }] : []),
@@ -122,6 +136,49 @@ const Navbar = () => {
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
             >
               Order Product
+            </button>
+            <button
+              type="button"
+              onClick={() => setChatOpen(true)}
+              className="relative rounded-lg border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 dark:border-blue-500"
+            >
+              Chat
+              {chatUnreadCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
+                  {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={logout}
+              className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white dark:bg-slate-700"
+            >
+              Logout
+            </button>
+          </div>
+        )}
+        {role === 'inspector' && (
+          <div className="hidden items-center gap-2 md:flex">
+            <button
+              type="button"
+              onClick={() => navigate('/inspector')}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            >
+              New report
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/inspector?view=history')}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            >
+              History
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/settings')}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            >
+              Settings
             </button>
             <button
               type="button"

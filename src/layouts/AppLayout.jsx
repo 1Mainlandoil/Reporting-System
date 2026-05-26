@@ -9,7 +9,7 @@ import { useAppStore } from '../store/useAppStore'
 const AppLayout = () => {
   const role = useAppStore((state) => state.role)
   const hydrateFromSupabase = useAppStore((state) => state.hydrateFromSupabase)
-  const showSidebar = role !== 'staff'
+  const showSidebar = role !== 'staff' && role !== 'inspector'
 
   useEffect(() => {
     hydrateFromSupabase()
