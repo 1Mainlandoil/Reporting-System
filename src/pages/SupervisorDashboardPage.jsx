@@ -308,10 +308,10 @@ const SupervisorDashboardPage = () => {
         const calculatedPumpSales = latestToday
           ? computePumpProductSales(pumpReadings, latestToday.rttPMS, latestToday.rttAGO)
           : { pms: 0, ago: 0, total: 0 }
-        const managerEnteredSalesPMS = latestToday
+        const managerEnteredSalesLitersPMS = latestToday
           ? Number(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0)
           : 0
-        const managerEnteredSalesAGO = latestToday
+        const managerEnteredSalesLitersAGO = latestToday
           ? Number(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0)
           : 0
         const calculatedSalesLitersPMS =
@@ -380,7 +380,7 @@ const SupervisorDashboardPage = () => {
           calculatedSalesLitersPMS,
           calculatedSalesLitersAGO,
           calculatedSalesLitersTotal: calculatedSalesLitersPMS + calculatedSalesLitersAGO,
-          managerEnteredSalesLitersTotal: managerEnteredSalesPMS + managerEnteredSalesAGO,
+          managerEnteredSalesLitersTotal: managerEnteredSalesLitersPMS + managerEnteredSalesLitersAGO,
           rttPMS: latestToday ? latestToday.rttPMS ?? 'Not Submitted' : 'Not Submitted',
           rttAGO: latestToday ? latestToday.rttAGO ?? 'Not Submitted' : 'Not Submitted',
           managerRemark: latestToday ? latestToday.remark ?? latestToday.remarks ?? '-' : 'Not Submitted',
