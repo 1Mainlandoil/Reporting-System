@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mainland-v3'
+const CACHE_NAME = 'mainland-v4'
 const PRECACHE_URLS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './sw.js']
 
 self.addEventListener('install', (event) => {
@@ -19,15 +19,30 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
   const requestUrl = new URL(event.request.url)
   if (requestUrl.origin !== self.location.origin) return
+
+  const isAsset =
+    requestUrl.pathname.includes('/assets/') ||
+    requestUrl.pathname.endsWith('.js') ||
+    requestUrl.pathname.endsWith('.css')
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response.ok) {
+        if (response.ok && !isAsset) {
           const clone = response.clone()
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
         }
         return response
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./')))
+      .catch(async () => {
+        const cached = await caches.match(event.request)
+        if (cached) {
+          return cached
+        }
+        if (isAsset) {
+          return new Response('', { status: 504, statusText: 'Asset unavailable' })
+        }
+        return caches.match('./')
+      }),
   )
 })

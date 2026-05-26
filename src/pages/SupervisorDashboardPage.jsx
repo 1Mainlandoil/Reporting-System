@@ -50,10 +50,12 @@ const resolveReceivedProductType = (report) => {
 const SupervisorDashboardPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const stations = useAppStore((state) => state.stations)
-  const reports = useAppStore((state) => state.reports)
-  const users = useAppStore((state) => state.users)
-  const stockThresholds = useAppStore((state) => state.appSettings.stockThresholds)
+  const stations = useAppStore((state) => (Array.isArray(state.stations) ? state.stations : []))
+  const reports = useAppStore((state) => (Array.isArray(state.reports) ? state.reports : []))
+  const users = useAppStore((state) => (Array.isArray(state.users) ? state.users : []))
+  const stockThresholds = useAppStore(
+    (state) => state.appSettings?.stockThresholds ?? { criticalMax: 500, warningMax: 999 },
+  )
   const currentUser = useAppStore((state) => state.currentUser)
   const interventionsState = useAppStore((state) => state.interventions)
   const flagStationIntervention = useAppStore((state) => state.flagStationIntervention)
@@ -61,9 +63,13 @@ const SupervisorDashboardPage = () => {
   const revertEscalationIntervention = useAppStore((state) => state.revertEscalationIntervention)
   const unflagStationIntervention = useAppStore((state) => state.unflagStationIntervention)
 
-  const dailyFinalizations = useAppStore((state) => state.dailyFinalizations)
+  const dailyFinalizations = useAppStore((state) =>
+    Array.isArray(state.dailyFinalizations) ? state.dailyFinalizations : [],
+  )
   const finalizeSupervisorDailyReview = useAppStore((state) => state.finalizeSupervisorDailyReview)
-  const monthEndFinalizations = useAppStore((state) => state.monthEndFinalizations)
+  const monthEndFinalizations = useAppStore((state) =>
+    Array.isArray(state.monthEndFinalizations) ? state.monthEndFinalizations : [],
+  )
   const finalizeSupervisorMonthEndSummary = useAppStore((state) => state.finalizeSupervisorMonthEndSummary)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [statusFilter, setStatusFilter] = useState('all')

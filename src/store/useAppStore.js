@@ -19,6 +19,7 @@ import {
   deleteIntervention,
   insertChatMessage,
   insertReport,
+  insertInspectorVisit,
   loadInitialData,
   markChatMessagesSeenInSupabase,
   upsertAdminReportResolution,
@@ -55,6 +56,28 @@ const defaultAppSettings = {
     supervisorReviewWorkflowEnabled: true,
   },
 }
+
+const asArray = (value, fallback = []) => (Array.isArray(value) ? value : fallback)
+
+const ensurePersistedCollections = (state, fallback = {}) => ({
+  ...state,
+  reports: asArray(state.reports, fallback.reports),
+  users: asArray(state.users, fallback.users),
+  stations: asArray(state.stations, fallback.stations),
+  productRequests: asArray(state.productRequests, fallback.productRequests),
+  inspectorVisits: asArray(state.inspectorVisits, fallback.inspectorVisits),
+  dailyFinalizations: asArray(state.dailyFinalizations, fallback.dailyFinalizations),
+  monthEndFinalizations: asArray(state.monthEndFinalizations, fallback.monthEndFinalizations),
+  interventions: asArray(state.interventions, fallback.interventions),
+  chatMessages: asArray(state.chatMessages, fallback.chatMessages),
+  adminDailyReviews: asArray(state.adminDailyReviews, fallback.adminDailyReviews),
+  adminReplenishmentWorkflows: asArray(
+    state.adminReplenishmentWorkflows,
+    fallback.adminReplenishmentWorkflows,
+  ),
+  adminReportResolutions: asArray(state.adminReportResolutions, fallback.adminReportResolutions),
+  appSettings: state.appSettings ?? fallback.appSettings ?? defaultAppSettings,
+})
 
 const mergeUsersById = (localUsers = [], remoteUsers = []) => {
   const merged = new Map()
@@ -110,6 +133,7 @@ export const useAppStore = create(
       filters: initialFilters,
       interventions: [],
       productRequests: [],
+      inspectorVisits: [],
       dailyFinalizations: [],
       monthEndFinalizations: [],
       adminDailyReviews: [],
@@ -483,6 +507,52 @@ export const useAppStore = create(
         }
         set({
           reports: [...state.reports, newReport],
+        })
+        return { ok: true }
+      },
+      submitInspectorVisit: async (payload) => {
+        const state = get()
+        const inspector = state.currentUser
+        if (!inspector?.id || state.role !== ROLES.INSPECTOR) {
+          return { ok: false, error: 'not_inspector' }
+        }
+        const visitDate = payload.visitDate || new Date().toISOString().split('T')[0]
+        const newVisit = {
+          id: payload.id || `insp-visit-${inspector.id}-${Date.now()}`,
+          stationId: payload.stationId,
+          inspectorId: inspector.id,
+          inspectorName: inspector.name || 'Inspector',
+          visitDate,
+          arrivalTime: String(payload.arrivalTime || '').trim(),
+          departureTime: String(payload.departureTime || '').trim(),
+          managerInCharge: String(payload.managerInCharge || '').trim(),
+          cashBf: Number(payload.cashBf || 0),
+          cash: Number(payload.cash || 0),
+          posBf: Number(payload.posBf || 0),
+          pos: Number(payload.pos || 0),
+          tankReadings: Array.isArray(payload.tankReadings) ? payload.tankReadings : [],
+          pumpReadings: Array.isArray(payload.pumpReadings) ? payload.pumpReadings : [],
+          remark: String(payload.remark || '').trim(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        if (!newVisit.stationId) {
+          return { ok: false, error: 'no_station' }
+        }
+        try {
+          if (hasSupabaseEnv && supabase) {
+            await insertInspectorVisit(newVisit)
+          }
+        } catch (err) {
+          return {
+            ok: false,
+            error: 'sync_failed',
+            message: extractErrorMessage(err),
+            rawError: err,
+          }
+        }
+        set({
+          inspectorVisits: [newVisit, ...state.inspectorVisits],
         })
         return { ok: true }
       },
@@ -1294,16 +1364,17 @@ export const useAppStore = create(
 
             set({
               stations: mergeStationCatalog(canonicalStations, remoteData.stations),
-              users: remoteData.users,
-              reports: remoteData.reports,
-              productRequests: remoteData.productRequests,
-              dailyFinalizations: remoteData.dailyFinalizations,
-              monthEndFinalizations: remoteData.monthEndFinalizations,
-              interventions: remoteData.interventions,
+              users: asArray(remoteData.users),
+              reports: asArray(remoteData.reports),
+              productRequests: asArray(remoteData.productRequests),
+              inspectorVisits: asArray(remoteData.inspectorVisits),
+              dailyFinalizations: asArray(remoteData.dailyFinalizations),
+              monthEndFinalizations: asArray(remoteData.monthEndFinalizations),
+              interventions: asArray(remoteData.interventions),
               chatMessages: mergedChatMessages,
-              adminDailyReviews: remoteData.adminDailyReviews,
-              adminReplenishmentWorkflows: remoteData.adminReplenishmentWorkflows,
-              adminReportResolutions: remoteData.adminReportResolutions,
+              adminDailyReviews: asArray(remoteData.adminDailyReviews),
+              adminReplenishmentWorkflows: asArray(remoteData.adminReplenishmentWorkflows),
+              adminReportResolutions: asArray(remoteData.adminReportResolutions),
               hydratedFromSupabase: true,
               isHydrating: false,
             })
@@ -1339,6 +1410,8 @@ export const useAppStore = create(
     {
       name: 'fuel-stock-app',
       version: STATION_CATALOG_PERSIST_VERSION,
+      merge: (persistedState, currentState) =>
+        ensurePersistedCollections({ ...currentState, ...persistedState }, currentState),
       migrate: (persisted, fromVersion) => {
         if (!persisted || typeof persisted !== 'object') {
           return persisted
@@ -1350,6 +1423,7 @@ export const useAppStore = create(
             users: [],
             reports: [],
             productRequests: [],
+            inspectorVisits: [],
             dailyFinalizations: [],
             monthEndFinalizations: [],
             interventions: [],
@@ -1368,6 +1442,7 @@ export const useAppStore = create(
         theme: state.theme,
         interventions: state.interventions,
         productRequests: state.productRequests,
+        inspectorVisits: state.inspectorVisits,
         dailyFinalizations: state.dailyFinalizations,
         monthEndFinalizations: state.monthEndFinalizations,
         adminDailyReviews: state.adminDailyReviews,
