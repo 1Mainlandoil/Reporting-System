@@ -19,7 +19,6 @@ import {
   deleteIntervention,
   insertChatMessage,
   insertReport,
-  insertInspectorVisit,
   loadInitialData,
   markChatMessagesSeenInSupabase,
   upsertAdminReportResolution,
@@ -65,7 +64,6 @@ const ensurePersistedCollections = (state, fallback = {}) => ({
   users: asArray(state.users, fallback.users),
   stations: asArray(state.stations, fallback.stations),
   productRequests: asArray(state.productRequests, fallback.productRequests),
-  inspectorVisits: asArray(state.inspectorVisits, fallback.inspectorVisits),
   dailyFinalizations: asArray(state.dailyFinalizations, fallback.dailyFinalizations),
   monthEndFinalizations: asArray(state.monthEndFinalizations, fallback.monthEndFinalizations),
   interventions: asArray(state.interventions, fallback.interventions),
@@ -133,7 +131,6 @@ export const useAppStore = create(
       filters: initialFilters,
       interventions: [],
       productRequests: [],
-      inspectorVisits: [],
       dailyFinalizations: [],
       monthEndFinalizations: [],
       adminDailyReviews: [],
@@ -510,52 +507,6 @@ export const useAppStore = create(
         })
         return { ok: true }
       },
-      submitInspectorVisit: async (payload) => {
-        const state = get()
-        const inspector = state.currentUser
-        if (!inspector?.id || state.role !== ROLES.INSPECTOR) {
-          return { ok: false, error: 'not_inspector' }
-        }
-        const visitDate = payload.visitDate || new Date().toISOString().split('T')[0]
-        const newVisit = {
-          id: payload.id || `insp-visit-${inspector.id}-${Date.now()}`,
-          stationId: payload.stationId,
-          inspectorId: inspector.id,
-          inspectorName: inspector.name || 'Inspector',
-          visitDate,
-          arrivalTime: String(payload.arrivalTime || '').trim(),
-          departureTime: String(payload.departureTime || '').trim(),
-          managerInCharge: String(payload.managerInCharge || '').trim(),
-          cashBf: Number(payload.cashBf || 0),
-          cash: Number(payload.cash || 0),
-          posBf: Number(payload.posBf || 0),
-          pos: Number(payload.pos || 0),
-          tankReadings: Array.isArray(payload.tankReadings) ? payload.tankReadings : [],
-          pumpReadings: Array.isArray(payload.pumpReadings) ? payload.pumpReadings : [],
-          remark: String(payload.remark || '').trim(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        if (!newVisit.stationId) {
-          return { ok: false, error: 'no_station' }
-        }
-        try {
-          if (hasSupabaseEnv && supabase) {
-            await insertInspectorVisit(newVisit)
-          }
-        } catch (err) {
-          return {
-            ok: false,
-            error: 'sync_failed',
-            message: extractErrorMessage(err),
-            rawError: err,
-          }
-        }
-        set({
-          inspectorVisits: [newVisit, ...state.inspectorVisits],
-        })
-        return { ok: true }
-      },
       updateReportSupervisorReview: ({ reportId, status, remark }) =>
         set((state) => ({
           reports: state.reports.map((report) =>
@@ -593,14 +544,14 @@ export const useAppStore = create(
           const stationReports = state.reports.filter(
             (report) => report.stationId === station.id,
           )
-          return buildStationMetrics(station, stationReports, state.appSettings.stockThresholds)
+          return buildStationMetrics(station, stationReports, state.appSettings?.stockThresholds)
         })
       },
       getSupervisorPortfolio: () => {
         const state = get()
         return state.stations.map((station) => {
           const stationReports = state.reports.filter((report) => report.stationId === station.id)
-          return buildStationMetrics(station, stationReports, state.appSettings.stockThresholds)
+          return buildStationMetrics(station, stationReports, state.appSettings?.stockThresholds)
         })
       },
       createIntervention: (payload) =>
@@ -1367,7 +1318,6 @@ export const useAppStore = create(
               users: asArray(remoteData.users),
               reports: asArray(remoteData.reports),
               productRequests: asArray(remoteData.productRequests),
-              inspectorVisits: asArray(remoteData.inspectorVisits),
               dailyFinalizations: asArray(remoteData.dailyFinalizations),
               monthEndFinalizations: asArray(remoteData.monthEndFinalizations),
               interventions: asArray(remoteData.interventions),
@@ -1423,7 +1373,6 @@ export const useAppStore = create(
             users: [],
             reports: [],
             productRequests: [],
-            inspectorVisits: [],
             dailyFinalizations: [],
             monthEndFinalizations: [],
             interventions: [],
@@ -1442,7 +1391,6 @@ export const useAppStore = create(
         theme: state.theme,
         interventions: state.interventions,
         productRequests: state.productRequests,
-        inspectorVisits: state.inspectorVisits,
         dailyFinalizations: state.dailyFinalizations,
         monthEndFinalizations: state.monthEndFinalizations,
         adminDailyReviews: state.adminDailyReviews,

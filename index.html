@@ -20,8 +20,18 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          const base = document.querySelector('base')?.href || './'
-          navigator.serviceWorker.register(base + 'sw.js').catch(() => {})
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+            registrations.forEach((registration) => {
+              if (registration.active?.scriptURL?.includes('sw.js')) {
+                registration.unregister()
+              }
+            })
+          })
+          if (window.caches?.keys) {
+            caches.keys().then((keys) => {
+              keys.filter((key) => key.startsWith('mainland-')).forEach((key) => caches.delete(key))
+            })
+          }
         })
       }
     </script>
