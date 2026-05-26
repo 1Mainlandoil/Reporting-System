@@ -728,3 +728,42 @@ export const deleteDailyReportsByStation = async (stationId) => {
   }
   return true
 }
+
+export const listDailyReportDatesByStation = async (stationId) => {
+  if (!hasSupabaseEnv || !supabase) {
+    return []
+  }
+  if (!stationId) {
+    throw new Error('station_id_required')
+  }
+  const { data, error } = await supabase
+    .from('daily_reports')
+    .select('id, date')
+    .eq('station_id', stationId)
+    .order('date', { ascending: false })
+  if (error) {
+    throw new Error(error.message)
+  }
+  return (data || []).map((row) => ({
+    id: row.id,
+    date: row.date,
+  }))
+}
+
+export const deleteDailyReportByStationAndDate = async (stationId, date) => {
+  if (!hasSupabaseEnv || !supabase) {
+    return null
+  }
+  if (!stationId || !date) {
+    throw new Error('station_and_date_required')
+  }
+  const { error } = await supabase
+    .from('daily_reports')
+    .delete()
+    .eq('station_id', stationId)
+    .eq('date', date)
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
+}

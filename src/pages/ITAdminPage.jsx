@@ -3,7 +3,9 @@ import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
 import {
   countDailyReports,
   deleteAllDailyReports,
+  deleteDailyReportByStationAndDate,
   deleteDailyReportsByStation,
+  listDailyReportDatesByStation,
 } from '../services/supabaseData'
 
 const CANONICAL_STATIONS = [
@@ -83,6 +85,8 @@ export default function ITAdminPage() {
   const [reportCountAll, setReportCountAll] = useState(null)
   const [reportCountStation, setReportCountStation] = useState(null)
   const [resetStationId, setResetStationId] = useState('')
+  const [resetReportDate, setResetReportDate] = useState('')
+  const [stationReportDates, setStationReportDates] = useState([])
   const [resetBusy, setResetBusy] = useState(false)
 
   const itSecret = String(import.meta.env.VITE_IT_PORTAL_SECRET || '').trim()
@@ -170,6 +174,31 @@ export default function ITAdminPage() {
       setReportCountStation(null)
     }
   }, [authed, tab, resetStationId, loadReportCountForStation])
+
+  const loadStationReportDates = useCallback(async (stationId) => {
+    if (!hasSupabaseEnv || !stationId) {
+      setStationReportDates([])
+      return []
+    }
+    try {
+      const dates = await listDailyReportDatesByStation(stationId)
+      setStationReportDates(dates)
+      return dates
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not load report dates.', 'error')
+      setStationReportDates([])
+      return []
+    }
+  }, [])
+
+  useEffect(() => {
+    if (authed && tab === 'reset' && resetStationId) {
+      loadStationReportDates(resetStationId)
+    } else {
+      setStationReportDates([])
+    }
+    setResetReportDate('')
+  }, [authed, tab, resetStationId, loadStationReportDates])
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || id || '-'
   const stationLocation = (id) => stations.find((s) => s.id === id)?.location || '-'
@@ -419,6 +448,49 @@ export default function ITAdminPage() {
       showNotice(`Deleted ${total} daily report(s) for ${label}. Manager should refresh and submit a baseline report.`)
     } catch (err) {
       showNotice(err instanceof Error ? err.message : 'Could not delete station reports.', 'error')
+    } finally {
+      setResetBusy(false)
+    }
+  }
+
+  const handleDeleteSingleReport = async () => {
+    if (!hasSupabaseEnv) {
+      showNotice('Supabase not configured.', 'error')
+      return
+    }
+    if (!resetStationId) {
+      showNotice('Select a station first.', 'error')
+      return
+    }
+    if (!resetReportDate) {
+      showNotice('Select a report date to delete.', 'error')
+      return
+    }
+    const label = stationName(resetStationId)
+    const dates = stationReportDates.length ? stationReportDates : await loadStationReportDates(resetStationId)
+    const matched = dates.find((row) => row.date === resetReportDate)
+    if (!matched) {
+      showNotice(`No report found for ${label} on ${resetReportDate}.`, 'error')
+      return
+    }
+    if (
+      !window.confirm(
+        `Delete the daily report for ${label} on ${resetReportDate}?\n\nOther dates for this station will be kept.\n\nContinue?`,
+      )
+    ) {
+      return
+    }
+    if (!(await runSecurityGate('delete single daily report', `${label} · ${resetReportDate}`))) return
+    setResetBusy(true)
+    try {
+      await deleteDailyReportByStationAndDate(resetStationId, resetReportDate)
+      await loadStationReportDates(resetStationId)
+      await loadReportCountForStation(resetStationId)
+      await loadReportCountAll()
+      setResetReportDate('')
+      showNotice(`Deleted report for ${label} on ${resetReportDate}.`)
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not delete report.', 'error')
     } finally {
       setResetBusy(false)
     }
@@ -754,9 +826,64 @@ export default function ITAdminPage() {
               </button>
             </div>
 
+            <div className="rounded-lg border border-slate-300 bg-white p-5 shadow dark:border-slate-600 dark:bg-slate-800 lg:col-span-2">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Delete one report date</h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Remove a single daily report for a station. All other dates for that station stay intact.
+              </p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                  Station
+                  <select
+                    value={resetStationId}
+                    onChange={(e) => setResetStationId(e.target.value)}
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"
+                  >
+                    <option value="">Select station</option>
+                    {stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                  Report date
+                  <select
+                    value={resetReportDate}
+                    onChange={(e) => setResetReportDate(e.target.value)}
+                    disabled={!resetStationId || stationReportDates.length === 0}
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700"
+                  >
+                    <option value="">
+                      {!resetStationId
+                        ? 'Select station first'
+                        : stationReportDates.length === 0
+                          ? 'No reports for this station'
+                          : 'Select report date'}
+                    </option>
+                    {stationReportDates.map((row) => (
+                      <option key={row.id} value={row.date}>
+                        {row.date}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <button
+                type="button"
+                disabled={resetBusy || !resetStationId || !resetReportDate || !hasSupabaseEnv}
+                onClick={handleDeleteSingleReport}
+                className="mt-4 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-600"
+              >
+                {resetBusy ? 'Working…' : 'Delete report for this date'}
+              </button>
+            </div>
+
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900/60 lg:col-span-2">
               <h3 className="font-semibold text-slate-900 dark:text-white">After a reset</h3>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                <li>Deleting one date only removes that day&apos;s report — earlier and later dates are unaffected.</li>
                 <li>Managers should refresh the app (or sign out and back in) before submitting.</li>
                 <li>The first report asks for opening PMS/AGO dips and opening cash B/F — required baseline fields.</li>
                 <li>Day-to-day reporting logic is unchanged after that first baseline submission.</li>
