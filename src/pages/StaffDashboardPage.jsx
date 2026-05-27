@@ -31,10 +31,14 @@ const StaffDashboardPage = () => {
     return dates
   }, [reports, currentUser?.stationId])
 
-  const pastCatchUpNeeded = useMemo(() => {
-    const oldest = getOldestMissingReportDateUpTo(todayIso, stationReportDates)
-    return Boolean(oldest && oldest < todayIso)
+  const oldestMissingDate = useMemo(() => {
+    if (stationReportDates.size === 0) {
+      return null
+    }
+    return getOldestMissingReportDateUpTo(todayIso, stationReportDates)
   }, [todayIso, stationReportDates])
+
+  const pastCatchUpNeeded = Boolean(oldestMissingDate && oldestMissingDate < todayIso)
 
   const submissionReminder = useMemo(() => {
     const sid = currentUser?.stationId
