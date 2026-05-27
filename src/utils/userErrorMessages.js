@@ -170,12 +170,12 @@ export const formatReportSubmitError = (outcome) => {
     case 'catch_up_order':
       return outcome.allowedPast
         ? withSolution(
-            `You must submit ${outcome.allowedPast} before this date.`,
-            `Go to History, select ${outcome.allowedPast}, complete and submit that report, then work forward day by day.`,
+            `You must complete ${outcome.allowedPast} before reporting for a later date.`,
+            `Open History for that date. If there were no sales, choose No under "Did you sell today?", add a reason, and submit. Then continue day by day until you reach today.`,
           )
         : withSolution(
             'An older missing report must be submitted first.',
-            'Open History, pick the earliest missing date allowed, submit it, then continue in date order.',
+            'Open History, complete the earliest missing date (or declare no sales), then work forward in date order.',
           )
     case 'sync_failed':
       return formatSupabaseSaveError(outcome.rawError ?? outcome.message)

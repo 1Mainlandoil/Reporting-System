@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
@@ -93,6 +93,10 @@ const StaffDashboardPage = () => {
 
   const historyPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : '/staff/report'
 
+  if (currentUser?.stationId && pastCatchUpNeeded) {
+    return <Navigate to={`${historyPath}?date=${oldestMissingDate}`} replace />
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <Card className="bg-gradient-to-r from-blue-50 to-white dark:from-slate-900 dark:to-slate-900">
@@ -118,11 +122,11 @@ const StaffDashboardPage = () => {
         </Card>
       )}
 
-      {submissionReminder && (
+      {submissionReminder && !pastCatchUpNeeded && (
         <Card className="border border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-600 dark:bg-amber-950/35">
           <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
             {submissionReminder.shortLine}
-            {pastCatchUpNeeded && currentUser?.stationId ? (
+            {currentUser?.stationId ? (
               <>
                 {' '}
                 <Link to={historyPath} className="font-semibold underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-50">

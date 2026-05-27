@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import DataTable from '../components/ui/DataTable'
 import EmptyState from '../components/ui/EmptyState'
@@ -87,6 +87,7 @@ const buildPumpMeterRows = (priorMap, todayList = []) => {
 
 const StationReportHistoryPage = () => {
   const { stationId } = useParams()
+  const [searchParams] = useSearchParams()
   const role = useAppStore((state) => state.role)
   const currentUser = useAppStore((state) => state.currentUser)
   const stations = useAppStore((state) => state.stations)
@@ -148,7 +149,6 @@ const StationReportHistoryPage = () => {
 
   const isStaffOwnStation = role === ROLES.STAFF && currentUser?.stationId === stationId
 
-  /** Single date staff may file next (matches submitReport catch-up validation). */
   const nextAllowedSubmitDate = useMemo(() => {
     const oldest = getOldestMissingReportDateUpTo(todayIso, reportDatesSet)
     if (oldest != null) {
@@ -159,6 +159,12 @@ const StationReportHistoryPage = () => {
     }
     return null
   }, [todayIso, reportDatesSet, chronAsc.length])
+
+  const catchUpBeforeToday = Boolean(
+    isStaffOwnStation && nextAllowedSubmitDate && nextAllowedSubmitDate < todayIso,
+  )
+
+  const catchUpTargetDate = catchUpBeforeToday ? nextAllowedSubmitDate : null
 
   const staffReportDateSelectOptions = useMemo(() => {
     let rangeStart = chronAsc.length ? chronAsc[0].date : todayIso
@@ -184,6 +190,22 @@ const StationReportHistoryPage = () => {
   }, [chronAsc, todayIso, reportDatesSet, nextAllowedSubmitDate])
 
   useEffect(() => {
+    if (!isStaffOwnStation) {
+      return
+    }
+    const fromUrl = searchParams.get('date')?.slice(0, 10)
+    if (
+      fromUrl &&
+      /^\d{4}-\d{2}-\d{2}$/.test(fromUrl) &&
+      fromUrl <= todayIso &&
+      !reportDatesSet.has(fromUrl) &&
+      fromUrl === nextAllowedSubmitDate
+    ) {
+      setHistoryFilterDate(fromUrl)
+    }
+  }, [isStaffOwnStation, searchParams, todayIso, reportDatesSet, nextAllowedSubmitDate])
+
+  useEffect(() => {
     if (!isStaffOwnStation || !historyFilterDate) {
       return
     }
@@ -191,13 +213,17 @@ const StationReportHistoryPage = () => {
       setHistoryFilterDate('')
       return
     }
-    if (
-      nextAllowedSubmitDate != null &&
-      historyFilterDate !== nextAllowedSubmitDate
-    ) {
+    if (nextAllowedSubmitDate != null && historyFilterDate !== nextAllowedSubmitDate) {
       setHistoryFilterDate(nextAllowedSubmitDate)
     }
   }, [isStaffOwnStation, historyFilterDate, reportDatesSet, nextAllowedSubmitDate])
+
+  useEffect(() => {
+    if (!isStaffOwnStation || historyFilterDate || !nextAllowedSubmitDate || !catchUpBeforeToday) {
+      return
+    }
+    setHistoryFilterDate(nextAllowedSubmitDate)
+  }, [isStaffOwnStation, historyFilterDate, nextAllowedSubmitDate, catchUpBeforeToday])
 
   const filteredReports = reports.filter((report) => {
     if (historyFilterDate && report.date !== historyFilterDate) {
@@ -429,8 +455,21 @@ const StationReportHistoryPage = () => {
     setIsReviewModalOpen(false)
   }
 
+
   return (
     <div className="space-y-4">
+      {catchUpTargetDate && (
+        <Card className="border border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-600 dark:bg-amber-950/35">
+          <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+            Missing report for {formatStaffCalendarDay(catchUpTargetDate)} — complete this day before today&apos;s report.
+          </p>
+          <p className="mt-1 text-sm text-amber-900 dark:text-amber-200">
+            If the station had no sales, set <span className="font-semibold">Did you sell today?</span> to{' '}
+            <span className="font-semibold">No</span>, add a short reason, and submit. Stock and cash carry forward
+            automatically.
+          </p>
+        </Card>
+      )}
       <Card>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -504,7 +543,8 @@ const StationReportHistoryPage = () => {
             <button
               type="button"
               onClick={() => setHistoryFilterDate('')}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600"
+              disabled={catchUpBeforeToday}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600"
             >
               Show all dates
             </button>
@@ -517,7 +557,11 @@ const StationReportHistoryPage = () => {
 
         {isStaffOwnStation && (
           <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
-            {!historyFilterDate ? (
+            {catchUpBeforeToday && !historyFilterDate ? (
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                Loading the next missing report date…
+              </p>
+            ) : !historyFilterDate ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Choose a report date above to submit for that day.
               </p>

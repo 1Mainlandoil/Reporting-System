@@ -426,13 +426,15 @@ export const useAppStore = create(
           return { ok: false, error: 'duplicate_date' }
         }
 
-        if (staffOwnStation && resolvedDate < todayIso) {
+        if (staffOwnStation) {
           const datesSet = new Set(
             state.reports.filter((r) => r.stationId === stationId && r.date).map((r) => r.date),
           )
-          const allowedPast = getOldestMissingReportDateUpTo(todayIso, datesSet)
-          if (!allowedPast || resolvedDate !== allowedPast) {
-            return { ok: false, error: 'catch_up_order', allowedPast }
+          if (datesSet.size > 0) {
+            const oldestMissing = getOldestMissingReportDateUpTo(todayIso, datesSet)
+            if (oldestMissing && resolvedDate !== oldestMissing) {
+              return { ok: false, error: 'catch_up_order', allowedPast: oldestMissing }
+            }
           }
         }
 

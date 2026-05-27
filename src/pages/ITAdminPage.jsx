@@ -35,7 +35,9 @@ const roleLabel = (user) =>
       ? 'Admin'
       : user.role === 'terminal_operator'
         ? 'Terminal Operator'
-        : 'Supervisor'
+        : user.role === 'inspector'
+          ? 'Inspector'
+          : 'Supervisor'
 
 function PasswordInput({ value, onChange, placeholder = '', id, disabled }) {
   const [show, setShow] = useState(false)
@@ -303,6 +305,47 @@ export default function ITAdminPage() {
     await loadUsers()
   }
 
+  const handleCreateInspector = async (e) => {
+    e.preventDefault()
+    if (!supabase) return
+    const fd = new FormData(e.target)
+    const name = String(fd.get('name') || '').trim()
+    const email = String(fd.get('email') || '').trim().toLowerCase()
+    const password = String(fd.get('password') || '')
+    const confirmPassword = String(fd.get('confirmPassword') || '')
+    if (!name || !validateCompanyEmail(email)) { showNotice('Inspector email must be @mainlandoil.com.', 'error'); return }
+    if (password.length < 8) { showNotice('Password must be at least 8 characters.', 'error'); return }
+    if (password !== confirmPassword) { showNotice('Passwords do not match.', 'error'); return }
+    if (!(await runSecurityGate('create inspector account', name || email))) return
+    const { data: signUpData, error: authErr } = await supabase.auth.signUp({ email, password })
+    if (authErr && !authErr.message?.toLowerCase().includes('already registered')) {
+      showNotice(`Auth error: ${authErr.message}`, 'error')
+      return
+    }
+    const allUsers = await loadUsers()
+    const existing = allUsers.find(
+      (u) => u.role === 'inspector' && (u.email || '').toLowerCase() === email,
+    )
+    const id = existing?.id || signUpData?.user?.id || `insp-${Date.now()}`
+    const { error } = await supabase.from('users').upsert({
+      id,
+      name,
+      role: 'inspector',
+      station_id: null,
+      email,
+      manager_username: null,
+      manager_password_hash: null,
+      approval_status: 'approved',
+      approval_reviewed_by: 'IT',
+      approval_reviewed_at: new Date().toISOString(),
+      approval_note: '',
+    })
+    if (error) { showNotice(`Could not create inspector: ${error.message}`, 'error'); return }
+    e.target.reset()
+    showNotice('Inspector registered. They can sign in with this email and password.')
+    await loadUsers()
+  }
+
   const handleCreateTerminalOperator = async (e) => {
     e.preventDefault()
     if (!supabase) return
@@ -527,7 +570,7 @@ export default function ITAdminPage() {
     const isTerminalOperator = user.role === 'terminal_operator'
     if (!SIMPLE_EMAIL_RE.test(email)) { showNotice(`Invalid email: ${user.email}`, 'error'); return }
     if (!isTerminalOperator && !validateCompanyEmail(email)) {
-      showNotice('Supervisor/Admin email must be @mainlandoil.com.', 'error')
+      showNotice('Supervisor/Admin/Inspector email must be @mainlandoil.com.', 'error')
       return
     }
     const { data: fnData, error: fnError } = await supabase.functions.invoke('set-auth-password', { body: { email, password: p1 }, headers: { 'x-it-portal-secret': itSecret } })
@@ -556,7 +599,10 @@ export default function ITAdminPage() {
     if (!supabase || !selectedUser) return
     const { name, email, role, stationId, stationLoc, managerUsername, managerPassword } = editForm
     if (!name) { showNotice('Name is required.', 'error'); return }
-    if ((role === 'admin' || role === 'supervisor') && !validateCompanyEmail(email || '')) { showNotice('Supervisor/Admin must have @mainlandoil.com email.', 'error'); return }
+    if ((role === 'admin' || role === 'supervisor' || role === 'inspector') && !validateCompanyEmail(email || '')) {
+      showNotice('Supervisor/Admin/Inspector must have @mainlandoil.com email.', 'error')
+      return
+    }
     if (role === 'terminal_operator' && !SIMPLE_EMAIL_RE.test(email || '')) { showNotice('Terminal operator must have a valid email.', 'error'); return }
     if (role === 'staff' && !stationId) { showNotice('Manager must have a station.', 'error'); return }
     if (role === 'staff' && !managerUsername) { showNotice('Manager username is required.', 'error'); return }
@@ -660,7 +706,7 @@ export default function ITAdminPage() {
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Name</label><input value={editForm.name || ''} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
                   <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Email</label><input type="email" value={editForm.email || ''} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option><option value="terminal_operator">Terminal Operator</option></select></div>
+                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option><option value="inspector">Inspector</option><option value="terminal_operator">Terminal Operator</option></select></div>
                   <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Station</label><select value={editForm.stationId || ''} onChange={(e) => setEditForm((f) => ({ ...f, stationId: e.target.value, stationLoc: stationLocation(e.target.value) }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
                   <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Manager Username</label><input value={editForm.managerUsername || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerUsername: e.target.value }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
                   <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Manager Password (blank = keep)</label><PasswordInput value={editForm.managerPassword || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerPassword: e.target.value }))} disabled={editForm.role !== 'staff'} /></div>
@@ -712,6 +758,22 @@ export default function ITAdminPage() {
                 <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
               </div>
               <button type="submit" className="mt-4 w-full rounded bg-purple-600 px-4 py-2 font-medium text-white">Create Admin</button>
+            </form>
+
+            <form onSubmit={handleCreateInspector} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Register Inspector</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Company email and password for the inspector visit portal.
+              </p>
+              <div className="mt-4 space-y-3">
+                <input name="name" placeholder="Full name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+              </div>
+              <button type="submit" className="mt-4 w-full rounded bg-teal-600 px-4 py-2 font-medium text-white">
+                Register Inspector
+              </button>
             </form>
 
             <form onSubmit={handleCreateTerminalOperator} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
