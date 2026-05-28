@@ -213,6 +213,16 @@ const StaffClosingReportForm = ({
     return last != null && !Number.isNaN(last) ? String(last) : ''
   }
 
+  const pumpHasPriorReading = (label) => {
+    if (!label || isFirstReport) {
+      return false
+    }
+    const last = lastPumpClosingMap.get(label)
+    return last != null && !Number.isNaN(last)
+  }
+
+  const pumpOpeningLocked = (label) => !isFirstReport && pumpHasPriorReading(label)
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     setSubmitError('')
@@ -583,19 +593,11 @@ const StaffClosingReportForm = ({
 
     if (isFirstReport) {
       openingRaw = pumpDraft.opening !== '' ? Number(pumpDraft.opening) : null
-    } else {
+    } else if (pumpHasPriorReading(label)) {
       const suggested = suggestedPumpOpening(label)
       openingRaw = suggested !== '' ? Number(suggested) : null
-      if (openingRaw == null || Number.isNaN(openingRaw)) {
-        notifyBlockedProcess(
-          setSubmitError,
-          formatFormValidationError(
-            `No prior closing found for ${label || 'this pump'}. Enter it on the baseline report first.`,
-            'pump',
-          ),
-        )
-        return
-      }
+    } else {
+      openingRaw = pumpDraft.opening !== '' ? Number(pumpDraft.opening) : null
     }
 
     if (!label || openingRaw == null || Number.isNaN(openingRaw) || closingRaw == null || Number.isNaN(closingRaw)) {
@@ -621,9 +623,9 @@ const StaffClosingReportForm = ({
       ...prev,
       label: labelValue,
       otherLabel: labelValue === 'Other' ? prev.otherLabel : '',
-      ...(isFirstReport
-        ? { opening: suggestedPumpOpening(nextLabel) || prev.opening }
-        : { opening: '' }),
+      ...(isFirstReport || !pumpHasPriorReading(nextLabel)
+        ? { opening: isFirstReport ? suggestedPumpOpening(nextLabel) || prev.opening : '' }
+        : { opening: suggestedPumpOpening(nextLabel) }),
     }))
   }
 
@@ -686,9 +688,7 @@ const StaffClosingReportForm = ({
     openingBannerDetail ||
     (isFirstReport
       ? 'Baseline — enter opening and closing meter readings for each pump.'
-      : reportDate
-        ? 'Enter closing meter readings only. Opening is taken from the last saved closing for each pump.'
-        : "Enter today's closing meter readings only. Opening is carried from the last saved closing per pump.")
+      : 'Enter closing for each pump. Opening auto-fills when the pump was used before; enter opening for a pump used for the first time.')
 
   const renderSalesValidationHint = (validation, calculatedLiters, productLabel) => {
     if (validation.status === 'empty') {
@@ -746,30 +746,28 @@ const StaffClosingReportForm = ({
             <option value="AGO">AGO</option>
           </select>
         </label>
-        {isFirstReport ? (
+        {pumpOpeningLocked(resolvePumpLabel(pumpDraft)) ? (
+          <div className="space-y-1">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Opening</span>
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+              {suggestedPumpOpening(resolvePumpLabel(pumpDraft))}
+            </p>
+          </div>
+        ) : (
           <FormInput
             type="number"
             label="Opening"
             value={pumpDraft.opening}
             onChange={(event) => setPumpDraft((prev) => ({ ...prev, opening: event.target.value }))}
           />
-        ) : (
-          <div className="space-y-1">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Opening (from last report)</span>
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-              {resolvePumpLabel(pumpDraft)
-                ? suggestedPumpOpening(resolvePumpLabel(pumpDraft)) || 'No prior reading'
-                : 'Select pump'}
-            </p>
-          </div>
         )}
         <FormInput
           type="number"
-          label={isFirstReport ? 'Closing' : 'Closing (today)'}
+          label="Closing"
           value={pumpDraft.closing}
           onChange={(event) => setPumpDraft((prev) => ({ ...prev, closing: event.target.value }))}
         />
-        <div className={`flex items-end ${isFirstReport ? 'md:col-span-2' : 'md:col-span-1'}`}>
+        <div className={`flex items-end ${pumpOpeningLocked(resolvePumpLabel(pumpDraft)) ? 'md:col-span-1' : 'md:col-span-2'}`}>
           <button
             type="button"
             onClick={handleAddPumpReading}
@@ -788,9 +786,9 @@ const StaffClosingReportForm = ({
             setPumpDraft((prev) => ({
               ...prev,
               otherLabel,
-              ...(isFirstReport
-                ? { opening: suggestedPumpOpening(nextLabel) || prev.opening }
-                : { opening: '' }),
+              ...(isFirstReport || !pumpHasPriorReading(nextLabel)
+                ? { opening: isFirstReport ? suggestedPumpOpening(nextLabel) || prev.opening : '' }
+                : { opening: suggestedPumpOpening(nextLabel) }),
             }))
           }}
           className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
