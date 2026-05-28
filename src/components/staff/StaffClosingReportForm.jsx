@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import FormInput from '../ui/FormInput'
 import PhotoUploadInput from '../ui/PhotoUploadInput'
 import ProductPriceSection from './ProductPriceSection'
-import { uploadReportEvidence } from '../../services/supabaseStorage'
+import { uploadReportEvidence, uploadReportEvidenceFiles } from '../../services/supabaseStorage'
 import { computeQuantityRemaining } from '../../utils/reportFields'
 import {
   computePumpProductSales,
@@ -353,16 +353,23 @@ const StaffClosingReportForm = ({
             if (!channel || amount <= 0 || channel.toUpperCase() === 'POS') {
               return null
             }
-            let eodPhotoUrl = item.eodPhotoUrl || ''
-            if (item.eodPhotoFile) {
-              eodPhotoUrl =
-                (await uploadReportEvidence(item.eodPhotoFile, `${evidenceFolder}/${slugChannel(channel)}`)) ||
-                ''
+            let eodPhotoUrls = [
+              ...(Array.isArray(item.eodPhotoUrls) ? item.eodPhotoUrls : []),
+              ...(item.eodPhotoUrl ? [item.eodPhotoUrl] : []),
+            ].filter(Boolean)
+            const pendingFiles = (item.eodPhotoFiles || []).filter(Boolean)
+            if (pendingFiles.length) {
+              const uploaded = await uploadReportEvidenceFiles(
+                pendingFiles,
+                `${evidenceFolder}/${slugChannel(channel)}`,
+              )
+              eodPhotoUrls = [...eodPhotoUrls, ...uploaded.filter(Boolean)]
             }
+            eodPhotoUrls = [...new Set(eodPhotoUrls)]
             return {
               channel,
               amount,
-              ...(eodPhotoUrl ? { eodPhotoUrl } : {}),
+              ...(eodPhotoUrls.length ? { eodPhotoUrls, eodPhotoUrl: eodPhotoUrls[0] } : {}),
             }
           }),
         )
@@ -565,14 +572,32 @@ const StaffClosingReportForm = ({
     if (!channel || amount <= 0) {
       return
     }
-    setPaymentBreakdown((prev) => [...prev, { id: `pay-${Date.now()}`, channel, amount }])
+    setPaymentBreakdown((prev) => [...prev, { id: `pay-${Date.now()}`, channel, amount, eodPhotoFiles: [null] }])
     setPaymentDraft({ channel: PAYMENT_CHANNEL_OPTIONS[0], otherChannel: '', amount: '' })
   }
 
   const handleAddPumpReading = () => {
     const label = resolvePumpLabel(pumpDraft)
-    const openingRaw = pumpDraft.opening !== '' ? Number(pumpDraft.opening) : null
     const closingRaw = pumpDraft.closing !== '' ? Number(pumpDraft.closing) : null
+    let openingRaw = null
+
+    if (isFirstReport) {
+      openingRaw = pumpDraft.opening !== '' ? Number(pumpDraft.opening) : null
+    } else {
+      const suggested = suggestedPumpOpening(label)
+      openingRaw = suggested !== '' ? Number(suggested) : null
+      if (openingRaw == null || Number.isNaN(openingRaw)) {
+        notifyBlockedProcess(
+          setSubmitError,
+          formatFormValidationError(
+            `No prior closing found for ${label || 'this pump'}. Enter it on the baseline report first.`,
+            'pump',
+          ),
+        )
+        return
+      }
+    }
+
     if (!label || openingRaw == null || Number.isNaN(openingRaw) || closingRaw == null || Number.isNaN(closingRaw)) {
       notifyBlockedProcess(setSubmitError, formatFormValidationError('', 'pump'))
       return
@@ -592,13 +617,51 @@ const StaffClosingReportForm = ({
 
   const handlePumpLabelChange = (labelValue) => {
     const nextLabel = resolvePumpLabel({ label: labelValue, otherLabel: pumpDraft.otherLabel })
-    const suggested = suggestedPumpOpening(nextLabel)
     setPumpDraft((prev) => ({
       ...prev,
       label: labelValue,
       otherLabel: labelValue === 'Other' ? prev.otherLabel : '',
-      opening: suggested || prev.opening,
+      ...(isFirstReport
+        ? { opening: suggestedPumpOpening(nextLabel) || prev.opening }
+        : { opening: '' }),
     }))
+  }
+
+  const addPaymentPhotoSlot = (paymentId) => {
+    setPaymentBreakdown((prev) =>
+      prev.map((item) =>
+        item.id === paymentId
+          ? { ...item, eodPhotoFiles: [...(item.eodPhotoFiles || []), null] }
+          : item,
+      ),
+    )
+  }
+
+  const updatePaymentPhotoFile = (paymentId, photoIndex, file) => {
+    setPaymentBreakdown((prev) =>
+      prev.map((item) => {
+        if (item.id !== paymentId) {
+          return item
+        }
+        const nextFiles = [...(item.eodPhotoFiles || [])]
+        nextFiles[photoIndex] = file
+        return { ...item, eodPhotoFiles: nextFiles }
+      }),
+    )
+  }
+
+  const removePaymentPhotoSlot = (paymentId, photoIndex) => {
+    setPaymentBreakdown((prev) =>
+      prev.map((item) => {
+        if (item.id !== paymentId) {
+          return item
+        }
+        return {
+          ...item,
+          eodPhotoFiles: (item.eodPhotoFiles || []).filter((_, index) => index !== photoIndex),
+        }
+      }),
+    )
   }
 
   const handleAddPriceBand = (product) => {
@@ -621,9 +684,11 @@ const StaffClosingReportForm = ({
 
   const detailText =
     openingBannerDetail ||
-    (reportDate
-      ? 'Enter pump readings for this date. System sales (L) = today closing − last reading − RTT, per product.'
-      : "Enter today's pump readings. System sales (L) = today closing − last reading − RTT, separately for PMS and AGO.")
+    (isFirstReport
+      ? 'Baseline — enter opening and closing meter readings for each pump.'
+      : reportDate
+        ? 'Enter closing meter readings only. Opening is taken from the last saved closing for each pump.'
+        : "Enter today's closing meter readings only. Opening is carried from the last saved closing per pump.")
 
   const renderSalesValidationHint = (validation, calculatedLiters, productLabel) => {
     if (validation.status === 'empty') {
@@ -681,19 +746,30 @@ const StaffClosingReportForm = ({
             <option value="AGO">AGO</option>
           </select>
         </label>
+        {isFirstReport ? (
+          <FormInput
+            type="number"
+            label="Opening"
+            value={pumpDraft.opening}
+            onChange={(event) => setPumpDraft((prev) => ({ ...prev, opening: event.target.value }))}
+          />
+        ) : (
+          <div className="space-y-1">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Opening (from last report)</span>
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+              {resolvePumpLabel(pumpDraft)
+                ? suggestedPumpOpening(resolvePumpLabel(pumpDraft)) || 'No prior reading'
+                : 'Select pump'}
+            </p>
+          </div>
+        )}
         <FormInput
           type="number"
-          label="Opening"
-          value={pumpDraft.opening}
-          onChange={(event) => setPumpDraft((prev) => ({ ...prev, opening: event.target.value }))}
-        />
-        <FormInput
-          type="number"
-          label="Closing"
+          label={isFirstReport ? 'Closing' : 'Closing (today)'}
           value={pumpDraft.closing}
           onChange={(event) => setPumpDraft((prev) => ({ ...prev, closing: event.target.value }))}
         />
-        <div className="flex items-end md:col-span-2">
+        <div className={`flex items-end ${isFirstReport ? 'md:col-span-2' : 'md:col-span-1'}`}>
           <button
             type="button"
             onClick={handleAddPumpReading}
@@ -712,7 +788,9 @@ const StaffClosingReportForm = ({
             setPumpDraft((prev) => ({
               ...prev,
               otherLabel,
-              opening: suggestedPumpOpening(nextLabel) || prev.opening,
+              ...(isFirstReport
+                ? { opening: suggestedPumpOpening(nextLabel) || prev.opening }
+                : { opening: '' }),
             }))
           }}
           className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
@@ -1175,18 +1253,41 @@ const StaffClosingReportForm = ({
                         Remove
                       </button>
                     </div>
-                    <PhotoUploadInput
-                      label={`${item.channel} EOD proof`}
-                      value={item.eodPhotoFile || null}
-                      onChange={(file) =>
-                        setPaymentBreakdown((prev) =>
-                          prev.map((paymentItem) =>
-                            paymentItem.id === item.id ? { ...paymentItem, eodPhotoFile: file } : paymentItem,
-                          ),
-                        )
-                      }
-                      disabled={submitting}
-                    />
+                    <div className="space-y-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+                      <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        EOD proof photos (add as many as needed)
+                      </p>
+                      {(item.eodPhotoFiles || []).length === 0 ? (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">No photos added yet.</p>
+                      ) : (
+                        (item.eodPhotoFiles || []).map((file, photoIndex) => (
+                          <div key={`${item.id}-photo-${photoIndex}`} className="flex items-start gap-2">
+                            <PhotoUploadInput
+                              className="flex-1"
+                              label={`Photo ${photoIndex + 1}`}
+                              value={file}
+                              onChange={(nextFile) => updatePaymentPhotoFile(item.id, photoIndex, nextFile)}
+                              disabled={submitting}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removePaymentPhotoSlot(item.id, photoIndex)}
+                              className="mt-6 text-xs text-rose-600"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => addPaymentPhotoSlot(item.id)}
+                        disabled={submitting}
+                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium dark:border-slate-600"
+                      >
+                        Add photo
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
