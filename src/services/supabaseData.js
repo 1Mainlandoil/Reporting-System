@@ -47,11 +47,19 @@ export const mapReportRow = (row) => {
   const posEodPhotoUrl = posRows.find((item) => item?.eodPhotoUrl)?.eodPhotoUrl || ''
   const paymentBreakdown = rawPaymentBreakdown
     .filter((item) => String(item?.channel || '').trim().toUpperCase() !== 'POS')
-    .map((item) => ({
-      channel: item.channel,
-      amount: Number(item.amount || 0),
-      eodPhotoUrl: item.eodPhotoUrl || '',
-    }))
+    .map((item) => {
+      const eodPhotoUrls = [
+        ...(Array.isArray(item.eodPhotoUrls) ? item.eodPhotoUrls : []),
+        ...(item.eodPhotoUrl ? [item.eodPhotoUrl] : []),
+      ].filter(Boolean)
+      const uniqueUrls = [...new Set(eodPhotoUrls)]
+      return {
+        channel: item.channel,
+        amount: Number(item.amount || 0),
+        eodPhotoUrl: uniqueUrls[0] || '',
+        eodPhotoUrls: uniqueUrls,
+      }
+    })
   const totalPaymentDeposits = paymentBreakdown.length
     ? paymentBreakdown.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)
     : Number(row.total_payment_deposits ?? 0) || 0
