@@ -308,8 +308,17 @@ const DailyOpeningReportModal = ({ report, onClose }) => {
                   <p className="text-sm text-slate-700 dark:text-slate-200">
                     {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
                   </p>
-                  {item.eodPhotoUrl ? (
-                    <EvidencePhotoList title={`${item.channel} EOD proof`} photos={[item.eodPhotoUrl]} />
+                  {(item.eodPhotoUrls?.length || item.eodPhotoUrl) ? (
+                    <EvidencePhotoList
+                      title={`${item.channel} EOD proof`}
+                      photos={
+                        item.eodPhotoUrls?.length
+                          ? item.eodPhotoUrls
+                          : item.eodPhotoUrl
+                            ? [item.eodPhotoUrl]
+                            : []
+                      }
+                    />
                   ) : null}
                 </div>
               ))}
