@@ -76,7 +76,7 @@ const StaffClosingReportForm = ({
   onSubmitted,
   submitButtonLabel = 'Submit Report',
   carriedCashBf = 0,
-  isFirstReport = false,
+  isFirstReport = true,
   lastPumpClosingMap = new Map(),
 }) => {
   const [formData, setFormData] = useState(defaultForm)
@@ -519,9 +519,7 @@ const StaffClosingReportForm = ({
       closingBalance,
       pumpReadings: normalizedPumpReadings,
     }
-    if (isFirstReport) {
       payload.cashBf = effectiveCashBf
-    }
     if (reportDate) {
       payload.reportDate = reportDate
     }

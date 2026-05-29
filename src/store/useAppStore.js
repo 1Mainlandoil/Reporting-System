@@ -7,7 +7,6 @@ import {
   STATION_CATALOG_PERSIST_VERSION,
 } from '../data/mockData'
 import { mergeStationCatalog } from '../utils/stationCatalog'
-import { getOldestMissingReportDateUpTo } from '../utils/reportPending'
 import { extractErrorMessage } from '../utils/userErrorMessages'
 import {
   computeQuantityRemaining,
@@ -426,26 +425,9 @@ export const useAppStore = create(
           return { ok: false, error: 'duplicate_date' }
         }
 
-        if (staffOwnStation) {
-          const datesSet = new Set(
-            state.reports.filter((r) => r.stationId === stationId && r.date).map((r) => r.date),
-          )
-          if (datesSet.size > 0) {
-            const oldestMissing = getOldestMissingReportDateUpTo(todayIso, datesSet)
-            if (oldestMissing && resolvedDate !== oldestMissing) {
-              return { ok: false, error: 'catch_up_order', allowedPast: oldestMissing }
-            }
-          }
-        }
-
-        const previousStockReport = [...state.reports]
-          .filter((r) => r.stationId === stationId && r.date && r.date < resolvedDate)
-          .sort((a, b) => b.date.localeCompare(a.date))[0]
-        const previousCashReport = previousStockReport
-        const isFirstStationReport = !previousStockReport
-        const carriedCashBf = previousCashReport
-          ? Number(previousCashReport.closingBalance || 0)
-          : Number(restPayload.cashBf ?? 0)
+        const openingStockPMS = Number(restPayload.openingStockPMS ?? 0)
+        const openingStockAGO = Number(restPayload.openingStockAGO ?? 0)
+        const carriedCashBf = Number(restPayload.cashBf ?? 0)
         const normalizedCashSales = Number(restPayload.cashSales || 0)
         const normalizedPosValue = Number(restPayload.posValue || 0)
         const normalizedBankLodgements = Number(restPayload.totalPaymentDeposits || 0)
@@ -456,12 +438,8 @@ export const useAppStore = create(
         const receivedAGO = Number(restPayload.receivedAGO || 0)
         const salesLitersPMS = Number(restPayload.totalSalesLitersPMS || 0)
         const salesLitersAGO = Number(restPayload.totalSalesLitersAGO || 0)
-        const previousRemainingPMS = previousStockReport
-          ? getQuantityRemainingForProduct(previousStockReport, 'pms')
-          : Number(restPayload.openingStockPMS ?? 0)
-        const previousRemainingAGO = previousStockReport
-          ? getQuantityRemainingForProduct(previousStockReport, 'ago')
-          : Number(restPayload.openingStockAGO ?? 0)
+        const previousRemainingPMS = openingStockPMS
+        const previousRemainingAGO = openingStockAGO
         const quantityRemainingPMS = computeQuantityRemaining({
           previousRemaining: previousRemainingPMS,
           received: receivedPMS,
@@ -472,20 +450,16 @@ export const useAppStore = create(
           received: receivedAGO,
           salesLiters: salesLitersAGO,
         })
-        const openingStockPMS = isFirstStationReport
-          ? Number(restPayload.openingStockPMS ?? 0)
-          : previousRemainingPMS
-        const openingStockAGO = isFirstStationReport
-          ? Number(restPayload.openingStockAGO ?? 0)
-          : previousRemainingAGO
+        const openingStockPMSStored = openingStockPMS
+        const openingStockAGOStored = openingStockAGO
 
         const newReport = {
           id: `stn-${stationId}-${Date.now()}`,
           ...restPayload,
-          openingStockPMS,
-          openingStockAGO,
-          openingPMS: openingStockPMS,
-          openingAGO: openingStockAGO,
+          openingStockPMS: openingStockPMSStored,
+          openingStockAGO: openingStockAGOStored,
+          openingPMS: openingStockPMSStored,
+          openingAGO: openingStockAGOStored,
           quantityRemainingPMS,
           quantityRemainingAGO,
           cashBf: carriedCashBf,

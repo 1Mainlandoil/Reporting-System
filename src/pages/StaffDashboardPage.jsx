@@ -1,105 +1,17 @@
-import { useMemo } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
-import { getQuantityRemainingForProduct, buildLastPumpClosingMap } from '../utils/reportFields'
-import { getDailyReportPendingInfo, getOldestMissingReportDateUpTo, listMissedReportDatesInclusive } from '../utils/reportPending'
 
 const StaffDashboardPage = () => {
   const currentUser = useAppStore((state) => state.currentUser)
   const getCurrentStation = useAppStore((state) => state.getCurrentStation)
   const submitReport = useAppStore((state) => state.submitReport)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
-  const reports = useAppStore((state) => state.reports)
   const reportingConfiguration = useAppStore((state) => state.appSettings.reportingConfiguration)
   const station = getCurrentStation()
 
-  const todayIso = new Date().toISOString().split('T')[0]
-
-  const stationReportDates = useMemo(() => {
-    const sid = currentUser?.stationId
-    if (!sid) {
-      return new Set()
-    }
-    const dates = new Set()
-    for (const report of reports) {
-      if (report.stationId === sid && report.date) {
-        dates.add(report.date)
-      }
-    }
-    return dates
-  }, [reports, currentUser?.stationId])
-
-  const oldestMissingDate = useMemo(() => {
-    if (stationReportDates.size === 0) {
-      return null
-    }
-    return getOldestMissingReportDateUpTo(todayIso, stationReportDates)
-  }, [todayIso, stationReportDates])
-
-  const pastCatchUpNeeded = Boolean(oldestMissingDate && oldestMissingDate < todayIso)
-
-  const submissionReminder = useMemo(() => {
-    const sid = currentUser?.stationId
-    if (!sid) {
-      return null
-    }
-    const info = getDailyReportPendingInfo(todayIso, stationReportDates)
-    if (info.pendingDays === 0 && !info.noPriorSubmissions) {
-      return null
-    }
-
-    if (info.noPriorSubmissions) {
-      return { shortLine: 'Baseline report due — enter opening stock and cash B/F.' }
-    }
-
-    const missedDates = listMissedReportDatesInclusive(info.firstMissingIso, todayIso)
-    const n = missedDates.length
-    const shortLine = n === 1 ? 'One day missing.' : `${n} days missing.`
-    return { shortLine }
-  }, [currentUser?.stationId, stationReportDates, todayIso])
-
-  const carriedOpening = useMemo(() => {
-    const sid = currentUser?.stationId
-    if (!sid) {
-      return { pms: 0, ago: 0 }
-    }
-    const prior = [...reports]
-      .filter((r) => r.stationId === sid && r.date < todayIso)
-      .sort((a, b) => b.date.localeCompare(a.date))[0]
-    if (!prior) {
-      return { pms: 0, ago: 0 }
-    }
-    return {
-      pms: getQuantityRemainingForProduct(prior, 'pms'),
-      ago: getQuantityRemainingForProduct(prior, 'ago'),
-    }
-  }, [reports, currentUser?.stationId, todayIso])
-  const lastPumpClosingMap = useMemo(() => {
-    const sid = currentUser?.stationId
-    if (!sid) {
-      return new Map()
-    }
-    const priorReports = reports.filter((r) => r.stationId === sid && r.date < todayIso)
-    return buildLastPumpClosingMap(priorReports)
-  }, [reports, currentUser?.stationId, todayIso])
-  const carriedCashBf = useMemo(() => {
-    const sid = currentUser?.stationId
-    if (!sid) {
-      return 0
-    }
-    const prior = [...reports]
-      .filter((r) => r.stationId === sid && r.date < todayIso)
-      .sort((a, b) => b.date.localeCompare(a.date))[0]
-    return Number(prior?.closingBalance || 0)
-  }, [reports, currentUser?.stationId, todayIso])
-
   const historyPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : '/staff/report'
-
-  if (currentUser?.stationId && pastCatchUpNeeded) {
-    return <Navigate to={`${historyPath}?date=${oldestMissingDate}`} replace />
-  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -126,18 +38,14 @@ const StaffDashboardPage = () => {
         </Card>
       )}
 
-      {submissionReminder && !pastCatchUpNeeded && (
-        <Card className="border border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-600 dark:bg-amber-950/35">
-          <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
-            {submissionReminder.shortLine}
-            {currentUser?.stationId ? (
-              <>
-                {' '}
-                <Link to={historyPath} className="font-semibold underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-50">
-                  History
-                </Link>
-              </>
-            ) : null}
+      {currentUser?.stationId && (
+        <Card className="border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/60">
+          <p className="text-sm text-slate-700 dark:text-slate-200">
+            Submitting for today. To file a different date, use{' '}
+            <Link to={historyPath} className="font-semibold underline underline-offset-2">
+              Report History
+            </Link>
+            .
           </p>
         </Card>
       )}
@@ -145,10 +53,7 @@ const StaffDashboardPage = () => {
       <Card>
         <StaffClosingReportForm
           stationId={currentUser?.stationId}
-          carriedOpening={carriedOpening}
-          carriedCashBf={carriedCashBf}
-          lastPumpClosingMap={lastPumpClosingMap}
-          isFirstReport={stationReportDates.size === 0}
+          isFirstReport
           reportingConfiguration={reportingConfiguration}
           submitReport={submitReport}
           formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled}
