@@ -1,12 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
-import {
-  countDailyReports,
-  deleteAllDailyReports,
-  deleteDailyReportByStationAndDate,
-  deleteDailyReportsByStation,
-  listDailyReportDatesByStation,
-} from '../services/supabaseData'
 
 const CANONICAL_STATIONS = [
   'ABA 1','ABA 2','ABA 3','ABAKALIKI 1','ABAKILIKI 2','ABUJA 1','ABUJA 2',
@@ -28,22 +21,13 @@ const validateCompanyEmail = (email) => email.toLowerCase().endsWith('@mainlando
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const sanitizeEmailForAuth = (raw) => String(raw || '').normalize('NFC').replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '').trim().toLowerCase().replace(/\s+/g, '')
 
-const roleLabel = (user) =>
-  user.role === 'staff'
-    ? 'Manager'
-    : user.role === 'admin'
-      ? 'Admin'
-      : user.role === 'terminal_operator'
-        ? 'Terminal Operator'
-        : user.role === 'inspector'
-          ? 'Inspector'
-          : 'Supervisor'
+const roleLabel = (user) => user.role === 'staff' ? 'Manager' : user.role === 'admin' ? 'Admin' : 'Supervisor'
 
 function PasswordInput({ value, onChange, placeholder = '', id, disabled }) {
   const [show, setShow] = useState(false)
   return (
     <div className="relative">
-      <input id={id} type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} autoComplete="new-password" className="w-full rounded border border-slate-300 px-3 py-2 pr-10 text-sm dark:border-slate-600 dark:bg-slate-800" />
+      <input id={id} type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} autoComplete="new-password" className="w-full rounded border border-white/10 px-3 py-2 pr-10 text-sm dark:border-slate-600 dark:bg-slate-800" />
       <button type="button" onClick={() => setShow(!show)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">{show ? 'Hide' : 'Show'}</button>
     </div>
   )
@@ -56,12 +40,12 @@ function SecurityModal({ config, onConfirm, onCancel }) {
   if (!config) return null
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl dark:bg-slate-800" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-slate-900 dark:text-white">{config.title}</h3>
+      <div className="w-full max-w-sm rounded-xl bg-white/5 p-6 shadow-xl dark:bg-slate-800" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-bold text-white dark:text-white">{config.title}</h3>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{config.hint}</p>
         {config.challengeCode && <p className="mt-2 text-center text-2xl font-mono font-bold text-blue-600">{config.challengeCode}</p>}
-        <label className="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200">{config.label}</label>
-        <input ref={inputRef} type="text" value={value} onChange={(e) => setValue(e.target.value)} placeholder={config.placeholder || ''} inputMode={config.inputMode || 'text'} onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value) }} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+        <label className="mt-4 block text-sm font-medium text-slate-200 dark:text-slate-200">{config.label}</label>
+        <input ref={inputRef} type="text" value={value} onChange={(e) => setValue(e.target.value)} placeholder={config.placeholder || ''} inputMode={config.inputMode || 'text'} onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value) }} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
         <div className="mt-4 flex gap-3 justify-end">
           <button type="button" onClick={onCancel} className="rounded bg-slate-200 px-4 py-2 text-sm font-medium dark:bg-slate-600 dark:text-white">Cancel</button>
           <button type="button" onClick={() => onConfirm(value)} className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white">Continue</button>
@@ -84,12 +68,6 @@ export default function ITAdminPage() {
   const [editForm, setEditForm] = useState({})
   const [modalConfig, setModalConfig] = useState(null)
   const modalResolveRef = useRef(null)
-  const [reportCountAll, setReportCountAll] = useState(null)
-  const [reportCountStation, setReportCountStation] = useState(null)
-  const [resetStationId, setResetStationId] = useState('')
-  const [resetReportDate, setResetReportDate] = useState('')
-  const [stationReportDates, setStationReportDates] = useState([])
-  const [resetBusy, setResetBusy] = useState(false)
 
   const itSecret = String(import.meta.env.VITE_IT_PORTAL_SECRET || '').trim()
 
@@ -130,77 +108,6 @@ export default function ITAdminPage() {
   }, [])
 
   useEffect(() => { if (authed) { loadStations(); loadUsers() } }, [authed, loadStations, loadUsers])
-
-  const loadReportCountAll = useCallback(async () => {
-    if (!hasSupabaseEnv) {
-      setReportCountAll(0)
-      return 0
-    }
-    try {
-      const count = await countDailyReports()
-      setReportCountAll(count)
-      return count
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Could not count daily reports.', 'error')
-      setReportCountAll(null)
-      return null
-    }
-  }, [])
-
-  const loadReportCountForStation = useCallback(async (stationId) => {
-    if (!hasSupabaseEnv || !stationId) {
-      setReportCountStation(null)
-      return null
-    }
-    try {
-      const count = await countDailyReports({ stationId })
-      setReportCountStation(count)
-      return count
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Could not count station reports.', 'error')
-      setReportCountStation(null)
-      return null
-    }
-  }, [])
-
-  useEffect(() => {
-    if (authed && tab === 'reset') {
-      loadReportCountAll()
-    }
-  }, [authed, tab, loadReportCountAll])
-
-  useEffect(() => {
-    if (authed && tab === 'reset' && resetStationId) {
-      loadReportCountForStation(resetStationId)
-    } else {
-      setReportCountStation(null)
-    }
-  }, [authed, tab, resetStationId, loadReportCountForStation])
-
-  const loadStationReportDates = useCallback(async (stationId) => {
-    if (!hasSupabaseEnv || !stationId) {
-      setStationReportDates([])
-      return []
-    }
-    try {
-      const dates = await listDailyReportDatesByStation(stationId)
-      setStationReportDates(dates)
-      return dates
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Could not load report dates.', 'error')
-      setStationReportDates([])
-      return []
-    }
-  }, [])
-
-  useEffect(() => {
-    if (authed && tab === 'reset' && resetStationId) {
-      loadStationReportDates(resetStationId)
-    } else {
-      setStationReportDates([])
-    }
-    setResetReportDate('')
-  }, [authed, tab, resetStationId, loadStationReportDates])
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || id || '-'
   const stationLocation = (id) => stations.find((s) => s.id === id)?.location || '-'
@@ -305,88 +212,6 @@ export default function ITAdminPage() {
     await loadUsers()
   }
 
-  const handleCreateInspector = async (e) => {
-    e.preventDefault()
-    if (!supabase) return
-    const fd = new FormData(e.target)
-    const name = String(fd.get('name') || '').trim()
-    const email = String(fd.get('email') || '').trim().toLowerCase()
-    const password = String(fd.get('password') || '')
-    const confirmPassword = String(fd.get('confirmPassword') || '')
-    if (!name || !validateCompanyEmail(email)) { showNotice('Inspector email must be @mainlandoil.com.', 'error'); return }
-    if (password.length < 8) { showNotice('Password must be at least 8 characters.', 'error'); return }
-    if (password !== confirmPassword) { showNotice('Passwords do not match.', 'error'); return }
-    if (!(await runSecurityGate('create inspector account', name || email))) return
-    const { data: signUpData, error: authErr } = await supabase.auth.signUp({ email, password })
-    if (authErr && !authErr.message?.toLowerCase().includes('already registered')) {
-      showNotice(`Auth error: ${authErr.message}`, 'error')
-      return
-    }
-    const allUsers = await loadUsers()
-    const existing = allUsers.find(
-      (u) => u.role === 'inspector' && (u.email || '').toLowerCase() === email,
-    )
-    const id = existing?.id || signUpData?.user?.id || `insp-${Date.now()}`
-    const { error } = await supabase.from('users').upsert({
-      id,
-      name,
-      role: 'inspector',
-      station_id: null,
-      email,
-      manager_username: null,
-      manager_password_hash: null,
-      approval_status: 'approved',
-      approval_reviewed_by: 'IT',
-      approval_reviewed_at: new Date().toISOString(),
-      approval_note: '',
-    })
-    if (error) { showNotice(`Could not create inspector: ${error.message}`, 'error'); return }
-    e.target.reset()
-    showNotice('Inspector registered. They can sign in with this email and password.')
-    await loadUsers()
-  }
-
-  const handleCreateTerminalOperator = async (e) => {
-    e.preventDefault()
-    if (!supabase) return
-    const fd = new FormData(e.target)
-    const name = String(fd.get('name') || '').trim()
-    const email = String(fd.get('email') || '').trim().toLowerCase()
-    const password = String(fd.get('password') || '')
-    const confirmPassword = String(fd.get('confirmPassword') || '')
-    if (!name || !SIMPLE_EMAIL_RE.test(email)) { showNotice('Enter a valid email address.', 'error'); return }
-    if (password.length < 8) { showNotice('Password must be at least 8 characters.', 'error'); return }
-    if (password !== confirmPassword) { showNotice('Passwords do not match.', 'error'); return }
-    if (!(await runSecurityGate('create terminal operator account', name || email))) return
-    const { data: signUpData, error: authErr } = await supabase.auth.signUp({ email, password })
-    if (authErr && !authErr.message?.toLowerCase().includes('already registered')) {
-      showNotice(`Auth error: ${authErr.message}`, 'error')
-      return
-    }
-    const allUsers = await loadUsers()
-    const existing = allUsers.find(
-      (u) => u.role === 'terminal_operator' && (u.email || '').toLowerCase() === email,
-    )
-    const id = existing?.id || signUpData?.user?.id || `term-op-${Date.now()}`
-    const { error } = await supabase.from('users').upsert({
-      id,
-      name,
-      role: 'terminal_operator',
-      station_id: null,
-      email,
-      manager_username: null,
-      manager_password_hash: null,
-      approval_status: 'approved',
-      approval_reviewed_by: 'IT',
-      approval_reviewed_at: new Date().toISOString(),
-      approval_note: '',
-    })
-    if (error) { showNotice(`Could not create terminal operator: ${error.message}`, 'error'); return }
-    e.target.reset()
-    showNotice('Terminal operator registered. They can sign in with this email and password.')
-    await loadUsers()
-  }
-
   const handleCreateSuperAdmin = async (e) => {
     e.preventDefault()
     if (!supabase) return
@@ -427,118 +252,6 @@ export default function ITAdminPage() {
     await loadStations()
   }
 
-  const handleResetAllReports = async () => {
-    if (!hasSupabaseEnv) {
-      showNotice('Supabase not configured.', 'error')
-      return
-    }
-    const total = await loadReportCountAll()
-    if (total === 0) {
-      showNotice('No daily reports to delete.', 'error')
-      return
-    }
-    if (
-      !window.confirm(
-        `This permanently deletes ALL ${total} daily report(s) across every station.\n\nManagers must submit a new baseline report (opening stock + cash B/F).\n\nContinue?`,
-      )
-    ) {
-      return
-    }
-    if (!(await runSecurityGate('delete all daily reports', `network-wide (${total} reports)`))) return
-    setResetBusy(true)
-    try {
-      await deleteAllDailyReports()
-      setReportCountAll(0)
-      if (resetStationId) {
-        setReportCountStation(0)
-      }
-      showNotice(`Deleted all ${total} daily report(s). Managers should refresh and submit baseline reports.`)
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Could not delete daily reports.', 'error')
-    } finally {
-      setResetBusy(false)
-    }
-  }
-
-  const handleResetStationReports = async () => {
-    if (!hasSupabaseEnv) {
-      showNotice('Supabase not configured.', 'error')
-      return
-    }
-    if (!resetStationId) {
-      showNotice('Select a station first.', 'error')
-      return
-    }
-    const label = stationName(resetStationId)
-    const total = await loadReportCountForStation(resetStationId)
-    if (total === 0) {
-      showNotice(`No daily reports for ${label}.`, 'error')
-      return
-    }
-    if (
-      !window.confirm(
-        `Delete ${total} daily report(s) for ${label}?\n\nThat station's next submission becomes a baseline report.\n\nContinue?`,
-      )
-    ) {
-      return
-    }
-    if (!(await runSecurityGate('delete station daily reports', label))) return
-    setResetBusy(true)
-    try {
-      await deleteDailyReportsByStation(resetStationId)
-      await loadReportCountForStation(resetStationId)
-      await loadReportCountAll()
-      showNotice(`Deleted ${total} daily report(s) for ${label}. Manager should refresh and submit a baseline report.`)
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Could not delete station reports.', 'error')
-    } finally {
-      setResetBusy(false)
-    }
-  }
-
-  const handleDeleteSingleReport = async () => {
-    if (!hasSupabaseEnv) {
-      showNotice('Supabase not configured.', 'error')
-      return
-    }
-    if (!resetStationId) {
-      showNotice('Select a station first.', 'error')
-      return
-    }
-    if (!resetReportDate) {
-      showNotice('Select a report date to delete.', 'error')
-      return
-    }
-    const label = stationName(resetStationId)
-    const dates = stationReportDates.length ? stationReportDates : await loadStationReportDates(resetStationId)
-    const matched = dates.find((row) => row.date === resetReportDate)
-    if (!matched) {
-      showNotice(`No report found for ${label} on ${resetReportDate}.`, 'error')
-      return
-    }
-    if (
-      !window.confirm(
-        `Delete the daily report for ${label} on ${resetReportDate}?\n\nOther dates for this station will be kept.\n\nContinue?`,
-      )
-    ) {
-      return
-    }
-    if (!(await runSecurityGate('delete single daily report', `${label} · ${resetReportDate}`))) return
-    setResetBusy(true)
-    try {
-      await deleteDailyReportByStationAndDate(resetStationId, resetReportDate)
-      await loadStationReportDates(resetStationId)
-      await loadReportCountForStation(resetStationId)
-      await loadReportCountAll()
-      setResetReportDate('')
-      showNotice(`Deleted report for ${label} on ${resetReportDate}.`)
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Could not delete report.', 'error')
-    } finally {
-      setResetBusy(false)
-    }
-  }
-
   const handleResetPassword = async (user) => {
     if (!supabase) return
     const isManager = user.role === 'staff'
@@ -567,12 +280,7 @@ export default function ITAdminPage() {
     }
 
     const email = sanitizeEmailForAuth(user.email)
-    const isTerminalOperator = user.role === 'terminal_operator'
-    if (!SIMPLE_EMAIL_RE.test(email)) { showNotice(`Invalid email: ${user.email}`, 'error'); return }
-    if (!isTerminalOperator && !validateCompanyEmail(email)) {
-      showNotice('Supervisor/Admin/Inspector email must be @mainlandoil.com.', 'error')
-      return
-    }
+    if (!validateCompanyEmail(email) || !SIMPLE_EMAIL_RE.test(email)) { showNotice(`Invalid email: ${user.email}`, 'error'); return }
     const { data: fnData, error: fnError } = await supabase.functions.invoke('set-auth-password', { body: { email, password: p1 }, headers: { 'x-it-portal-secret': itSecret } })
     if (fnError) { showNotice(`Could not set password: ${fnError.message}`, 'error'); return }
     if (fnData?.error) { showNotice(`Could not set password: ${fnData.error}`, 'error'); return }
@@ -599,26 +307,14 @@ export default function ITAdminPage() {
     if (!supabase || !selectedUser) return
     const { name, email, role, stationId, stationLoc, managerUsername, managerPassword } = editForm
     if (!name) { showNotice('Name is required.', 'error'); return }
-    if ((role === 'admin' || role === 'supervisor' || role === 'inspector') && !validateCompanyEmail(email || '')) {
-      showNotice('Supervisor/Admin/Inspector must have @mainlandoil.com email.', 'error')
-      return
-    }
-    if (role === 'terminal_operator' && !SIMPLE_EMAIL_RE.test(email || '')) { showNotice('Terminal operator must have a valid email.', 'error'); return }
+    if ((role === 'admin' || role === 'supervisor') && !validateCompanyEmail(email || '')) { showNotice('Supervisor/Admin must have @mainlandoil.com email.', 'error'); return }
     if (role === 'staff' && !stationId) { showNotice('Manager must have a station.', 'error'); return }
     if (role === 'staff' && !managerUsername) { showNotice('Manager username is required.', 'error'); return }
     const hash = managerPassword ? await sha256Hex(managerPassword) : (selectedUser.manager_password_hash || '')
     if (role === 'staff' && !hash) { showNotice('Manager password is required.', 'error'); return }
     if (role === 'staff' && stationId && stationLoc) await supabase.from('stations').upsert({ id: stationId, name: stationName(stationId), location: stationLoc })
     if (!(await runSecurityGate('update user', name || selectedUser.id))) return
-    const { error } = await supabase.from('users').upsert({
-      id: selectedUser.id,
-      name,
-      role,
-      email: role === 'staff' ? (email || null) : email,
-      station_id: role === 'staff' ? stationId : null,
-      manager_username: role === 'staff' ? managerUsername : null,
-      manager_password_hash: role === 'staff' ? (hash || null) : null,
-    })
+    const { error } = await supabase.from('users').upsert({ id: selectedUser.id, name, role, email: role === 'staff' ? (email || null) : email, station_id: role === 'staff' ? stationId : null, manager_username: role === 'staff' ? managerUsername : null, manager_password_hash: role === 'staff' ? (hash || null) : null })
     if (error) { showNotice(`Could not update: ${error.message}`, 'error'); return }
     showNotice('User updated.')
     await loadUsers()
@@ -637,42 +333,41 @@ export default function ITAdminPage() {
   if (!hasSupabaseEnv) return <div className="flex min-h-screen items-center justify-center"><p className="text-red-600 font-bold">Supabase is not configured.</p></div>
 
   if (!authed) return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 dark:bg-slate-900">
-      <form onSubmit={handleGateSubmit} className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg dark:bg-slate-800">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">IT Control Portal</h1>
+    <div className="flex min-h-screen items-center justify-center bg-white/8 px-4 dark:bg-[#0d1220]">
+      <form onSubmit={handleGateSubmit} className="w-full max-w-sm rounded-xl bg-white/5 p-8 shadow-lg dark:bg-slate-800">
+        <h1 className="text-xl font-bold text-white dark:text-white">IT Control Portal</h1>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Sign in with your admin account to continue.</p>
         {notice.text && <p className={`mt-3 rounded p-2 text-xs ${notice.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>{notice.text}</p>}
-        <input type="email" value={gateEmail} onChange={(e) => setGateEmail(e.target.value)} placeholder="admin@mainlandoil.com" className="mt-4 w-full rounded border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" autoFocus />
-        <input type="password" value={gatePassword} onChange={(e) => setGatePassword(e.target.value)} placeholder="Password" className="mt-3 w-full rounded border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" />
+        <input type="email" value={gateEmail} onChange={(e) => setGateEmail(e.target.value)} placeholder="admin@mainlandoil.com" className="mt-4 w-full rounded border border-white/10 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" autoFocus />
+        <input type="password" value={gatePassword} onChange={(e) => setGatePassword(e.target.value)} placeholder="Password" className="mt-3 w-full rounded border border-white/10 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" />
         <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Sign In</button>
       </form>
     </div>
   )
 
-  const tabBtnClass = (t) => `px-4 py-2 rounded-t text-sm font-medium ${tab === t ? 'bg-white dark:bg-slate-800 text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`
+  const tabBtnClass = (t) => `px-4 py-2 rounded-t text-sm font-medium ${tab === t ? 'bg-white/5 dark:bg-slate-800 text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-200 dark:text-slate-400'}`
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 dark:bg-slate-900 md:p-8">
+    <div className="min-h-screen bg-white/8 p-4 dark:bg-[#0d1220] md:p-8">
       <SecurityModal config={modalConfig} onConfirm={handleModalConfirm} onCancel={handleModalCancel} />
       <div className="mx-auto max-w-7xl">
         <header className="mb-6">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">IT Control Portal</h1>
+          <h1 className="text-2xl font-bold text-white dark:text-white">IT Control Portal</h1>
           {notice.text && <p className={`mt-2 rounded p-3 text-sm ${notice.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>{notice.text}</p>}
         </header>
 
-        <nav className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+        <nav className="flex gap-1 border-b border-white/8 dark:border-slate-700">
           <button type="button" className={tabBtnClass('users')} onClick={() => setTab('users')}>Users</button>
           <button type="button" className={tabBtnClass('create')} onClick={() => setTab('create')}>Create Users</button>
           <button type="button" className={tabBtnClass('stations')} onClick={() => setTab('stations')}>Stations</button>
-          <button type="button" className={tabBtnClass('reset')} onClick={() => setTab('reset')}>Reporting Reset</button>
         </nav>
 
         {tab === 'users' && (
           <section className="mt-4">
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, role, station, or email" className="mb-4 w-full max-w-md rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white" />
-            <div className="overflow-x-auto rounded-lg bg-white shadow dark:bg-slate-800">
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, role, station, or email" className="mb-4 w-full max-w-md rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white" />
+            <div className="overflow-x-auto rounded-lg bg-white/5 shadow dark:bg-slate-800">
               <table className="w-full text-left text-sm">
-                <thead className="border-b bg-slate-50 dark:bg-slate-700">
+                <thead className="border-b bg-white/5 dark:bg-slate-700">
                   <tr>
                     <th className="px-3 py-2">Name</th>
                     <th className="px-3 py-2">Role</th>
@@ -684,7 +379,7 @@ export default function ITAdminPage() {
                 </thead>
                 <tbody>
                   {filteredUsers.map((u) => (
-                    <tr key={u.id} onClick={() => setSelectedUser(u)} className={`cursor-pointer border-b hover:bg-slate-50 dark:hover:bg-slate-700 ${selectedUser?.id === u.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                    <tr key={u.id} onClick={() => setSelectedUser(u)} className={`cursor-pointer border-b hover:bg-white/5 dark:hover:bg-slate-700 ${selectedUser?.id === u.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                       <td className="px-3 py-2">{u.name || '-'}</td>
                       <td className="px-3 py-2">{roleLabel(u)}</td>
                       <td className="px-3 py-2">{u.role === 'staff' ? u.manager_username || '-' : '-'}</td>
@@ -701,14 +396,14 @@ export default function ITAdminPage() {
             </div>
 
             {selectedUser && (
-              <div className="mt-4 rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-                <h3 className="font-bold text-slate-900 dark:text-white">Edit: {selectedUser.name}</h3>
+              <div className="mt-4 rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
+                <h3 className="font-bold text-white dark:text-white">Edit: {selectedUser.name}</h3>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Name</label><input value={editForm.name || ''} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Email</label><input type="email" value={editForm.email || ''} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option><option value="inspector">Inspector</option><option value="terminal_operator">Terminal Operator</option></select></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Station</label><select value={editForm.stationId || ''} onChange={(e) => setEditForm((f) => ({ ...f, stationId: e.target.value, stationLoc: stationLocation(e.target.value) }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Manager Username</label><input value={editForm.managerUsername || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerUsername: e.target.value }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
+                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Name</label><input value={editForm.name || ''} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
+                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Email</label><input type="email" value={editForm.email || ''} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
+                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
+                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Station</label><select value={editForm.stationId || ''} onChange={(e) => setEditForm((f) => ({ ...f, stationId: e.target.value, stationLoc: stationLocation(e.target.value) }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Manager Username</label><input value={editForm.managerUsername || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerUsername: e.target.value }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
                   <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Manager Password (blank = keep)</label><PasswordInput value={editForm.managerPassword || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerPassword: e.target.value }))} disabled={editForm.role !== 'staff'} /></div>
                 </div>
                 <div className="mt-4 flex gap-3">
@@ -722,84 +417,52 @@ export default function ITAdminPage() {
 
         {tab === 'create' && (
           <section className="mt-4 grid gap-6 lg:grid-cols-2">
-            <form onSubmit={handleCreateManager} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Create Manager</h2>
+            <form onSubmit={handleCreateManager} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-white dark:text-white">Create Manager</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">Station manager with username/password.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="username" placeholder="Login username" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <select name="stationId" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                <input name="stationLocation" placeholder="Station location / zone" className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Full name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="username" placeholder="Login username" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <select name="stationId" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                <input name="stationLocation" placeholder="Station location / zone" className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
               </div>
               <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Create Manager</button>
             </form>
 
-            <form onSubmit={handleCreateSupervisor} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Create Supervisor</h2>
+            <form onSubmit={handleCreateSupervisor} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-white dark:text-white">Create Supervisor</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">Company email for Supabase login.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Full name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
               </div>
               <button type="submit" className="mt-4 w-full rounded bg-green-600 px-4 py-2 font-medium text-white">Create Supervisor</button>
             </form>
 
-            <form onSubmit={handleCreateAdmin} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Create Admin</h2>
+            <form onSubmit={handleCreateAdmin} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-white dark:text-white">Create Admin</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">Company email for Supabase login.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Full name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
               </div>
               <button type="submit" className="mt-4 w-full rounded bg-purple-600 px-4 py-2 font-medium text-white">Create Admin</button>
             </form>
 
-            <form onSubmit={handleCreateInspector} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Register Inspector</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Company email and password for the inspector visit portal.
-              </p>
-              <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-              </div>
-              <button type="submit" className="mt-4 w-full rounded bg-teal-600 px-4 py-2 font-medium text-white">
-                Register Inspector
-              </button>
-            </form>
-
-            <form onSubmit={handleCreateTerminalOperator} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Register Terminal Operator</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Email login for product request approval (any valid email).
-              </p>
-              <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="email@example.com" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-              </div>
-              <button type="submit" className="mt-4 w-full rounded bg-indigo-600 px-4 py-2 font-medium text-white">
-                Register Terminal Operator
-              </button>
-            </form>
-
-            <form onSubmit={handleCreateSuperAdmin} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Create Super Admin (IT)</h2>
+            <form onSubmit={handleCreateSuperAdmin} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-white dark:text-white">Create Super Admin (IT)</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">Any @mainlandoil.com email.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Display name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Display name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="password" type="password" placeholder="Password (min 8)" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
               </div>
               <button type="submit" className="mt-4 w-full rounded bg-red-600 px-4 py-2 font-medium text-white">Create Super Admin</button>
             </form>
@@ -808,149 +471,23 @@ export default function ITAdminPage() {
 
         {tab === 'stations' && (
           <section className="mt-4 grid gap-6 lg:grid-cols-2">
-            <form onSubmit={handleCreateStation} className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Add / Update Station</h2>
+            <form onSubmit={handleCreateStation} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-white dark:text-white">Add / Update Station</h2>
               <div className="mt-4 space-y-3">
-                <input name="id" placeholder="Station ID (e.g. stn-9)" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="name" placeholder="Station name" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="location" placeholder="Zone or address" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="id" placeholder="Station ID (e.g. stn-9)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Station name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="location" placeholder="Zone or address" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
               </div>
               <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Save Station</button>
             </form>
-            <div className="rounded-lg bg-white p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Registered Stations</h2>
+            <div className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
+              <h2 className="text-lg font-bold text-white dark:text-white">Registered Stations</h2>
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b bg-slate-50 dark:bg-slate-700"><tr><th className="px-3 py-2">ID</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Location</th></tr></thead>
+                  <thead className="border-b bg-white/5 dark:bg-slate-700"><tr><th className="px-3 py-2">ID</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Location</th></tr></thead>
                   <tbody>{stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => <tr key={s.id} className="border-b"><td className="px-3 py-2 font-mono text-xs">{s.id}</td><td className="px-3 py-2 font-medium">{s.name}</td><td className="px-3 py-2">{s.location}</td></tr>)}</tbody>
                 </table>
               </div>
-            </div>
-          </section>
-        )}
-
-        {tab === 'reset' && (
-          <section className="mt-4 grid gap-6 lg:grid-cols-2">
-            <div className="rounded-lg border border-red-200 bg-white p-5 shadow dark:border-red-900/40 dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Reset all stations</h2>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                Deletes every daily report in the network. Supervisor review records tied to those reports are removed
-                automatically. Product requests and user accounts are not affected.
-              </p>
-              <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">
-                Current count:{' '}
-                {reportCountAll == null ? '…' : `${reportCountAll} report(s)`}
-              </p>
-              <button
-                type="button"
-                disabled={resetBusy || !hasSupabaseEnv}
-                onClick={handleResetAllReports}
-                className="mt-4 rounded bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {resetBusy ? 'Working…' : 'Delete all daily reports'}
-              </button>
-            </div>
-
-            <div className="rounded-lg border border-amber-200 bg-white p-5 shadow dark:border-amber-900/40 dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Reset one station</h2>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                Clears report history for a single station only. The manager&apos;s next submission is treated as a
-                baseline report with opening stock and cash B/F.
-              </p>
-              <label className="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200">
-                Station
-                <select
-                  value={resetStationId}
-                  onChange={(e) => setResetStationId(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"
-                >
-                  <option value="">Select station</option>
-                  {stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {resetStationId ? (
-                <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">
-                  Reports for {stationName(resetStationId)}:{' '}
-                  {reportCountStation == null ? '…' : `${reportCountStation} report(s)`}
-                </p>
-              ) : null}
-              <button
-                type="button"
-                disabled={resetBusy || !resetStationId || !hasSupabaseEnv}
-                onClick={handleResetStationReports}
-                className="mt-4 rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {resetBusy ? 'Working…' : 'Delete station reports'}
-              </button>
-            </div>
-
-            <div className="rounded-lg border border-slate-300 bg-white p-5 shadow dark:border-slate-600 dark:bg-slate-800 lg:col-span-2">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Delete one report date</h2>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                Remove a single daily report for a station. All other dates for that station stay intact.
-              </p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
-                  Station
-                  <select
-                    value={resetStationId}
-                    onChange={(e) => setResetStationId(e.target.value)}
-                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"
-                  >
-                    <option value="">Select station</option>
-                    {stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
-                  Report date
-                  <select
-                    value={resetReportDate}
-                    onChange={(e) => setResetReportDate(e.target.value)}
-                    disabled={!resetStationId || stationReportDates.length === 0}
-                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700"
-                  >
-                    <option value="">
-                      {!resetStationId
-                        ? 'Select station first'
-                        : stationReportDates.length === 0
-                          ? 'No reports for this station'
-                          : 'Select report date'}
-                    </option>
-                    {stationReportDates.map((row) => (
-                      <option key={row.id} value={row.date}>
-                        {row.date}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <button
-                type="button"
-                disabled={resetBusy || !resetStationId || !resetReportDate || !hasSupabaseEnv}
-                onClick={handleDeleteSingleReport}
-                className="mt-4 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-600"
-              >
-                {resetBusy ? 'Working…' : 'Delete report for this date'}
-              </button>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900/60 lg:col-span-2">
-              <h3 className="font-semibold text-slate-900 dark:text-white">After a reset</h3>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
-                <li>Deleting one date only removes that day&apos;s report — earlier and later dates are unaffected.</li>
-                <li>Managers should refresh the app (or sign out and back in) before submitting.</li>
-                <li>The first report asks for opening PMS/AGO dips and opening cash B/F — required baseline fields.</li>
-                <li>Day-to-day reporting logic is unchanged after that first baseline submission.</li>
-                <li>Coordinate with supervisors before running a network-wide reset.</li>
-              </ul>
             </div>
           </section>
         )}

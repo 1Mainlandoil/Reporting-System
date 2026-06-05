@@ -4,7 +4,7 @@ const Card = ({ children, className }) => {
   return (
     <div
       className={clsx(
-        'rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-none',
+        'rounded-2xl border border-white/5 bg-[#0d1220] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]',
         className,
       )}
     >

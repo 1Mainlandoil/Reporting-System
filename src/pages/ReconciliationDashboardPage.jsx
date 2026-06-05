@@ -224,7 +224,7 @@ const ReconciliationDashboardPage = () => {
           className={`rounded-lg px-4 py-2 text-sm font-medium ${
             productView === 'pms'
               ? 'bg-red-600/90 text-white'
-              : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
+              : 'border border-white/10 text-slate-200 dark:border-slate-700 dark:text-slate-200'
           }`}
         >
           PMS Reconciliation
@@ -234,7 +234,7 @@ const ReconciliationDashboardPage = () => {
           className={`rounded-lg px-4 py-2 text-sm font-medium ${
             productView === 'ago'
               ? 'bg-red-600/90 text-white'
-              : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
+              : 'border border-white/10 text-slate-200 dark:border-slate-700 dark:text-slate-200'
           }`}
         >
           AGO Reconciliation
@@ -250,16 +250,16 @@ const ReconciliationDashboardPage = () => {
       >
         {reconciliationFiltersScreen ? (
           <>
-            <div className="flex flex-wrap items-start gap-4 border-b border-slate-200 pb-6 dark:border-slate-700">
+            <div className="flex flex-wrap items-start gap-4 border-b border-white/8 pb-6 dark:border-slate-700">
               <button
                 type="button"
                 onClick={closeReconciliationFiltersScreen}
-                className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+                className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
               >
                 ← Back to overview
               </button>
               <div className="min-w-0 flex-1">
-                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
                   {productView === 'pms' ? 'PMS' : 'AGO'} reconciliation · Filters
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -269,7 +269,7 @@ const ReconciliationDashboardPage = () => {
               </div>
             </div>
             {reconciliationFiltersPanel}
-            <div className="-mx-4 flex justify-end border-t border-slate-200 bg-slate-50/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-slate-900/60">
+            <div className="-mx-4 flex justify-end border-t border-white/8 bg-white/5/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-[#0d1220]/60">
               <button
                 type="button"
                 onClick={closeReconciliationFiltersScreen}
@@ -289,7 +289,7 @@ const ReconciliationDashboardPage = () => {
                 <button
                   type="button"
                   onClick={openReconciliationFiltersScreen}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white dark:text-slate-900"
+                  className="rounded-lg bg-[#0d1220] px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white/5 dark:text-white"
                 >
                   Filters
                 </button>
@@ -315,9 +315,9 @@ const ReconciliationDashboardPage = () => {
               </div>
             </div>
             <ErrorNotice message={exportNotice} />
-            <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
+            <div className="rounded-xl border border-white/8 bg-white/5/90 px-4 py-3 dark:border-slate-700 dark:bg-[#0d1220]/50">
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                <span className="font-medium text-slate-800 dark:text-slate-100">Active filters:</span>{' '}
+                <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                 {reconciliationFiltersSummary}
               </p>
             </div>

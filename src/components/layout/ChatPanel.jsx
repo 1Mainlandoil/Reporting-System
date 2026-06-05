@@ -440,11 +440,8 @@ const ChatPanel = () => {
           width: 0;
           height: 0;
           border: 6px solid transparent;
-          border-right-color: #ffffff;
+          border-right-color: #1e2b32;
           border-bottom: 0;
-        }
-        .dark .chat-bubble-tail-left::after {
-          border-right-color: #1e293b;
         }
       `}</style>
 
@@ -456,13 +453,13 @@ const ChatPanel = () => {
             isMobileViewport
               ? 'fixed inset-0 z-[70] h-screen w-screen rounded-none border-transparent'
               : 'flex h-[580px] w-[880px] max-w-[calc(100vw-2rem)] rounded-2xl border-[#4caf50]/30'
-          } bg-white dark:bg-[#111b21]`}
+          } bg-[#111b21]`}
         >
           {/* ───── Contact List Pane ───── */}
           {showListPane && (
             <div
               className={`flex flex-col ${
-                isMobileViewport ? 'h-full w-full' : 'w-[320px] border-r border-slate-200 dark:border-slate-700/50'
+                isMobileViewport ? 'h-full w-full' : 'w-[320px] border-r border-white/8 dark:border-slate-700/50'
               }`}
             >
               <div className="bg-[#388e3c] px-4 py-3 dark:bg-[#202c33]">
@@ -496,7 +493,7 @@ const ChatPanel = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21]">
+              <div className="flex-1 overflow-y-auto bg-[#111b21]">
                 {!conversationSummaries.length && (
                   <p className="p-4 text-xs text-slate-500">No users matched your search.</p>
                 )}
@@ -507,31 +504,31 @@ const ChatPanel = () => {
                       key={item.user.id}
                       type="button"
                       onClick={() => openConversation(item.user.id)}
-                      className={`flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left transition-colors dark:border-slate-800/50 ${
+                      className={`flex w-full items-center gap-3 border-b border-white/5 px-3 py-3 text-left transition-colors ${
                         isActive
-                          ? 'bg-[#f0f2f5] dark:bg-[#2a3942]'
-                          : 'hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]'
+                          ? 'bg-[#2a3942]'
+                          : 'hover:bg-[#202c33]'
                       }`}
                     >
                       <Avatar user={item.user} size={42} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-1">
-                            <p className="truncate text-[14px] font-medium text-slate-900 dark:text-slate-100">{item.user.name}</p>
+                            <p className="truncate text-sm font-medium text-white dark:text-slate-100">{item.user.name}</p>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <p className={`text-[11px] ${item.unreadCount > 0 ? 'text-[#4caf50] font-medium' : 'text-slate-500'}`}>
+                            <p className={`text-xs ${item.unreadCount > 0 ? 'text-[#4caf50] font-medium' : 'text-slate-500'}`}>
                               {formatTimestamp(item.lastMessage?.createdAt)}
                             </p>
                           </div>
                         </div>
                         <div className="mt-0.5 flex items-center justify-between gap-2">
-                          <p className="truncate text-[12.5px] text-slate-500 dark:text-slate-400">
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                             {item.lastMessage ? item.lastMessage.text : `Start chat with ${item.user.name}`}
                           </p>
                           <div className="flex items-center gap-1.5">
                             {item.unreadCount > 0 && (
-                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#4caf50] px-1 text-[10px] font-bold text-white">
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#4caf50] px-1 text-xs font-bold text-white">
                                 {item.unreadCount}
                               </span>
                             )}
@@ -568,7 +565,7 @@ const ChatPanel = () => {
                       {selectedUser ? selectedUser.name : 'Select a user to chat'}
                     </p>
                     {selectedUser && (
-                      <p className="text-[11px] text-white/60">{getChatRoleLabel(selectedUser.role)}</p>
+                      <p className="text-xs text-white/60">{getChatRoleLabel(selectedUser.role)}</p>
                     )}
                   </div>
                 </div>
@@ -590,7 +587,7 @@ const ChatPanel = () => {
               >
                 {!conversation.length && (
                   <div className="flex h-full items-center justify-center">
-                    <p className="rounded-lg bg-white/80 px-4 py-2 text-xs text-slate-500 shadow-sm dark:bg-slate-800/80">
+                    <p className="rounded-lg bg-[#1e2b32] px-4 py-2 text-xs text-slate-400 shadow-sm">
                       No messages yet. Say hello!
                     </p>
                   </div>
@@ -600,7 +597,7 @@ const ChatPanel = () => {
                   if (item.type === 'date') {
                     return (
                       <div key={item.key} className="my-3 flex justify-center">
-                        <span className="rounded-lg bg-white/90 px-3 py-1 text-[11px] font-medium text-slate-600 shadow-sm dark:bg-[#1e2b32] dark:text-slate-300">
+                        <span className="rounded-lg bg-[#1e2b32] px-3 py-1 text-xs font-medium text-slate-300 shadow-sm">
                           {formatDateLabel(item.date)}
                         </span>
                       </div>
@@ -627,14 +624,14 @@ const ChatPanel = () => {
                       )}
                       <div className="relative max-w-[75%]">
                         <div
-                          className={`relative rounded-lg px-3 py-1.5 text-[13px] leading-[1.35] shadow-sm ${
+                          className={`relative rounded-lg px-3 py-1.5 text-sm leading-[1.35] shadow-sm ${
                             mine
                               ? 'bg-[#2e7d32] text-white chat-bubble-tail-right dark:bg-[#2e7d32]'
-                              : 'bg-white text-slate-900 chat-bubble-tail-left dark:bg-[#1e293b] dark:text-slate-100'
+                              : 'bg-[#1e2b32] text-slate-100 chat-bubble-tail-left'
                           }`}
                         >
                           <p className="whitespace-pre-wrap break-words">{message.text}</p>
-                          <div className={`mt-0.5 flex items-center justify-end gap-1 ${mine ? 'text-[10px] text-emerald-200/70' : 'text-[10px] text-slate-400'}`}>
+                          <div className={`mt-0.5 flex items-center justify-end gap-1 ${mine ? 'text-xs text-emerald-200/70' : 'text-xs text-slate-400'}`}>
                             <span>{formatTimestamp(message.createdAt)}</span>
                             {mine && <StatusIcon message={message} />}
                           </div>
@@ -647,7 +644,7 @@ const ChatPanel = () => {
                               <button
                                 key={emoji}
                                 onClick={() => toggleReaction(message.id, emoji)}
-                                className="rounded-full bg-white px-1.5 py-0.5 text-[12px] shadow-sm transition hover:scale-110 dark:bg-slate-700"
+                                className="rounded-full bg-[#2a3942] px-1.5 py-0.5 text-[12px] shadow-sm transition hover:scale-110"
                               >
                                 {emoji}
                               </button>
@@ -658,7 +655,7 @@ const ChatPanel = () => {
                         {/* Reaction picker */}
                         {isHovered && (
                           <div
-                            className={`absolute -top-8 z-10 flex gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg transition-opacity dark:bg-slate-700 ${
+                            className={`absolute -top-8 z-10 flex gap-0.5 rounded-full bg-[#2a3942] px-1.5 py-1 shadow-lg transition-opacity ${
                               mine ? 'right-0' : 'left-0'
                             }`}
                           >
@@ -666,7 +663,7 @@ const ChatPanel = () => {
                               <button
                                 key={emoji}
                                 onClick={() => toggleReaction(message.id, emoji)}
-                                className="rounded-full px-1 text-[14px] transition hover:scale-125 hover:bg-slate-100 dark:hover:bg-slate-600"
+                                className="rounded-full px-1 text-sm transition hover:scale-125 hover:bg-white/10"
                               >
                                 {emoji}
                               </button>
@@ -683,7 +680,7 @@ const ChatPanel = () => {
                     <div className="mr-1.5 mt-auto mb-1">
                       {selectedUser && <Avatar user={selectedUser} size={24} />}
                     </div>
-                    <div className="rounded-lg bg-white px-1 py-0.5 shadow-sm dark:bg-[#1e293b]">
+                    <div className="rounded-lg bg-[#1e2b32] px-1 py-0.5 shadow-sm">
                       <BouncingDots />
                     </div>
                   </div>
@@ -693,7 +690,7 @@ const ChatPanel = () => {
               </div>
 
               {/* Input bar */}
-              <div className={`flex items-center gap-2 bg-[#f0f2f5] px-4 py-3 dark:bg-[#202c33] ${isMobileViewport ? 'fixed bottom-0 left-0 right-0 z-[80] safe-area-pb' : ''}`}>
+              <div className={`flex items-center gap-2 bg-[#202c33] px-4 py-3 ${isMobileViewport ? 'fixed bottom-0 left-0 right-0 z-[80] safe-area-pb' : ''}`}>
                 <input
                   disabled={!activeTargetId}
                   value={draft}
@@ -712,7 +709,7 @@ const ChatPanel = () => {
                     if (event.key === 'Enter') handleSend()
                   }}
                   placeholder={activeTargetId ? 'Type a message' : 'Select a user to start chatting'}
-                  className="flex-1 rounded-lg border-0 bg-white px-4 py-2.5 text-sm outline-none transition dark:bg-[#2a3942] dark:text-white dark:placeholder-slate-400"
+                  className="flex-1 rounded-lg border-0 bg-[#2a3942] px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none transition focus:bg-[#323f49]"
                 />
                 <button
                   type="button"
@@ -749,7 +746,7 @@ const ChatPanel = () => {
           <circle cx="15" cy="10" r="0.8" fill="currentColor" stroke="none" />
         </svg>
         {!isOpen && chatUnreadTotal > 0 && (
-          <span className="chat-unread-pulse absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white ring-2 ring-white dark:ring-slate-900">
+          <span className="chat-unread-pulse absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white ring-2 ring-white dark:ring-slate-900">
             {chatUnreadTotal > 99 ? '99+' : chatUnreadTotal}
           </span>
         )}

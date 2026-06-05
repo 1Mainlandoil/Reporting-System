@@ -1,8 +1,6 @@
-import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
-import DailyOpeningReportModal from '../components/reports/DailyOpeningReportModal'
 import DataTable from '../components/ui/DataTable'
 import StatusBadge from '../components/ui/StatusBadge'
 import FilterBar from '../components/ui/FilterBar'
@@ -13,21 +11,7 @@ import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics } from '../utils/stock'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
-import { buildDailyReportViewRow } from '../utils/dailyReportViewRow'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
-
-const renderTodaySubmissionStatus = (status) => (
-  <span
-    className={clsx(
-      'rounded-full px-3 py-1 text-xs font-semibold',
-      status === 'Submitted'
-        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-        : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300',
-    )}
-  >
-    {status}
-  </span>
-)
 
 const AdminDashboardPage = () => {
   const navigate = useNavigate()
@@ -40,6 +24,8 @@ const AdminDashboardPage = () => {
   const clearFilters = useAppStore((state) => state.clearFilters)
   const reports = useAppStore((state) => state.reports)
   const stockThresholds = useAppStore((state) => state.appSettings.stockThresholds)
+  const productRequests = useAppStore((state) => state.productRequests)
+  const resolveProductRequestByAdmin = useAppStore((state) => state.resolveProductRequestByAdmin)
   const dailyFinalizations = useAppStore((state) => state.dailyFinalizations)
   const monthEndFinalizations = useAppStore((state) => state.monthEndFinalizations)
   const adminDailyReviews = useAppStore((state) => state.adminDailyReviews)
@@ -53,13 +39,13 @@ const AdminDashboardPage = () => {
   const currentUser = useAppStore((state) => state.currentUser)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [reviewAdminDrafts, setReviewAdminDrafts] = useState({})
+  const [adminRequestDrafts, setAdminRequestDrafts] = useState({})
   const [selectedFinalizationDate, setSelectedFinalizationDate] = useState('')
   const [adminGeneralReviewDrafts, setAdminGeneralReviewDrafts] = useState({})
   const [adminStationReviewDrafts, setAdminStationReviewDrafts] = useState({})
   const [inventoryVisibleKeys, setInventoryVisibleKeys] = useState(
     () => new Set(['stationName', 'stockRemaining', 'daysRemaining', 'status']),
   )
-  const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
 
   const metrics = useMemo(
     () =>
@@ -98,10 +84,6 @@ const AdminDashboardPage = () => {
   )
 
   const todayReports = useMemo(() => reports.filter((report) => report.date === today), [reports, today])
-  const submittedTodayStationIds = useMemo(
-    () => new Set(todayReports.map((report) => report.stationId)),
-    [todayReports],
-  )
   const reportDatesByStation = useMemo(() => {
     const byStation = new Map()
     for (const report of reports) {
@@ -115,43 +97,8 @@ const AdminDashboardPage = () => {
     }
     return byStation
   }, [reports])
-  const submittedTodayCount = submittedTodayStationIds.size
+  const submittedTodayCount = new Set(todayReports.map((report) => report.stationId)).size
   const pendingTodayCount = stations.length - submittedTodayCount
-
-  const todaySubmissionRows = useMemo(
-    () =>
-      stations
-        .map((station) => {
-          const latestToday = todayReports.filter((report) => report.stationId === station.id).at(-1)
-          const previousReport = [...reports]
-            .filter((report) => report.stationId === station.id && report.date < today)
-            .sort((a, b) => b.date.localeCompare(a.date))[0]
-          const managerName = stationManagerById.get(station.id) || 'Unassigned'
-
-          return {
-            stationId: station.id,
-            stationName: station.name,
-            managerName,
-            submissionStatus: submittedTodayStationIds.has(station.id) ? 'Submitted' : 'Pending',
-            viewReportRow: latestToday
-              ? buildDailyReportViewRow({
-                  stationId: station.id,
-                  stationName: station.name,
-                  managerName,
-                  latestToday,
-                  previousReport,
-                })
-              : null,
-          }
-        })
-        .sort((a, b) => {
-          if (a.submissionStatus !== b.submissionStatus) {
-            return a.submissionStatus === 'Submitted' ? -1 : 1
-          }
-          return a.stationName.localeCompare(b.stationName)
-        }),
-    [stations, stationManagerById, submittedTodayStationIds, todayReports, reports, today],
-  )
 
   const totalSalesToday = useMemo(
     () =>
@@ -179,7 +126,9 @@ const AdminDashboardPage = () => {
       metrics
         .filter((item) => item.status !== 'safe')
         .map((item) => {
-          const submissionStatus = submittedTodayStationIds.has(item.stationId) ? 'Submitted' : 'Pending'
+          const submissionStatus = todayReports.some((report) => report.stationId === item.stationId)
+            ? 'Submitted'
+            : 'Pending'
           const dates = reportDatesByStation.get(item.stationId) ?? new Set()
           const pendingInfo = getDailyReportPendingInfo(today, dates)
           const pendingFmt = formatPendingSubmissionSummary(pendingInfo, today)
@@ -201,7 +150,7 @@ const AdminDashboardPage = () => {
           const priority = { critical: 0, warning: 1, safe: 2 }
           return priority[a.status] - priority[b.status]
         }),
-    [metrics, stationManagerById, submittedTodayStationIds, reportDatesByStation, today],
+    [metrics, stationManagerById, todayReports, reportDatesByStation, today],
   )
 
   const supervisorReviewRows = useMemo(
@@ -272,6 +221,34 @@ const AdminDashboardPage = () => {
       note: nextState.note ?? row.note,
     })
   }
+
+  const adminPendingRequestRows = useMemo(
+    () =>
+      productRequests
+        .filter((request) => request.status === 'pending_admin')
+        .map((request) => ({
+          ...request,
+          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
+          createdDate: request.createdAt?.split('T')[0] || '-',
+        }))
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+    [productRequests, stations],
+  )
+
+  const requestHistoryRows = useMemo(
+    () =>
+      productRequests
+        .filter((request) => request.status === 'approved' || request.status === 'declined')
+        .map((request) => ({
+          ...request,
+          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
+          createdDate: request.createdAt?.split('T')[0] || '-',
+          finalStatus: request.status === 'approved' ? 'Approved' : 'Declined',
+          reasonOrRemark: request.status === 'approved' ? request.adminRemark || '-' : request.adminRemark || request.supervisorRemark || '-',
+        }))
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+    [productRequests, stations],
+  )
 
   const columns = useMemo(
     () => [
@@ -358,12 +335,7 @@ const AdminDashboardPage = () => {
       minWidth: 170,
       render: (row) => row.expectedDaysRemaining.toFixed(2),
     },
-    {
-      key: 'submissionStatus',
-      header: 'Today Report',
-      minWidth: 140,
-      render: (row) => renderTodaySubmissionStatus(row.submissionStatus),
-    },
+    { key: 'submissionStatus', header: 'Today Report', minWidth: 140 },
     {
       key: 'submissionBacklog',
       header: 'Submission backlog',
@@ -394,37 +366,6 @@ const AdminDashboardPage = () => {
           </div>
         )
       },
-    },
-  ]
-
-  const todaySubmissionColumns = [
-    { key: 'stationName', header: 'Station', minWidth: 200 },
-    { key: 'managerName', header: 'Manager', minWidth: 160 },
-    {
-      key: 'submissionStatus',
-      header: 'Today Report',
-      minWidth: 140,
-      render: (row) => renderTodaySubmissionStatus(row.submissionStatus),
-    },
-    {
-      key: 'viewReport',
-      header: 'View Report',
-      minWidth: 130,
-      render: (row) =>
-        row.viewReportRow ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              setSelectedDailyOpeningReport(row.viewReportRow)
-            }}
-            className="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
-          >
-            View Report
-          </button>
-        ) : (
-          <span className="text-xs text-slate-400">—</span>
-        ),
     },
   ]
 
@@ -505,7 +446,7 @@ const AdminDashboardPage = () => {
                     note: current.note,
                   })
                 }
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700"
+                className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-200"
               >
                 Close
               </button>
@@ -532,7 +473,7 @@ const AdminDashboardPage = () => {
                 })
               }
               placeholder="Admin response note"
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
             />
             {(persisted.resolution || current.resolution) && (
               <p className="text-xs text-slate-500">
@@ -652,6 +593,132 @@ const AdminDashboardPage = () => {
         </div>
       ),
     },
+  ]
+
+  const adminPendingColumns = [
+    { key: 'createdDate', header: 'Date', minWidth: 110 },
+    { key: 'stationName', header: 'Station', minWidth: 180 },
+    { key: 'managerName', header: 'Manager', minWidth: 160 },
+    { key: 'requestedProductType', header: 'Requested Product', minWidth: 160 },
+    {
+      key: 'requestedLiters',
+      header: 'Requested Liters',
+      minWidth: 140,
+      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
+    },
+    { key: 'supervisorRemark', header: 'Supervisor Remark', minWidth: 220 },
+    {
+      key: 'adminInput',
+      header: 'Admin Approval',
+      minWidth: 420,
+      render: (row) => {
+        const draft = adminRequestDrafts[row.id] || {
+          approvedProductType: row.requestedProductType,
+          approvedLiters: row.requestedLiters,
+          remark: 'Expect product in 24hrs',
+        }
+        return (
+          <div
+            className="space-y-2"
+            onClick={(event) => {
+              event.stopPropagation()
+            }}
+          >
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={draft.approvedProductType}
+                onChange={(event) =>
+                  setAdminRequestDrafts((prev) => ({
+                    ...prev,
+                    [row.id]: { ...draft, approvedProductType: event.target.value },
+                  }))
+                }
+                className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
+              >
+                <option value="PMS">PMS</option>
+                <option value="AGO">AGO</option>
+              </select>
+              <input
+                type="number"
+                min="1"
+                value={draft.approvedLiters}
+                onChange={(event) =>
+                  setAdminRequestDrafts((prev) => ({
+                    ...prev,
+                    [row.id]: { ...draft, approvedLiters: event.target.value },
+                  }))
+                }
+                className="w-28 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
+              />
+            </div>
+            <input
+              value={draft.remark}
+              onChange={(event) =>
+                setAdminRequestDrafts((prev) => ({
+                  ...prev,
+                  [row.id]: { ...draft, remark: event.target.value },
+                }))
+              }
+              className="w-full rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
+              placeholder="Admin remark"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  resolveProductRequestByAdmin({
+                    requestId: row.id,
+                    decision: 'approve',
+                    approvedProductType: draft.approvedProductType,
+                    approvedLiters: Number(draft.approvedLiters || 0),
+                    remark: draft.remark,
+                    approvedBy: currentUser?.name || 'Admin',
+                  })
+                }
+                className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  resolveProductRequestByAdmin({
+                    requestId: row.id,
+                    decision: 'decline',
+                    remark: draft.remark || 'Declined by admin',
+                  })
+                }
+                className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        )
+      },
+    },
+  ]
+
+  const requestHistoryColumns = [
+    { key: 'createdDate', header: 'Date', minWidth: 110 },
+    { key: 'stationName', header: 'Station', minWidth: 180 },
+    { key: 'managerName', header: 'Manager', minWidth: 160 },
+    { key: 'requestedProductType', header: 'Requested Product', minWidth: 150 },
+    {
+      key: 'requestedLiters',
+      header: 'Requested Liters',
+      minWidth: 140,
+      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
+    },
+    { key: 'finalStatus', header: 'Final Status', minWidth: 130 },
+    { key: 'approvedProductType', header: 'Approved Product', minWidth: 150 },
+    {
+      key: 'approvedLiters',
+      header: 'Approved Liters',
+      minWidth: 140,
+      render: (row) => (row.approvedLiters ? Math.round(row.approvedLiters).toLocaleString() : '-'),
+    },
+    { key: 'reasonOrRemark', header: 'Reason / Remark', minWidth: 260 },
   ]
 
   const pendingDailyFinalizationRows = useMemo(
@@ -787,7 +854,7 @@ const AdminDashboardPage = () => {
           }}
           onClick={(event) => event.stopPropagation()}
           placeholder="Add station remark"
-          className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="w-full rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
         />
       ),
     },
@@ -857,6 +924,7 @@ const AdminDashboardPage = () => {
     : 'dashboard'
   const isDashboardView = adminView === 'dashboard'
   const isReportsView = adminView === 'reports'
+  const isProductRequestsView = adminView === 'product-requests'
   const isHistoryView = adminView === 'history'
 
   const openInventoryFiltersScreen = () => {
@@ -909,7 +977,7 @@ const AdminDashboardPage = () => {
             {isHistoryView && 'History Archive'}
           </h2>
           <p className="text-sm text-slate-200">
-            {isHistoryView && 'Supervisor daily finalization archive.'}
+            {isHistoryView && 'Completed request and daily finalization records.'}
           </p>
         </Card>
       )}
@@ -953,26 +1021,6 @@ const AdminDashboardPage = () => {
               <p className="text-2xl font-bold">{Math.round(totalCashToday).toLocaleString()}</p>
             </Card>
           </div>
-
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">Today&apos;s Report Status</h2>
-              <p className="text-sm text-slate-500">
-                {submittedTodayCount} submitted · {pendingTodayCount} pending
-              </p>
-            </div>
-            <DataTable
-              columns={todaySubmissionColumns}
-              rows={todaySubmissionRows}
-              onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
-              tableClassName="min-w-[650px]"
-            />
-          </Card>
-
-          <DailyOpeningReportModal
-            report={selectedDailyOpeningReport}
-            onClose={() => setSelectedDailyOpeningReport(null)}
-          />
         </>
       )}
 
@@ -993,6 +1041,40 @@ const AdminDashboardPage = () => {
           <EmptyState
             title="No stations currently need attention"
             message="All stations are within safe stock range and reporting on time."
+          />
+        )}
+      </Card>
+      )}
+
+      {isProductRequestsView && (
+      <Card className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold">Admin Product Request Queue</h2>
+          <p className="text-sm text-slate-500">{adminPendingRequestRows.length} pending admin decision</p>
+        </div>
+        {adminPendingRequestRows.length ? (
+          <DataTable columns={adminPendingColumns} rows={adminPendingRequestRows} tableClassName="min-w-[1850px]" />
+        ) : (
+          <EmptyState
+            title="No escalated requests"
+            message="Supervisor-approved manager requests will appear here for final admin decision."
+          />
+        )}
+      </Card>
+      )}
+
+      {isHistoryView && (
+      <Card className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold">Product Request History</h2>
+          <p className="text-sm text-slate-500">Approved and declined requests with reasons</p>
+        </div>
+        {requestHistoryRows.length ? (
+          <DataTable columns={requestHistoryColumns} rows={requestHistoryRows} tableClassName="min-w-[1650px]" />
+        ) : (
+          <EmptyState
+            title="No product request history yet"
+            message="Completed request decisions will be listed here."
           />
         )}
       </Card>
@@ -1060,7 +1142,7 @@ const AdminDashboardPage = () => {
                   [activePendingFinalization.date]: event.target.value,
                 }))
               }
-              className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="h-24 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
               placeholder="Overall admin daily review..."
             />
           </label>

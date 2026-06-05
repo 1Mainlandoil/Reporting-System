@@ -2,220 +2,135 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { MAINLAND_LOGO_SRC } from '../../constants/brandLogo'
 import { useAppStore } from '../../store/useAppStore'
 import { linksByRole } from '../../constants/navigation'
-import { isChatMessageUnread } from '../../utils/chatMessages'
 
 const chatUnreadSelector = (state) => {
   const uid = state.currentUser?.id
   if (!uid) return 0
-  return state.chatMessages.filter((m) => isChatMessageUnread(m, uid)).length
+  return state.chatMessages.filter(
+    (m) => m.toUserId === uid && m.fromUserId !== uid && String(m.status || '') !== 'seen',
+  ).length
 }
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const role = useAppStore((state) => state.role)
   const logout = useAppStore((state) => state.logout)
   const setChatOpen = useAppStore((state) => state.setChatOpen)
+  const currentUser = useAppStore((state) => state.currentUser)
   const chatUnreadCount = useAppStore(chatUnreadSelector)
   const location = useLocation()
   const links = linksByRole[role] || []
   const linkMap = Object.fromEntries(links.map((item) => [item.label.toLowerCase(), item.path]))
   const currentView = new URLSearchParams(location.search).get('view')
 
-  const menuItems =
-    role === 'terminal_operator'
-      ? links.map((link) => ({
-          label: link.label,
-          icon:
-            link.label === 'Product Requests'
-              ? '⬒'
-              : link.label === 'History'
-                ? '🕘'
-                : link.label === 'Users'
-                  ? '◌'
-                  : '⚙',
-          path: link.path,
-        }))
-      : role === 'inspector'
-        ? links.map((link) => ({
-            label: link.label,
-            icon: link.label === 'New report' ? '▦' : link.label === 'History' ? '🕘' : '⚙',
-            path: link.path,
-          }))
-        : [
-          { label: 'Dashboard', icon: '▦', path: role === 'staff' ? '/staff' : linkMap.dashboard },
-          {
-            label: 'Reports',
-            icon: '☰',
-            path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports,
-          },
-          ...(role === 'admin'
-            ? [
-                { label: 'Product Requests', icon: '⬒', path: linkMap['product requests'] },
-                { label: 'Inspector Visits', icon: '◔', path: linkMap['inspector visits'] },
-              ]
-            : []),
-          ...(role === 'supervisor'
-            ? [
-                { label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' },
-                { label: 'Visitation Report', icon: '◔', path: '/supervisor?view=inspector-visits' },
-              ]
-            : []),
-          { label: 'Reconciliation', icon: '◍', path: linkMap.reconciliation },
-          {
-            label: 'History',
-            icon: '🕘',
-            path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history,
-          },
-          { label: 'Alerts', icon: '⚑', path: linkMap.alerts },
-          { label: 'Analytics', icon: '◔', path: linkMap.analytics },
-          { label: 'Stations', icon: '⌂', path: linkMap.stations },
-          { label: 'Users', icon: '◌', path: linkMap.users },
-          { label: 'Settings', icon: '⚙', path: linkMap.settings },
-        ].filter((item) => item.path)
+  const menuItems = [
+    { label: 'Dashboard', icon: '▦', path: role === 'staff' ? '/staff' : linkMap.dashboard },
+    { label: 'Reports', icon: '☰', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
+    ...(role === 'supervisor' ? [{ label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' }] : []),
+    { label: 'Reconciliation', icon: '◍', path: linkMap.reconciliation },
+    { label: 'Product Requests', icon: '⬒', path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
+    { label: 'History', icon: '🕘', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
+    { label: 'Alerts', icon: '⚑', path: linkMap.alerts },
+    { label: 'Analytics', icon: '◔', path: linkMap.analytics },
+    { label: 'Stations', icon: '⌂', path: linkMap.stations },
+    { label: 'Users', icon: '◌', path: linkMap.users },
+    { label: 'Settings', icon: '⚙', path: linkMap.settings },
+  ]
+
+  const handleNav = () => onClose()
 
   return (
-    <aside className="hidden w-full border-b border-slate-200 bg-white p-4 md:fixed md:left-0 md:top-[73px] md:block md:h-[calc(100vh-73px)] md:w-64 md:overflow-y-auto md:border-b-0 md:border-r md:border-[#c4151d] md:bg-[#f01d26] md:dark:border-[#c4151d] md:dark:bg-[#f01d26]">
-      <div className="mb-6 flex flex-col items-center rounded-2xl border border-white/10 bg-[#000000] px-3 py-3 text-center text-white shadow-lg shadow-black/60">
-        <img src={MAINLAND_LOGO_SRC} alt="Mainland Oil logo" className="mb-2 h-10 w-auto" />
-        <p className="font-serif text-base font-extrabold uppercase tracking-[0.12em] text-white">Mainland Oil</p>
+    <aside
+      className={`fixed left-0 top-0 z-[40] h-full w-72 flex flex-col bg-[#0d1220] border-r border-white/5 transition-transform duration-300 ease-out ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      } ${role === 'supervisor' ? 'border-l-4 border-l-[#c4151d]' : ''}`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/5 px-5 py-4 mt-16">
+        <div className="flex items-center gap-3">
+          <img src={MAINLAND_LOGO_SRC} alt="Mainland Oil" className="h-7 w-auto" />
+          <div>
+            <p className="text-sm font-bold text-white">Menu</p>
+            <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{role}</p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white transition"
+        >✕</button>
       </div>
-      <nav className="space-y-1.5">
+
+      {/* User card */}
+      {currentUser && (
+        <div className="mx-4 mt-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#a9cd39]/20 text-sm font-bold text-[#a9cd39]">
+              {String(currentUser.name || '?')[0].toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{currentUser.name}</p>
+              <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{role}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nav links */}
+      <nav className="mt-4 flex-1 overflow-y-auto px-3 space-y-0.5">
         {menuItems.map((item) =>
           item.path ? (
             <NavLink
               key={item.label}
               to={item.path}
+              onClick={handleNav}
               className={({ isActive }) => {
-                const isSupervisorDashboard =
-                  role === 'supervisor' &&
-                  item.label === 'Dashboard' &&
-                  location.pathname === '/supervisor' &&
-                  (!currentView || currentView === 'dashboard' || currentView === 'risk-monitor')
-                const isSupervisorReports =
-                  role === 'supervisor' &&
-                  item.label === 'Reports' &&
-                  location.pathname === '/supervisor' &&
-                  (
-                    currentView === 'daily-openings' ||
-                    currentView === 'stock-flow' ||
-                    currentView === 'cash-flow' ||
-                    currentView === 'expense-monitor'
-                  )
-                const isSupervisorMonthEnd =
-                  role === 'supervisor' &&
-                  item.label === 'Month-End Summary' &&
-                  location.pathname === '/supervisor' &&
-                  currentView === 'month-end-summary'
-                const isSupervisorVisitationReport =
-                  role === 'supervisor' &&
-                  item.label === 'Visitation Report' &&
-                  location.pathname === '/supervisor' &&
-                  currentView === 'inspector-visits'
-                const isTerminalProductRequests =
-                  role === 'terminal_operator' &&
-                  item.label === 'Product Requests' &&
-                  location.pathname === '/terminal-operator' &&
-                  currentView !== 'history'
-                const isTerminalHistory =
-                  role === 'terminal_operator' &&
-                  item.label === 'History' &&
-                  location.pathname === '/terminal-operator' &&
-                  currentView === 'history'
-                const isSupervisorHistory =
-                  role === 'supervisor' &&
-                  item.label === 'History' &&
-                  location.pathname === '/supervisor' &&
-                  currentView === 'history'
-                const isAdminProductRequests =
-                  role === 'admin' &&
-                  item.label === 'Product Requests' &&
-                  location.pathname === '/admin/product-requests'
-                const isAdminInspectorVisits =
-                  role === 'admin' &&
-                  item.label === 'Inspector Visits' &&
-                  location.pathname === '/admin/inspector-visits'
-                const isInspectorNewVisit =
-                  role === 'inspector' &&
-                  item.label === 'New report' &&
-                  location.pathname === '/inspector' &&
-                  currentView !== 'history'
-                const isInspectorHistory =
-                  role === 'inspector' &&
-                  item.label === 'History' &&
-                  location.pathname === '/inspector' &&
-                  currentView === 'history'
-                const isCustomActive =
-                  role === 'terminal_operator' &&
-                  (item.label === 'Product Requests' || item.label === 'History')
-                    ? isTerminalProductRequests || isTerminalHistory
-                    : role === 'inspector' && (item.label === 'New report' || item.label === 'History')
-                      ? isInspectorNewVisit || isInspectorHistory
-                      : role === 'admin' && item.label === 'Product Requests'
-                        ? isAdminProductRequests
-                        : role === 'admin' && item.label === 'Inspector Visits'
-                          ? isAdminInspectorVisits
-                          : role === 'supervisor' &&
-                        (item.label === 'Dashboard' ||
-                          item.label === 'Reports' ||
-                          item.label === 'Month-End Summary' ||
-                          item.label === 'Visitation Report' ||
-                          item.label === 'History')
-                      ? isSupervisorDashboard ||
-                        isSupervisorReports ||
-                        isSupervisorMonthEnd ||
-                        isSupervisorVisitationReport ||
-                        isSupervisorHistory
-                      : isActive
-
-                return (
-                `group flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                const isSupervisorDashboard = role === 'supervisor' && item.label === 'Dashboard' && location.pathname === '/supervisor' && (!currentView || currentView === 'dashboard' || currentView === 'risk-monitor')
+                const isSupervisorReports = role === 'supervisor' && item.label === 'Reports' && location.pathname === '/supervisor' && ['daily-openings','stock-flow','cash-flow','expense-monitor'].includes(currentView)
+                const isSupervisorMonthEnd = role === 'supervisor' && item.label === 'Month-End Summary' && location.pathname === '/supervisor' && currentView === 'month-end-summary'
+                const isSupervisorProductRequests = role === 'supervisor' && item.label === 'Product Requests' && location.pathname === '/supervisor' && currentView === 'product-requests'
+                const isSupervisorHistory = role === 'supervisor' && item.label === 'History' && location.pathname === '/supervisor' && currentView === 'history'
+                const isCustomActive = role === 'supervisor' && ['Dashboard','Reports','Month-End Summary','Product Requests','History'].includes(item.label)
+                  ? isSupervisorDashboard || isSupervisorReports || isSupervisorMonthEnd || isSupervisorProductRequests || isSupervisorHistory
+                  : isActive
+                return `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
                   isCustomActive
-                    ? 'border-white/45 bg-white/20 text-white shadow-sm shadow-black/15'
-                    : 'border-transparent text-white/85 hover:border-white/15 hover:bg-white/10 hover:text-white'
+                    ? 'bg-[#a9cd39]/15 text-[#a9cd39] border border-[#a9cd39]/25'
+                    : 'text-slate-300 hover:bg-white/5 hover:text-white border border-transparent'
                 }`
-                )
               }}
             >
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-black/15 text-[11px] text-white group-hover:bg-black/25">
-                {item.icon}
-              </span>
-              <span className="tracking-wide">{item.label}</span>
+              <span className="text-base">{item.icon}</span>
+              <span>{item.label}</span>
             </NavLink>
           ) : (
-            <button
-              key={item.label}
-              type="button"
-              className="flex w-full items-center gap-2.5 rounded-xl border border-transparent px-3 py-2.5 text-left text-sm font-medium text-white/45 transition hover:border-white/10 hover:bg-white/5 hover:text-white/75"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-black/10 text-[11px] text-white/50">
-                {item.icon}
-              </span>
-              <span className="tracking-wide">{item.label}</span>
-            </button>
+            <div key={item.label} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-600 border border-transparent">
+              <span className="text-base">{item.icon}</span>
+              <span>{item.label}</span>
+            </div>
           ),
         )}
       </nav>
-      <div className="mt-6 border-t border-white/20 pt-4">
+
+      {/* Bottom actions */}
+      <div className="border-t border-white/5 p-3 space-y-2">
         <button
           type="button"
-          onClick={() => setChatOpen(true)}
-          className="relative mb-3 flex w-full items-center gap-2.5 rounded-xl border border-white/35 bg-white/15 px-3 py-2.5 text-sm font-semibold text-white shadow-sm shadow-black/20 transition hover:bg-white/25"
+          onClick={() => { setChatOpen(true); onClose() }}
+          className="relative flex w-full items-center gap-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-3 py-3 text-sm font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/20 transition"
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-black/25 text-[11px]">💬</span>
-          <span className="tracking-wide">Chat</span>
+          <span className="text-base">💬</span>
+          Chat
           {chatUnreadCount > 0 && (
-            <span className="ml-auto rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
+            <span className="ml-auto rounded-full bg-[#a9cd39] px-2 py-0.5 text-xs font-bold text-black">
               {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
             </span>
           )}
         </button>
-      </div>
-      <div className="mt-2 border-t border-white/20 pt-4">
         <button
-          onClick={logout}
-          className="flex w-full items-center gap-2.5 rounded-xl border border-white/25 bg-black/20 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-black/35"
+          onClick={() => { logout(); onClose() }}
+          className="flex w-full items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm font-medium text-red-400 hover:bg-red-500/20 transition"
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-black/25 text-[11px]">⎋</span>
-          <span>Logout</span>
+          <span className="text-base">⎋</span>
+          Logout
         </button>
       </div>
     </aside>

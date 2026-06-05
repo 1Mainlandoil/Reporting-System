@@ -124,6 +124,9 @@ export const mapReportRow = (row) => {
         reviewedAt: row.supervisor_reviewed_at || null,
       }
     : undefined,
+  eodAttachments: Array.isArray(row.eod_attachments) ? row.eod_attachments : [],
+  hasDiscrepancy: Boolean(row.has_discrepancy),
+  discrepancies: Array.isArray(row.discrepancies) ? row.discrepancies : [],
   }
 }
 
@@ -418,6 +421,9 @@ export const insertReport = async (report) => {
     cash_sales: Number(report.cashSales || 0),
     total_amount: Number(report.totalAmount || 0),
     closing_balance: Number(report.closingBalance || 0),
+    eod_attachments: Array.isArray(report.eodAttachments) ? report.eodAttachments : [],
+    has_discrepancy: Boolean(report.hasDiscrepancy),
+    discrepancies: Array.isArray(report.discrepancies) ? report.discrepancies : [],
   }
 
   const upsertReport = async (rowPayload) => {

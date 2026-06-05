@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
-import DailyOpeningReportModal from '../components/reports/DailyOpeningReportModal'
-import InspectorVisitDetailModal from '../components/reports/InspectorVisitDetailModal'
 import ColumnPicker from '../components/ui/ColumnPicker'
 import StatusBadge from '../components/ui/StatusBadge'
 import DataTable from '../components/ui/DataTable'
@@ -13,9 +11,7 @@ import { useAppStore } from '../store/useAppStore'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { buildStationMetrics } from '../utils/stock'
-import { getClosingForProduct, getQuantityRemainingForProduct } from '../utils/reportFields'
-import { buildPumpRowsWithCarry } from '../utils/dailyReportViewRow'
-import { computePumpProductSales } from '../utils/pumpSales'
+import { getClosingForProduct } from '../utils/reportFields'
 import {
   exportSupervisorDailyOpeningsToExcel,
   exportSupervisorCashFlowToExcel,
@@ -48,48 +44,100 @@ const resolveReceivedProductType = (report) => {
   return 'PMS'
 }
 
+const getPumpReadingValue = (item) => {
+  if (!item || typeof item !== 'object') return null
+  if (item.closing != null && item.closing !== '') return Number(item.closing)
+  if (item.end != null && item.end !== '') return Number(item.end)
+  if (item.start != null && item.start !== '') return Number(item.start)
+  return null
+}
+
+const buildPumpRowsWithCarry = (previousReadings = [], todayReadings = []) => {
+  const prevMap = new Map()
+  for (const item of previousReadings) {
+    const label = String(item?.label || '').trim()
+    const reading = getPumpReadingValue(item)
+    if (!label || reading == null || Number.isNaN(reading)) continue
+    prevMap.set(label, reading)
+  }
+  const todayMap = new Map()
+  for (const item of todayReadings) {
+    const label = String(item?.label || '').trim()
+    const reading = getPumpReadingValue(item)
+    if (!label || reading == null || Number.isNaN(reading)) continue
+    todayMap.set(label, reading)
+  }
+
+  const labels = new Set([...prevMap.keys(), ...todayMap.keys()])
+  return [...labels]
+    .sort((a, b) => a.localeCompare(b))
+    .map((label) => {
+      const opening = prevMap.has(label) ? prevMap.get(label) : null
+      const closing = todayMap.has(label) ? todayMap.get(label) : opening
+      const used = todayMap.has(label)
+      return {
+        label,
+        opening,
+        closing,
+        used,
+        delta: used && opening != null && closing != null ? closing - opening : 0,
+        noBaseline: opening == null && !used,
+      }
+    })
+}
+
+const toFiniteNumber = (value, fallback = 0) => {
+  const normalized = Number(String(value ?? '').replace(/,/g, ''))
+  return Number.isFinite(normalized) ? normalized : fallback
+}
+
+const formatLiters = (value, digits = 0) => `${toFiniteNumber(value).toLocaleString(undefined, {
+  maximumFractionDigits: digits,
+  minimumFractionDigits: digits,
+})} L`
+
+const formatMoney = (value) => `NGN ${Math.round(toFiniteNumber(value)).toLocaleString()}`
+
+const differenceTone = (value) => {
+  const gap = Math.abs(toFiniteNumber(value))
+  if (gap <= 1) return 'text-[#a9cd39]'
+  if (gap <= 10) return 'text-amber-300'
+  return 'text-red-300'
+}
+
 const SupervisorDashboardPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const stations = useAppStore((state) => (Array.isArray(state.stations) ? state.stations : []))
-  const reports = useAppStore((state) => (Array.isArray(state.reports) ? state.reports : []))
-  const inspectorVisits = useAppStore((state) =>
-    Array.isArray(state.inspectorVisits) ? state.inspectorVisits : [],
-  )
-  const users = useAppStore((state) => (Array.isArray(state.users) ? state.users : []))
-  const stockThresholds = useAppStore(
-    (state) => state.appSettings?.stockThresholds ?? { criticalMax: 500, warningMax: 999 },
-  )
+  const stations = useAppStore((state) => state.stations)
+  const reports = useAppStore((state) => state.reports)
+  const users = useAppStore((state) => state.users)
+  const stockThresholds = useAppStore((state) => state.appSettings.stockThresholds)
   const currentUser = useAppStore((state) => state.currentUser)
   const interventionsState = useAppStore((state) => state.interventions)
   const flagStationIntervention = useAppStore((state) => state.flagStationIntervention)
+  const updateReportSupervisorReview = useAppStore((state) => state.updateReportSupervisorReview)
   const escalateStationIntervention = useAppStore((state) => state.escalateStationIntervention)
   const revertEscalationIntervention = useAppStore((state) => state.revertEscalationIntervention)
   const unflagStationIntervention = useAppStore((state) => state.unflagStationIntervention)
 
-  const dailyFinalizations = useAppStore((state) =>
-    Array.isArray(state.dailyFinalizations) ? state.dailyFinalizations : [],
-  )
+  const productRequests = useAppStore((state) => state.productRequests)
+  const reviewProductRequestBySupervisor = useAppStore((state) => state.reviewProductRequestBySupervisor)
+  const dailyFinalizations = useAppStore((state) => state.dailyFinalizations)
   const finalizeSupervisorDailyReview = useAppStore((state) => state.finalizeSupervisorDailyReview)
-  const monthEndFinalizations = useAppStore((state) =>
-    Array.isArray(state.monthEndFinalizations) ? state.monthEndFinalizations : [],
-  )
+  const monthEndFinalizations = useAppStore((state) => state.monthEndFinalizations)
   const finalizeSupervisorMonthEndSummary = useAppStore((state) => state.finalizeSupervisorMonthEndSummary)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [statusFilter, setStatusFilter] = useState('all')
   const [showFullDailyOpeningColumns, setShowFullDailyOpeningColumns] = useState(false)
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
-  const [selectedInspectorVisit, setSelectedInspectorVisit] = useState(null)
-  const [inspectorVisitStationFilter, setInspectorVisitStationFilter] = useState('')
+  const [reviewRemark, setReviewRemark] = useState('')
+  const [selectedRequestStationId, setSelectedRequestStationId] = useState(null)
   const [generalFinalizationRemark, setGeneralFinalizationRemark] = useState('')
   const [stationReviewDrafts, setStationReviewDrafts] = useState({})
   const [dailyQueueFilters, setDailyQueueFilters] = useState({
     stationIds: [],
     reportStatus: 'all',
   })
-  const [dailyQueueReviewDate, setDailyQueueReviewDate] = useState(() =>
-    new Date().toISOString().split('T')[0],
-  )
   const [expenseQueueFilters, setExpenseQueueFilters] = useState({
     stationIds: [],
     expenseStatus: 'all',
@@ -105,12 +153,9 @@ const SupervisorDashboardPage = () => {
         'closingStockPMS',
         'closingStockAGO',
         'receivedProduct',
-        'receivedPMS',
-        'receivedAGO',
+        'quantityReceived',
         'totalSalesLitersPMS',
         'totalSalesLitersAGO',
-        'rttPMS',
-        'rttAGO',
         'reportDate',
       ]),
   )
@@ -153,7 +198,7 @@ const SupervisorDashboardPage = () => {
     if (nextView === 'daily-openings') {
       return 'stock-flow'
     }
-    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'history', 'inspector-visits'].includes(nextView)) {
+    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'product-requests', 'history'].includes(nextView)) {
       return nextView
     }
     return 'dashboard'
@@ -201,24 +246,6 @@ const SupervisorDashboardPage = () => {
     return portfolio.filter((station) => station.status === statusFilter)
   }, [portfolio, statusFilter])
 
-  const inspectorVisitRows = useMemo(
-    () =>
-      inspectorVisits
-        .filter((visit) => !inspectorVisitStationFilter || visit.stationId === inspectorVisitStationFilter)
-        .map((visit) => ({
-          ...visit,
-          stationName: stations.find((station) => station.id === visit.stationId)?.name || visit.stationId,
-        }))
-        .sort((a, b) => {
-          const byDate = String(b.visitDate).localeCompare(String(a.visitDate))
-          if (byDate !== 0) {
-            return byDate
-          }
-          return String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
-        }),
-    [inspectorVisitStationFilter, inspectorVisits, stations],
-  )
-
   const topRisk = useMemo(
     () =>
       [...portfolio]
@@ -236,16 +263,7 @@ const SupervisorDashboardPage = () => {
   )
   const today = new Date().toISOString().split('T')[0]
   const todayMonthKey = today.slice(0, 7)
-  const isDailyQueueReviewToday = dailyQueueReviewDate === today
-  const dailyQueueReviewLabel = useMemo(() => {
-    const [year, month, day] = dailyQueueReviewDate.split('-').map(Number)
-    return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  }, [dailyQueueReviewDate])
+  const [reportViewDate, setReportViewDate] = useState(today)
   const monthEndMonthOptions = useMemo(() => {
     const options = []
     const base = new Date()
@@ -283,33 +301,15 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const pendingInfo =
-          dailyQueueReviewDate === today
-            ? getDailyReportPendingInfo(today, stationReportDates)
-            : {
-                pendingDays: null,
-                firstMissingIso: null,
-                lastSubmittedIso: null,
-                noPriorSubmissions: stationReportDates.size === 0,
-              }
-        const pendingFmt =
-          dailyQueueReviewDate === today
-            ? formatPendingSubmissionSummary(pendingInfo, today)
-            : {
-                tableTitle: stationReportDates.has(dailyQueueReviewDate) ? 'Submitted' : 'Not submitted',
-                tableSubtitle: dailyQueueReviewLabel,
-                exportText: stationReportDates.has(dailyQueueReviewDate)
-                  ? `Submitted on ${dailyQueueReviewDate}`
-                  : `No submission on ${dailyQueueReviewDate}`,
-              }
-        const stationReportsForDay = reports.filter(
-          (report) => report.stationId === station.id && report.date === dailyQueueReviewDate,
+        const pendingInfo = getDailyReportPendingInfo(reportViewDate, stationReportDates)
+        const pendingFmt = formatPendingSubmissionSummary(pendingInfo, reportViewDate)
+        const stationReportsToday = reports.filter(
+          (report) => report.stationId === station.id && report.date === reportViewDate,
         )
-        const latestToday = stationReportsForDay.at(-1)
-        const allPriorReports = [...reports]
-          .filter((report) => report.stationId === station.id && report.date < dailyQueueReviewDate)
-          .sort((a, b) => a.date.localeCompare(b.date))
-        const previousReport = allPriorReports.at(-1)
+        const latestToday = stationReportsToday.at(-1)
+        const previousReport = [...reports]
+          .filter((report) => report.stationId === station.id && report.date < reportViewDate)
+          .sort((a, b) => b.date.localeCompare(a.date))[0]
         const manager = staffByStation.get(station.id)
         const receivedProductType = latestToday ? resolveReceivedProductType(latestToday) : null
         const paymentBreakdown = Array.isArray(latestToday?.paymentBreakdown)
@@ -319,33 +319,15 @@ const SupervisorDashboardPage = () => {
           ? paymentBreakdown.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
           : Number(latestToday?.totalPaymentDeposits || 0)
         const posValue = Number(latestToday?.posValue || 0)
-        const cashBf = Number(latestToday?.cashBf ?? previousReport?.closingBalance ?? 0)
+        const cashBf = Number(previousReport?.closingBalance || 0)
         const cashSales = Number(latestToday?.cashSales || 0)
-        const totalAmount = Number(latestToday?.totalAmount ?? cashBf + cashSales)
-        const closingBalance = Number(
-          latestToday?.closingBalance ?? totalAmount - totalPaymentDeposits - posValue,
-        )
+        const totalAmount = cashBf + cashSales
+        const closingBalance = totalAmount - totalPaymentDeposits - posValue
         // Variance = Total - Bank Lodgements - POS - Closing (should be 0 if rule is followed)
         const cashMovementVariance = totalAmount - totalPaymentDeposits - posValue - closingBalance
         const pumpReadings = Array.isArray(latestToday?.pumpReadings) ? latestToday.pumpReadings : []
-        const pumpMeterRows = buildPumpRowsWithCarry(allPriorReports, pumpReadings)
-        const calculatedPumpSales = latestToday
-          ? computePumpProductSales(pumpReadings, latestToday.rttPMS, latestToday.rttAGO)
-          : { pms: 0, ago: 0, total: 0 }
-        const managerEnteredSalesLitersPMS = latestToday
-          ? Number(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0)
-          : 0
-        const managerEnteredSalesLitersAGO = latestToday
-          ? Number(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0)
-          : 0
-        const calculatedSalesLitersPMS =
-          latestToday?.calculatedSalesLitersPMS != null
-            ? Number(latestToday.calculatedSalesLitersPMS)
-            : calculatedPumpSales.pms
-        const calculatedSalesLitersAGO =
-          latestToday?.calculatedSalesLitersAGO != null
-            ? Number(latestToday.calculatedSalesLitersAGO)
-            : calculatedPumpSales.ago
+        const priorPumpReadings = Array.isArray(previousReport?.pumpReadings) ? previousReport.pumpReadings : []
+        const pumpMeterRows = buildPumpRowsWithCarry(priorPumpReadings, pumpReadings)
 
         return {
           stationId: station.id,
@@ -371,12 +353,11 @@ const SupervisorDashboardPage = () => {
               ? `Yes (${receivedProductType || 'Not specified'})`
               : 'No'
             : 'Not Submitted',
-          receivedPMS: latestToday
-            ? Math.round(Number(latestToday.receivedPMS ?? 0)).toLocaleString()
+          quantityReceived: latestToday
+            ? Math.round(Number(latestToday.receivedPMS ?? 0) + Number(latestToday.receivedAGO ?? 0)).toLocaleString()
             : 'Not Submitted',
-          receivedAGO: latestToday
-            ? Math.round(Number(latestToday.receivedAGO ?? 0)).toLocaleString()
-            : 'Not Submitted',
+          receivedPMS: Number(latestToday?.receivedPMS || 0),
+          receivedAGO: Number(latestToday?.receivedAGO || 0),
           closingStockPMS: latestToday
             ? Math.round(getClosingForProduct(latestToday, 'pms')).toLocaleString()
             : 'Not Submitted',
@@ -385,39 +366,40 @@ const SupervisorDashboardPage = () => {
             : 'Not Submitted',
           closingStockPMSRaw: latestToday ? getClosingForProduct(latestToday, 'pms') : null,
           closingStockAGORaw: latestToday ? getClosingForProduct(latestToday, 'ago') : null,
-          quantityRemainingPMS: latestToday
-            ? Math.round(getQuantityRemainingForProduct(latestToday, 'pms')).toLocaleString()
-            : 'Not Submitted',
-          quantityRemainingAGO: latestToday
-            ? Math.round(getQuantityRemainingForProduct(latestToday, 'ago')).toLocaleString()
-            : 'Not Submitted',
-          quantityRemainingPMSRaw: latestToday ? getQuantityRemainingForProduct(latestToday, 'pms') : null,
-          quantityRemainingAGORaw: latestToday ? getQuantityRemainingForProduct(latestToday, 'ago') : null,
           totalSalesLitersPMS: latestToday
             ? Math.round(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0).toLocaleString()
             : 'Not Submitted',
           totalSalesLitersAGO: latestToday
             ? Math.round(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0).toLocaleString()
             : 'Not Submitted',
-          managerEnteredSalesLitersPMS,
-          managerEnteredSalesLitersAGO,
-          calculatedSalesLitersPMS,
-          calculatedSalesLitersAGO,
-          calculatedSalesLitersTotal: calculatedSalesLitersPMS + calculatedSalesLitersAGO,
-          managerEnteredSalesLitersTotal: managerEnteredSalesLitersPMS + managerEnteredSalesLitersAGO,
+          dipSalesLitersPMS: latestToday
+            ? latestToday.dipSalesLitersPMS ?? (
+              Number(latestToday.openingStockPMS ?? latestToday.openingPMS ?? 0)
+              + Number(latestToday.receivedPMS || 0)
+              - getClosingForProduct(latestToday, 'pms')
+              - Number(latestToday.rttPMS || 0)
+            )
+            : null,
+          dipSalesLitersAGO: latestToday
+            ? latestToday.dipSalesLitersAGO ?? (
+              Number(latestToday.openingStockAGO ?? latestToday.openingAGO ?? 0)
+              + Number(latestToday.receivedAGO || 0)
+              - getClosingForProduct(latestToday, 'ago')
+              - Number(latestToday.rttAGO || 0)
+            )
+            : null,
+          pumpSalesLitersPMS: latestToday?.pumpSalesLitersPMS ?? null,
+          pumpSalesLitersAGO: latestToday?.pumpSalesLitersAGO ?? null,
           rttPMS: latestToday ? latestToday.rttPMS ?? 'Not Submitted' : 'Not Submitted',
           rttAGO: latestToday ? latestToday.rttAGO ?? 'Not Submitted' : 'Not Submitted',
           managerRemark: latestToday ? latestToday.remark ?? latestToday.remarks ?? '-' : 'Not Submitted',
-          reportDate: latestToday ? latestToday.date : dailyQueueReviewDate,
+          reportDate: latestToday ? latestToday.date : 'Pending',
           expenseAmount: latestToday ? Number(latestToday.expenseAmount || 0) : 0,
           expenseDescription: latestToday ? latestToday.expenseDescription || '-' : 'Not Submitted',
           expenseItems: Array.isArray(latestToday?.expenseItems) ? latestToday.expenseItems : [],
           paymentBreakdown,
           totalPaymentDeposits,
           posValue,
-          posEodPhotoUrl: latestToday?.posEodPhotoUrl || '',
-          tankDipPMSRaw: latestToday ? getClosingForProduct(latestToday, 'pms') : null,
-          tankDipAGORaw: latestToday ? getClosingForProduct(latestToday, 'ago') : null,
           cashBf,
           cashSales,
           totalAmount,
@@ -434,7 +416,7 @@ const SupervisorDashboardPage = () => {
           pendingSubmissionTableSubtitle: pendingFmt.tableSubtitle || '',
         }
       })
-  }, [dailyQueueReviewDate, dailyQueueReviewLabel, reportDatesByStation, reports, stations, today, users])
+  }, [reportDatesByStation, reportViewDate, reports, stations, today, users])
 
   const filteredDailyOpeningQueueRows = useMemo(
     () =>
@@ -619,7 +601,7 @@ const SupervisorDashboardPage = () => {
           }
           if (row.reportStatus === 'No Sales Declared') {
             return (
-              <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-700/50 dark:text-slate-200">
+              <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-200 dark:bg-slate-700/50 dark:text-slate-200">
                 No Sales Declared
               </span>
             )
@@ -785,7 +767,7 @@ const SupervisorDashboardPage = () => {
           }
           onClick={(event) => event.stopPropagation()}
           placeholder="Station-specific note to admin"
-          className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+          className="w-full rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
         />
       ),
     },
@@ -824,29 +806,12 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const pendingInfo =
-          dailyQueueReviewDate === today
-            ? getDailyReportPendingInfo(today, stationReportDates)
-            : {
-                pendingDays: null,
-                firstMissingIso: null,
-                lastSubmittedIso: null,
-                noPriorSubmissions: stationReportDates.size === 0,
-              }
-        const pendingFmt =
-          dailyQueueReviewDate === today
-            ? formatPendingSubmissionSummary(pendingInfo, today)
-            : {
-                tableTitle: stationReportDates.has(dailyQueueReviewDate) ? 'Submitted' : 'Not submitted',
-                tableSubtitle: dailyQueueReviewLabel,
-                exportText: stationReportDates.has(dailyQueueReviewDate)
-                  ? `Submitted on ${dailyQueueReviewDate}`
-                  : `No submission on ${dailyQueueReviewDate}`,
-              }
-        const stationReportsForDay = reports.filter(
-          (report) => report.stationId === station.id && report.date === dailyQueueReviewDate,
+        const pendingInfo = getDailyReportPendingInfo(reportViewDate, stationReportDates)
+        const pendingFmt = formatPendingSubmissionSummary(pendingInfo, reportViewDate)
+        const stationReportsToday = reports.filter(
+          (report) => report.stationId === station.id && report.date === reportViewDate,
         )
-        const latestToday = stationReportsForDay.at(-1)
+        const latestToday = stationReportsToday.at(-1)
         const manager = staffByStation.get(station.id)
         const expenseItems = Array.isArray(latestToday?.expenseItems) ? latestToday.expenseItems : []
         const totalExpense = expenseItems.length
@@ -874,7 +839,7 @@ const SupervisorDashboardPage = () => {
           totalExpense,
           expenseLines: expenseItems.length || (latestToday?.expenseDescription ? 1 : 0),
           topCategory,
-          reportDate: latestToday ? latestToday.date : dailyQueueReviewDate,
+          reportDate: latestToday ? latestToday.date : 'Pending',
           pendingSubmissionDays: pendingInfo.pendingDays,
           pendingSubmissionNoHistory: pendingInfo.noPriorSubmissions,
           pendingSubmissionSummaryExport: pendingFmt.exportText,
@@ -882,7 +847,7 @@ const SupervisorDashboardPage = () => {
           pendingSubmissionTableSubtitle: pendingFmt.tableSubtitle || '',
         }
       })
-  }, [dailyQueueReviewDate, dailyQueueReviewLabel, reportDatesByStation, reports, stations, today, users])
+  }, [reportDatesByStation, reportViewDate, reports, stations, users])
 
   const filteredExpenseQueueRows = useMemo(
     () =>
@@ -991,7 +956,7 @@ const SupervisorDashboardPage = () => {
           }
           if (row.reportStatus === 'No Sales Declared') {
             return (
-              <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-700/50 dark:text-slate-200">
+              <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-200 dark:bg-slate-700/50 dark:text-slate-200">
                 No Sales Declared
               </span>
             )
@@ -1035,7 +1000,7 @@ const SupervisorDashboardPage = () => {
       },
       {
         key: 'closingStockPMS',
-        header: 'Tank Dip PMS',
+        header: 'Closing Stock PMS',
         minWidth: 150,
         pickable: true,
         exportHeader: 'closing_stock_pms',
@@ -1044,34 +1009,12 @@ const SupervisorDashboardPage = () => {
       },
       {
         key: 'closingStockAGO',
-        header: 'Tank Dip AGO',
+        header: 'Closing Stock AGO',
         minWidth: 150,
         pickable: true,
         exportHeader: 'closing_stock_ago',
         exportPick: (row) =>
           row.closingStockAGORaw != null && row.closingStockAGORaw !== '' ? row.closingStockAGORaw : '',
-      },
-      {
-        key: 'quantityRemainingPMS',
-        header: 'Book Remaining PMS',
-        minWidth: 160,
-        pickable: true,
-        exportHeader: 'quantity_remaining_pms',
-        exportPick: (row) =>
-          row.quantityRemainingPMSRaw != null && row.quantityRemainingPMSRaw !== ''
-            ? row.quantityRemainingPMSRaw
-            : '',
-      },
-      {
-        key: 'quantityRemainingAGO',
-        header: 'Book Remaining AGO',
-        minWidth: 160,
-        pickable: true,
-        exportHeader: 'quantity_remaining_ago',
-        exportPick: (row) =>
-          row.quantityRemainingAGORaw != null && row.quantityRemainingAGORaw !== ''
-            ? row.quantityRemainingAGORaw
-            : '',
       },
       {
         key: 'receivedProduct',
@@ -1082,20 +1025,12 @@ const SupervisorDashboardPage = () => {
         exportPick: (row) => row.receivedProduct,
       },
       {
-        key: 'receivedPMS',
-        header: 'Received PMS (L)',
-        minWidth: 160,
+        key: 'quantityReceived',
+        header: 'Input Quantity Received (L)',
+        minWidth: 180,
         pickable: true,
-        exportHeader: 'received_pms_litres',
-        exportPick: (row) => row.receivedPMS,
-      },
-      {
-        key: 'receivedAGO',
-        header: 'Received AGO (L)',
-        minWidth: 160,
-        pickable: true,
-        exportHeader: 'received_ago_litres',
-        exportPick: (row) => row.receivedAGO,
+        exportHeader: 'input_quantity_received_litres',
+        exportPick: (row) => row.quantityReceived,
       },
       {
         key: 'totalSalesLitersPMS',
@@ -1134,12 +1069,11 @@ const SupervisorDashboardPage = () => {
         render: (row) => (
           <button
             type="button"
-            disabled={row.reportStatus === 'Pending'}
             onClick={(event) => {
               event.stopPropagation()
               setSelectedDailyOpeningReport(row)
             }}
-            className="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
+            className="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
           >
             View Report
           </button>
@@ -1324,7 +1258,7 @@ const SupervisorDashboardPage = () => {
               Submitted
             </span>
           ) : row.expenseStatus === 'No Expense' ? (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-700/40 dark:text-slate-200">
+            <span className="rounded-full bg-white/8 px-3 py-1 text-xs font-semibold text-slate-200 dark:bg-slate-700/40 dark:text-slate-200">
               No Expense
             </span>
           ) : (
@@ -1403,6 +1337,109 @@ const SupervisorDashboardPage = () => {
     setExpenseVisibleKeys(new Set(expensePickableKeys))
   }
 
+  const supervisorQueueRows = useMemo(
+    () =>
+      productRequests
+        .filter((request) => request.status === 'submitted')
+        .map((request) => ({
+          ...request,
+          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
+          createdDate: request.createdAt?.split('T')[0] || '-',
+          requestedLitersLabel: Math.round(request.requestedLiters).toLocaleString(),
+        }))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    [productRequests, stations],
+  )
+
+  const supervisorHistoryRows = useMemo(
+    () =>
+      productRequests
+        .filter((request) => request.supervisorDecision)
+        .map((request) => ({
+          ...request,
+          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
+          createdDate: request.createdAt?.split('T')[0] || '-',
+          supervisorStatus:
+            request.supervisorDecision === 'approved'
+              ? 'Escalated to Admin'
+              : 'Declined',
+          reason: request.supervisorRemark || '-',
+        }))
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+    [productRequests, stations],
+  )
+
+  const filteredSupervisorHistoryRows = useMemo(
+    () =>
+      selectedRequestStationId
+        ? supervisorHistoryRows.filter((row) => row.stationId === selectedRequestStationId)
+        : supervisorHistoryRows,
+    [selectedRequestStationId, supervisorHistoryRows],
+  )
+
+  const supervisorQueueColumns = [
+    { key: 'createdDate', header: 'Date', minWidth: 110 },
+    { key: 'stationName', header: 'Station', minWidth: 190 },
+    { key: 'managerName', header: 'Manager', minWidth: 170 },
+    { key: 'requestedProductType', header: 'Requested Product', minWidth: 160 },
+    { key: 'requestedLitersLabel', header: 'Requested Liters', minWidth: 150 },
+    { key: 'managerRemark', header: 'Manager Remark', minWidth: 220 },
+    {
+      key: 'actions',
+      header: 'Supervisor Action',
+      minWidth: 280,
+      render: (row) => (
+        <div
+          className="flex flex-wrap gap-2"
+          onClick={(event) => {
+            event.stopPropagation()
+          }}
+        >
+          <button
+            type="button"
+            onClick={() =>
+              reviewProductRequestBySupervisor({
+                requestId: row.id,
+                decision: 'approve',
+                remark: `Escalated by ${currentUser?.name || 'Supervisor'}`,
+              })
+            }
+            className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700"
+          >
+            Approve & Escalate
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              reviewProductRequestBySupervisor({
+                requestId: row.id,
+                decision: 'decline',
+                remark: 'Declined by supervisor',
+              })
+            }
+            className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700"
+          >
+            Decline
+          </button>
+        </div>
+      ),
+    },
+  ]
+
+  const supervisorHistoryColumns = [
+    { key: 'createdDate', header: 'Date', minWidth: 110 },
+    { key: 'stationName', header: 'Station', minWidth: 190 },
+    { key: 'requestedProductType', header: 'Requested Product', minWidth: 160 },
+    {
+      key: 'requestedLiters',
+      header: 'Requested Liters',
+      minWidth: 140,
+      render: (row) => Math.round(row.requestedLiters).toLocaleString(),
+    },
+    { key: 'supervisorStatus', header: 'Supervisor Decision', minWidth: 180 },
+    { key: 'reason', header: 'Reason / Remark', minWidth: 260 },
+  ]
+
   const handleFinalizeDailyReview = () => {
     const confirmed = window.confirm(
       `Finalize supervisor review for ${today}? This will send the daily packet to admin.`,
@@ -1425,17 +1462,6 @@ const SupervisorDashboardPage = () => {
     })
     setGeneralFinalizationRemark('')
     setStationReviewDrafts({})
-  }
-
-  const handleReportQueueRowClick = (row) => {
-    const fullReport =
-      row.reportStatus != null
-        ? row
-        : dailyOpeningQueueRows.find((queueRow) => queueRow.stationId === row.stationId)
-    if (!fullReport || fullReport.reportStatus === 'Pending') {
-      return
-    }
-    setSelectedDailyOpeningReport(fullReport)
   }
 
   const dailyQueueFiltersPanel = (
@@ -1473,7 +1499,7 @@ const SupervisorDashboardPage = () => {
               onChange={(event) =>
                 setDailyQueueFilters((prev) => ({ ...prev, reportStatus: event.target.value }))
               }
-              className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
             >
               <option value="all">All submission statuses</option>
               <option value="Submitted">Submitted</option>
@@ -1481,17 +1507,17 @@ const SupervisorDashboardPage = () => {
               <option value="Pending">Pending</option>
             </select>
           </div>
-          <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 dark:border-slate-800">
+          <div className="flex flex-col gap-3 border-t border-white/5 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setDailyQueueFilters({ stationIds: [], reportStatus: 'all' })}
-              className="h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+              className="h-11 rounded-lg border border-white/10 px-4 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
             >
               Reset submission filters
             </button>
             <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
               Preview:{' '}
-              <span className="font-medium text-slate-700 dark:text-slate-300">
+              <span className="font-medium text-slate-200 dark:text-slate-300">
                 {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
               </span>{' '}
               match right now.
@@ -1537,7 +1563,7 @@ const SupervisorDashboardPage = () => {
               onChange={(event) =>
                 setDailyQueueFilters((prev) => ({ ...prev, reportStatus: event.target.value }))
               }
-              className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
             >
               <option value="all">All submission statuses</option>
               <option value="Submitted">Submitted</option>
@@ -1545,17 +1571,17 @@ const SupervisorDashboardPage = () => {
               <option value="Pending">Pending</option>
             </select>
           </div>
-          <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 dark:border-slate-800">
+          <div className="flex flex-col gap-3 border-t border-white/5 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setDailyQueueFilters({ stationIds: [], reportStatus: 'all' })}
-              className="h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+              className="h-11 rounded-lg border border-white/10 px-4 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
             >
               Reset cash-flow filters
             </button>
             <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
               Preview:{' '}
-              <span className="font-medium text-slate-700 dark:text-slate-300">
+              <span className="font-medium text-slate-200 dark:text-slate-300">
                 {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
               </span>{' '}
               match right now.
@@ -1601,7 +1627,7 @@ const SupervisorDashboardPage = () => {
               onChange={(event) =>
                 setExpenseQueueFilters((prev) => ({ ...prev, expenseStatus: event.target.value }))
               }
-              className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
             >
               <option value="all">All expense statuses</option>
               <option value="Submitted">Submitted</option>
@@ -1609,17 +1635,17 @@ const SupervisorDashboardPage = () => {
               <option value="Pending">Pending</option>
             </select>
           </div>
-          <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 dark:border-slate-800">
+          <div className="flex flex-col gap-3 border-t border-white/5 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setExpenseQueueFilters({ stationIds: [], expenseStatus: 'all' })}
-              className="h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+              className="h-11 rounded-lg border border-white/10 px-4 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
             >
               Reset expense filters
             </button>
             <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
               Preview:{' '}
-              <span className="font-medium text-slate-700 dark:text-slate-300">
+              <span className="font-medium text-slate-200 dark:text-slate-300">
                 {filteredExpenseQueueRows.length} of {expenseQueueRows.length} stations
               </span>{' '}
               match right now.
@@ -1630,234 +1656,231 @@ const SupervisorDashboardPage = () => {
     </div>
   )
 
-  const dailyQueueReviewDatePicker =
-    !filtersScreenOpen ? (
-      <Card className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Review date</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            {isDailyQueueReviewToday
-              ? "Showing today's submissions across all stations."
-              : `Viewing submissions for ${dailyQueueReviewLabel}.`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="date"
-            max={today}
-            value={dailyQueueReviewDate}
-            onChange={(event) => setDailyQueueReviewDate(event.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            aria-label="Select review date"
-          />
-          {!isDailyQueueReviewToday && (
-            <button
-              type="button"
-              onClick={() => setDailyQueueReviewDate(today)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-200"
-            >
-              Back to today
-            </button>
-          )}
-        </div>
-      </Card>
-    ) : null
+  const selectedReportDetail = useMemo(() => {
+    const row = selectedDailyOpeningReport
+    if (!row) return null
+
+    const directPumpDelta = { PMS: 0, AGO: 0 }
+    for (const item of row.pumpReadings || []) {
+      const product = String(item?.productType || 'PMS').toUpperCase() === 'AGO' ? 'AGO' : 'PMS'
+      const opening = toFiniteNumber(item?.opening ?? item?.start, Number.NaN)
+      const closing = toFiniteNumber(item?.closing ?? item?.end, Number.NaN)
+      if (Number.isFinite(opening) && Number.isFinite(closing)) {
+        directPumpDelta[product] += closing - opening
+      }
+    }
+
+    const hasPmsMeter = row.pumpSalesLitersPMS != null || (row.pumpReadings || []).some((item) => String(item?.productType || 'PMS').toUpperCase() !== 'AGO')
+    const hasAgoMeter = row.pumpSalesLitersAGO != null || (row.pumpReadings || []).some((item) => String(item?.productType || '').toUpperCase() === 'AGO')
+    const systemPms = row.pumpSalesLitersPMS != null
+      ? toFiniteNumber(row.pumpSalesLitersPMS) + toFiniteNumber(row.receivedPMS) - toFiniteNumber(row.rttPMS)
+      : hasPmsMeter
+        ? directPumpDelta.PMS + toFiniteNumber(row.receivedPMS) - toFiniteNumber(row.rttPMS)
+        : toFiniteNumber(row.totalSalesLitersPMS)
+    const systemAgo = row.pumpSalesLitersAGO != null
+      ? toFiniteNumber(row.pumpSalesLitersAGO) + toFiniteNumber(row.receivedAGO) - toFiniteNumber(row.rttAGO)
+      : hasAgoMeter
+        ? directPumpDelta.AGO + toFiniteNumber(row.receivedAGO) - toFiniteNumber(row.rttAGO)
+        : toFiniteNumber(row.totalSalesLitersAGO)
+    const managerPms = toFiniteNumber(row.dipSalesLitersPMS ?? row.totalSalesLitersPMS)
+    const managerAgo = toFiniteNumber(row.dipSalesLitersAGO ?? row.totalSalesLitersAGO)
+    const bookPms = toFiniteNumber(row.openingStockPMS) + toFiniteNumber(row.receivedPMS) - toFiniteNumber(row.rttPMS) - toFiniteNumber(systemPms)
+    const bookAgo = toFiniteNumber(row.openingStockAGO) + toFiniteNumber(row.receivedAGO) - toFiniteNumber(row.rttAGO) - toFiniteNumber(systemAgo)
+
+    return {
+      systemPms,
+      systemAgo,
+      managerPms,
+      managerAgo,
+      pmsDiff: toFiniteNumber(systemPms) - managerPms,
+      agoDiff: toFiniteNumber(systemAgo) - managerAgo,
+      bookPms,
+      bookAgo,
+      stockPmsDiff: toFiniteNumber(row.closingStockPMS) - bookPms,
+      stockAgoDiff: toFiniteNumber(row.closingStockAGO) - bookAgo,
+    }
+  }, [selectedDailyOpeningReport])
 
   return (
     <div className="space-y-4">
       {(activeDashboard === 'stock-flow' || activeDashboard === 'cash-flow' || activeDashboard === 'expense-monitor') && (
-        <Card className="hidden space-y-3 md:block">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Reports</p>
-          <div className="flex flex-col gap-3 md:flex-row">
-            <button
-              onClick={() => setActiveDashboard('stock-flow')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                activeDashboard === 'stock-flow'
-                  ? 'bg-rose-600 text-white'
-                  : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
-              }`}
-            >
-              Stock Flow
-            </button>
-            <button
-              onClick={() => setActiveDashboard('cash-flow')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                activeDashboard === 'cash-flow'
-                  ? 'bg-rose-600 text-white'
-                  : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
-              }`}
-            >
-              Cash Flow
-            </button>
-            <button
-              onClick={() => setActiveDashboard('expense-monitor')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                activeDashboard === 'expense-monitor'
-                  ? 'bg-rose-600 text-white'
-                  : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
-              }`}
-            >
-              Expenses
-            </button>
+        <Card className="hidden md:block">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="mr-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Reports</p>
+            {[
+              ['stock-flow', 'Stock Flow'],
+              ['cash-flow', 'Cash Flow'],
+              ['expense-monitor', 'Expenses'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveDashboard(key)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                  activeDashboard === key
+                    ? 'bg-[#c4151d] text-white shadow-lg shadow-[#c4151d]/20'
+                    : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-400">Date</span>
+              <input
+                type="date"
+                value={reportViewDate}
+                max={today}
+                onChange={(event) => setReportViewDate(event.target.value || today)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white outline-none transition focus:border-[#a9cd39]/50"
+              />
+              {reportViewDate !== today && (
+                <button
+                  type="button"
+                  onClick={() => setReportViewDate(today)}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
+                >
+                  Today
+                </button>
+              )}
+            </div>
           </div>
         </Card>
       )}
 
-      {(activeDashboard === 'stock-flow' ||
-        activeDashboard === 'cash-flow' ||
-        activeDashboard === 'expense-monitor') &&
-        dailyQueueReviewDatePicker}
-
       {activeDashboard === 'dashboard' && (
         <>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card>
-          <p className="text-sm text-slate-500">Retail Stations Monitored</p>
-          <p className="text-2xl font-bold">{portfolio.length}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-slate-500">Critical</p>
-          <p className="text-2xl font-bold text-red-600">{criticalCount}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-slate-500">Warning</p>
-          <p className="text-2xl font-bold text-yellow-600">{warningCount}</p>
-        </Card>
-      </div>
-
-      <Card className="space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h3 className="text-lg font-semibold">Portfolio Monitoring</h3>
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-          >
-            <option value="all">All Statuses</option>
-            <option value="critical">Critical</option>
-            <option value="warning">Warning</option>
-            <option value="safe">Safe</option>
-          </select>
+        {/* ── Stat bar ── */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[
+            { label: 'Stations', value: portfolio.length, color: 'text-white', accent: 'border-white/10', icon: '⌂' },
+            { label: 'Safe', value: portfolio.filter(p => p.status === 'safe').length, color: 'text-[#a9cd39]', accent: 'border-[#a9cd39]/20', icon: '✓' },
+            { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: '⚠' },
+            { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: '⛔' },
+          ].map(({ label, value, color, accent, icon }) => (
+            <div key={label} className={`rounded-2xl border ${accent} bg-white/5 p-4`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+                <span className={`text-lg ${color}`}>{icon}</span>
+              </div>
+              <p className={`text-3xl font-bold ${color}`}>{value}</p>
+            </div>
+          ))}
         </div>
-        {filteredPortfolio.length ? (
-          <DataTable
-            columns={columns}
-            rows={filteredPortfolio}
-            onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
-          />
-        ) : (
-          <EmptyState
-            title="No retail stations in this filter"
-            message="Try another status filter to inspect your retail station portfolio."
-          />
-        )}
-      </Card>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card className="space-y-3">
-          <h3 className="text-lg font-semibold">Top Risk Retail Stations</h3>
-          {!topRisk.length && (
-            <p className="text-sm text-slate-500">No risk stations in your current scope.</p>
+        {/* ── Portfolio ── */}
+        <Card className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Stock Portfolio</p>
+              <h3 className="text-lg font-bold text-white">Station Inventory Status</h3>
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+            >
+              <option value="all">All</option>
+              <option value="critical">Critical</option>
+              <option value="warning">Warning</option>
+              <option value="safe">Safe</option>
+            </select>
+          </div>
+          {filteredPortfolio.length ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {filteredPortfolio.map((row) => {
+                const isCritical = row.status === 'critical'
+                const isWarning = row.status === 'warning'
+                const pct = Math.min(100, Math.max(0, (row.stockRemaining / (row.avgDailySales * 30 || 1)) * 100))
+                return (
+                  <button
+                    key={row.stationId}
+                    type="button"
+                    onClick={() => navigate(`/stations/${row.stationId}`)}
+                    className={`rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${
+                      isCritical ? 'border-rose-500/25 bg-rose-500/5'
+                      : isWarning ? 'border-amber-500/20 bg-amber-500/5'
+                      : 'border-[#a9cd39]/15 bg-[#a9cd39]/5'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <p className="font-bold text-white truncate pr-2">{row.stationName}</p>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold uppercase ${
+                        isCritical ? 'bg-rose-500/15 text-rose-400'
+                        : isWarning ? 'bg-amber-500/15 text-amber-400'
+                        : 'bg-[#a9cd39]/15 text-[#a9cd39]'
+                      }`}>{row.status}</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-400">Stock remaining</span>
+                        <span className="font-semibold text-white">{Math.round(row.stockRemaining).toLocaleString()} L</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-400' : 'bg-[#a9cd39]'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <p className="text-xs text-slate-500">~{row.daysRemaining.toFixed(0)} days remaining</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <EmptyState title="No stations in this filter" message="Try another status." />
           )}
-          {topRisk.map((station) => (
-            <div key={station.stationId} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <p className="font-medium">{station.stationName}</p>
+        </Card>
+
+        {/* ── Bottom two panels ── */}
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Card className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-rose-400">⚠ Top Risk</p>
+            <h3 className="text-base font-bold text-white -mt-1">Stations Needing Attention</h3>
+            {!topRisk.length && <p className="text-sm text-slate-500">All stations are in good shape.</p>}
+            {topRisk.map((station, i) => (
+              <button
+                key={station.stationId}
+                type="button"
+                onClick={() => navigate(`/stations/${station.stationId}`)}
+                className="w-full flex items-center gap-3 rounded-xl border border-rose-500/15 bg-rose-500/5 p-3 text-left hover:bg-rose-500/10 transition"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-xs font-bold text-rose-400">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-white truncate">{station.stationName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{station.daysRemaining.toFixed(0)}d remaining · {Math.round(station.stockRemaining).toLocaleString()} L</p>
+                </div>
                 <StatusBadge status={station.status} />
-              </div>
-              <p className="mt-1 text-sm text-slate-500">
-                Approx. {station.daysRemaining.toFixed(2)} expected days remaining.
-              </p>
-              <Link
-                to={`/stations/${station.stationId}`}
-                className="mt-2 inline-block text-sm font-medium text-blue-600 dark:text-blue-300"
-              >
-                Open details
-              </Link>
-            </div>
-          ))}
-        </Card>
+              </button>
+            ))}
+          </Card>
 
-        <Card className="space-y-3">
-          <h3 className="text-lg font-semibold">Recent Interventions</h3>
-          {!interventions.length && (
-            <p className="text-sm text-slate-500">No interventions logged yet.</p>
-          )}
-          {interventions.slice(0, 6).map((item) => (
-            <div key={item.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    navigate(`/stations/${item.stationId}`)
-                  }}
-                  className="font-medium text-blue-600 hover:underline dark:text-blue-300"
-                >
-                  {item.stationName}
-                </button>
-                <StatusBadge status={item.status} />
+          <Card className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">🚩 Interventions</p>
+            <h3 className="text-base font-bold text-white -mt-1">Active Flags</h3>
+            {!interventions.length && <p className="text-sm text-slate-500">No interventions logged yet.</p>}
+            {interventions.slice(0, 5).map((item) => (
+              <div key={item.id} className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <button type="button" onClick={() => navigate(`/stations/${item.stationId}`)} className="font-semibold text-white hover:text-[#a9cd39] transition truncate">{item.stationName}</button>
+                  <StatusBadge status={item.status} />
+                </div>
+                <p className="text-xs text-slate-400">{item.message}</p>
+                <p className="text-xs text-slate-500">Stock: <span className="text-white font-medium">{Math.round(metricsByStationId.get(item.stationId)?.stockRemaining || 0).toLocaleString()} L</span></p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button type="button" onClick={() => navigate(`/stations/${item.stationId}/history`)} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-300 hover:bg-white/10 transition">History</button>
+                  <button type="button" onClick={() => escalateStationIntervention({ stationId: item.stationId })} disabled={item.stage === 'escalated'} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-40">
+                    {item.stage === 'escalated' ? '✓ Escalated' : 'Escalate'}
+                  </button>
+                  {item.stage === 'escalated' && (
+                    <button type="button" onClick={() => { if(window.confirm('Revert escalation?')) revertEscalationIntervention({ stationId: item.stationId }) }} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-400 hover:text-white transition">Revert</button>
+                  )}
+                  {item.stage !== 'escalated' && (
+                    <button type="button" onClick={() => { if(window.confirm('Unflag this station?')) unflagStationIntervention({ stationId: item.stationId }) }} className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-2.5 py-1 text-xs text-rose-400 hover:bg-rose-500/10 transition">Unflag</button>
+                  )}
+                </div>
               </div>
-              <p className="mt-1 text-xs text-slate-500">{item.message}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Remaining stock:{' '}
-                <span className="font-medium text-slate-700 dark:text-slate-200">
-                  {Math.round(metricsByStationId.get(item.stationId)?.stockRemaining || 0).toLocaleString()} L
-                </span>
-              </p>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  navigate(`/stations/${item.stationId}/history`)
-                }}
-                className="mt-2 rounded-md border border-blue-300 px-2 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/40 dark:text-blue-300"
-              >
-                Open Report History
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  escalateStationIntervention({ stationId: item.stationId })
-                }}
-                disabled={item.stage === 'escalated'}
-                className="mt-2 rounded-md border border-amber-300 px-2 py-1 text-xs font-medium text-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-500/40 dark:text-amber-300"
-              >
-                {item.stage === 'escalated' ? 'Escalated' : 'Escalate'}
-              </button>
-              {item.stage === 'escalated' && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    const confirmed = window.confirm('Revert escalation for this station?')
-                    if (confirmed) {
-                      revertEscalationIntervention({ stationId: item.stationId })
-                    }
-                  }}
-                  className="ml-2 mt-2 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-200"
-                >
-                  Revert Escalation
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  const confirmed = window.confirm('Unflag this station intervention?')
-                  if (confirmed) {
-                    unflagStationIntervention({ stationId: item.stationId })
-                  }
-                }}
-                className="ml-2 mt-2 rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 dark:border-rose-500/40 dark:text-rose-300"
-              >
-                Unflag
-              </button>
-            </div>
-          ))}
-        </Card>
-      </div>
+            ))}
+          </Card>
+        </div>
         </>
       )}
 
@@ -1870,15 +1893,11 @@ const SupervisorDashboardPage = () => {
                 <p className="text-2xl font-bold">{dailyOpeningQueueRows.length}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">
-                  {isDailyQueueReviewToday ? 'Submitted Today' : `Submitted · ${dailyQueueReviewLabel}`}
-                </p>
+                <p className="text-sm text-slate-500">Submitted Today</p>
                 <p className="text-2xl font-bold text-emerald-600">{submittedCount}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">
-                  {isDailyQueueReviewToday ? 'Pending Today' : `Not submitted · ${dailyQueueReviewLabel}`}
-                </p>
+                <p className="text-sm text-slate-500">Pending Today</p>
                 <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
               </Card>
             </div>
@@ -1886,16 +1905,16 @@ const SupervisorDashboardPage = () => {
 
           {filtersScreenOpen ? (
             <Card className="mx-auto max-w-5xl space-y-8 overflow-hidden px-4 py-6 sm:px-8 sm:py-8">
-              <div className="flex flex-wrap items-start gap-4 border-b border-slate-200 pb-6 dark:border-slate-700">
+              <div className="flex flex-wrap items-start gap-4 border-b border-white/8 pb-6 dark:border-slate-700">
                 <button
                   type="button"
                   onClick={closeFiltersScreen}
-                  className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+                  className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
                   ← Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                  <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
                     Daily opening · Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -1905,7 +1924,7 @@ const SupervisorDashboardPage = () => {
                 </div>
               </div>
               {dailyQueueFiltersPanel}
-              <div className="-mx-4 flex justify-end border-t border-slate-200 bg-slate-50/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="-mx-4 flex justify-end border-t border-white/8 bg-white/5/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-[#0d1220]/60">
                 <button
                   type="button"
                   onClick={closeFiltersScreen}
@@ -1918,24 +1937,19 @@ const SupervisorDashboardPage = () => {
           ) : (
             <Card className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-semibold">
-                  Daily Opening Stock Queue (Alphabetical)
-                  {!isDailyQueueReviewToday && (
-                    <span className="ml-2 text-sm font-normal text-slate-500">· {dailyQueueReviewLabel}</span>
-                  )}
-                </h3>
+                <h3 className="text-lg font-semibold">Daily Opening Stock Queue (Alphabetical)</h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={openFiltersScreen}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white dark:text-slate-900"
+                    className="rounded-lg bg-[#0d1220] px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white/5 dark:text-white"
                   >
                     Filters
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowFullDailyOpeningColumns((prev) => !prev)}
-                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 dark:border-slate-700 dark:bg-[#0d1220] dark:text-slate-200"
                   >
                     {showFullDailyOpeningColumns ? 'Compact View' : 'Full Columns'}
                   </button>
@@ -1958,9 +1972,9 @@ const SupervisorDashboardPage = () => {
                   </button>
                 </div>
               </div>
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/8 bg-white/5/90 px-4 py-3 dark:border-slate-700 dark:bg-[#0d1220]/50">
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  <span className="font-medium text-slate-800 dark:text-slate-100">Active filters:</span>{' '}
+                  <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {dailyFiltersSummary}
                   {' · '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
@@ -1968,22 +1982,90 @@ const SupervisorDashboardPage = () => {
               </div>
               {dailyOpeningQueueRows.length ? (
                 filteredDailyOpeningQueueRows.length ? (
-                  <DataTable
-                    columns={visibleDailyOpeningColumns}
-                    rows={filteredDailyOpeningQueueRows}
-                    onRowClick={handleReportQueueRowClick}
-                    tableClassName={
-                      showFullDailyOpeningColumns ? 'min-w-[2350px] table-fixed' : 'min-w-[1850px] table-fixed'
-                    }
-                    wrapHeaders={false}
-                    wrapCells={false}
-                    stickyColumns={dailyOpeningStickyColumns}
-                    stickyColumnWidths={{
-                      stationName: 220,
-                      reportStatus: 180,
-                      stationId: 120,
-                    }}
-                  />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {filteredDailyOpeningQueueRows.map((row) => {
+                      const submitted = row.reportStatus === 'Submitted'
+                      const noSales = row.reportStatus === 'No Sales Declared'
+                      const pending = !submitted && !noSales
+                      const late = pending && !row.pendingSubmissionNoHistory && Number(row.pendingSubmissionDays || 0) >= 1
+                      return (
+                        <button
+                          key={row.stationId}
+                          type="button"
+                          onClick={() => {
+                            if (submitted || noSales) {
+                              setSelectedDailyOpeningReport(row)
+                            } else {
+                              navigate(`/stations/${row.stationId}/history`)
+                            }
+                          }}
+                          className={`rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${
+                            submitted ? 'border-[#a9cd39]/25 bg-[#a9cd39]/5'
+                            : noSales ? 'border-white/10 bg-white/5'
+                            : late ? 'border-rose-500/25 bg-rose-500/5'
+                            : 'border-amber-500/25 bg-amber-500/5'
+                          }`}
+                        >
+                          {/* Station name + status */}
+                          <div className="flex items-start justify-between gap-2 mb-3">
+                            <div className="min-w-0">
+                              <p className="font-bold text-white truncate">{row.stationName}</p>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">{row.managerName}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${
+                              submitted ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
+                              : noSales ? 'bg-white/10 text-slate-400'
+                              : late ? 'bg-rose-500/15 text-rose-400'
+                              : 'bg-amber-500/15 text-amber-400'
+                            }`}>
+                              {submitted ? '✓ Submitted'
+                               : noSales ? 'No Sales'
+                               : late ? `Late ${row.pendingSubmissionDays}d`
+                               : 'Pending'}
+                            </span>
+                          </div>
+
+                          {/* Key figures */}
+                          {submitted && (
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              {[
+                                { label: 'PMS Closing', value: row.closingStockPMS + ' L' },
+                                { label: 'AGO Closing', value: row.closingStockAGO + ' L' },
+                                { label: 'Sales', value: 'NGN ' + Math.round(Number(row.totalSalesAmount || 0)).toLocaleString() },
+                                { label: 'Variance', value: 'NGN ' + Math.round(Number(row.cashMovementVariance || 0)).toLocaleString() },
+                              ].map(({ label, value }) => (
+                                <div key={label} className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                                  <p className="text-slate-500 text-xs">{label}</p>
+                                  <p className={`font-semibold mt-0.5 ${label === 'Variance' && Math.abs(Number(row.cashMovementVariance || 0)) > 0 ? 'text-amber-400' : 'text-white'}`}>{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {noSales && row.managerRemark && row.managerRemark !== 'Not Submitted' && (
+                            <p className="text-xs text-slate-400 mt-1 truncate">Reason: {row.managerRemark}</p>
+                          )}
+                          {pending && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              {row.pendingSubmissionNoHistory ? 'No report today yet' : `${row.pendingSubmissionDays} day(s) without submission`}
+                              <span className="ml-2 text-[#a9cd39]">→ View History</span>
+                            </p>
+                          )}
+
+                          {/* Flags */}
+                          {(row.hasDiscrepancy || (row.eodAttachments && row.eodAttachments.length > 0)) && (
+                            <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-2">
+                              {row.hasDiscrepancy && (
+                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">⚠ Discrepancy</span>
+                              )}
+                              {row.eodAttachments?.length > 0 && (
+                                <span className="rounded-full bg-[#a9cd39]/10 px-2 py-0.5 text-xs text-[#a9cd39]">📎 {row.eodAttachments.length} EOD</span>
+                              )}
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 ) : (
                   <EmptyState
                     title="No stations match these filters"
@@ -1999,36 +2081,418 @@ const SupervisorDashboardPage = () => {
             </Card>
           )}
 
-          {!filtersScreenOpen && isDailyQueueReviewToday && (
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Daily Finalization to Admin ({today})</h3>
-              <p className="text-sm text-slate-500">
-                {todayFinalization
-                  ? `Already finalized by ${todayFinalization.finalizedBy}`
-                  : 'Not finalized yet'}
-              </p>
-            </div>
-            <label className="space-y-1">
-              <span className="text-sm font-medium">General Supervisor Remark</span>
-              <textarea
-                value={generalFinalizationRemark}
-                onChange={(event) => setGeneralFinalizationRemark(event.target.value)}
-                placeholder="Overall daily summary for admin..."
-                className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-              />
-            </label>
-            <DataTable columns={finalizationColumns} rows={finalizationRows} tableClassName="min-w-[900px]" />
-            <button
-              type="button"
-              onClick={handleFinalizeDailyReview}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white"
-            >
-              {todayFinalization ? 'Re-Finalize Daily Review' : 'Finalize Daily Review'}
-            </button>
-          </Card>
-          )}
 
+          {selectedDailyOpeningReport && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+              <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-[#0d1220] border border-white/10 shadow-2xl">
+                {/* Modal header */}
+                <div className="sticky top-0 bg-[#0d1220] border-b border-white/5 px-5 py-4 flex items-start justify-between gap-4 z-10">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Daily Report</p>
+                    <h4 className="text-lg font-bold text-white mt-0.5">{selectedDailyOpeningReport.stationName}</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {selectedDailyOpeningReport.managerName} · {selectedDailyOpeningReport.reportDate}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDailyOpeningReport(null)}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 hover:text-white transition shrink-0"
+                  >✕</button>
+                </div>
+
+                <div className="space-y-4 p-5 text-sm">
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {[
+                      ['Status', selectedDailyOpeningReport.reportStatus, 'text-[#a9cd39]'],
+                      ['Received', selectedDailyOpeningReport.receivedProduct, 'text-white'],
+                      ['Pump lines', Number(selectedDailyOpeningReport.pumpReadingsCount || 0), 'text-white'],
+                      ['Cash variance', formatMoney(selectedDailyOpeningReport.cashMovementVariance), differenceTone(selectedDailyOpeningReport.cashMovementVariance)],
+                    ].map(([label, value, color]) => (
+                      <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.04] p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+                        <p className={`mt-1 text-base font-black ${color}`}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {selectedReportDetail && (
+                    <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-widest text-amber-300">Quantity sold</p>
+                          <p className="mt-1 text-sm text-slate-300">System pump meters vs manager tank-dip reference.</p>
+                        </div>
+                        <span className={`rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-black ${
+                          Math.abs(selectedReportDetail.pmsDiff) <= 1 && Math.abs(selectedReportDetail.agoDiff) <= 1
+                            ? 'text-[#a9cd39]'
+                            : 'text-amber-300'
+                        }`}>
+                          {Math.abs(selectedReportDetail.pmsDiff) <= 1 && Math.abs(selectedReportDetail.agoDiff) <= 1 ? 'Matched' : 'Check difference'}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        {[
+                          ['PMS', selectedReportDetail.systemPms, selectedReportDetail.managerPms, selectedReportDetail.pmsDiff, 'text-[#a9cd39]'],
+                          ['AGO', selectedReportDetail.systemAgo, selectedReportDetail.managerAgo, selectedReportDetail.agoDiff, 'text-blue-300'],
+                        ].map(([product, system, manager, diff, accent]) => (
+                          <div key={product} className="rounded-2xl border border-white/8 bg-black/20 p-3">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{product}</p>
+                              <p className={`text-xs font-black ${differenceTone(diff)}`}>Diff {formatLiters(diff, 2)}</p>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <div className="rounded-xl bg-white/[0.04] p-3">
+                                <p className="text-[11px] text-slate-500">System</p>
+                                <p className={`text-lg font-black ${accent}`}>{system == null ? '-' : formatLiters(system, 2)}</p>
+                              </div>
+                              <div className="rounded-xl bg-white/[0.04] p-3">
+                                <p className="text-[11px] text-slate-500">Manager ref</p>
+                                <p className="text-lg font-black text-white">{formatLiters(manager, 2)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedReportDetail && (
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Stock check</p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        {[
+                          ['PMS', selectedDailyOpeningReport.closingStockPMS, selectedReportDetail.bookPms, selectedReportDetail.stockPmsDiff],
+                          ['AGO', selectedDailyOpeningReport.closingStockAGO, selectedReportDetail.bookAgo, selectedReportDetail.stockAgoDiff],
+                        ].map(([product, tankDip, book, diff]) => (
+                          <div key={product} className="rounded-2xl border border-white/8 bg-black/20 p-3">
+                            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{product}</p>
+                            <div className="mt-2 space-y-1.5">
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Tank dip</span><span className="font-bold text-white">{formatLiters(tankDip)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Book remaining</span><span className="font-bold text-white">{formatLiters(book, 2)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Difference</span><span className={`font-black ${differenceTone(diff)}`}>{formatLiters(diff, 2)}</span></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Stock flow</p>
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Opening PMS</span><span className="font-bold text-white">{formatLiters(selectedDailyOpeningReport.openingStockPMS)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Opening AGO</span><span className="font-bold text-white">{formatLiters(selectedDailyOpeningReport.openingStockAGO)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Received PMS</span><span className="font-bold text-white">{formatLiters(selectedDailyOpeningReport.receivedPMS)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Received AGO</span><span className="font-bold text-white">{formatLiters(selectedDailyOpeningReport.receivedAGO)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">RTT PMS</span><span className="font-bold text-white">{formatLiters(selectedDailyOpeningReport.rttPMS)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">RTT AGO</span><span className="font-bold text-white">{formatLiters(selectedDailyOpeningReport.rttAGO)}</span></div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Cash flow</p>
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Cash B/F</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.cashBf)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Cash sales</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.cashSales)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Bank</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.totalPaymentDeposits)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">POS</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.posValue)}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Closing</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.closingBalance)}</span></div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Pricing & expense</p>
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">PMS price</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.pmsPrice)}/L</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">AGO price</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.agoPrice)}/L</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">Expense</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.expenseAmount)}</span></div>
+                      </div>
+                      {selectedDailyOpeningReport.managerRemark && selectedDailyOpeningReport.managerRemark !== '-' && (
+                        <p className="mt-3 rounded-xl bg-black/20 p-3 text-sm text-slate-300">{selectedDailyOpeningReport.managerRemark}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="hidden">
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Submission Status</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.reportStatus}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Received Product (PMS/AGO)</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.receivedProduct}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Opening Stock PMS</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.openingStockPMS}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Opening Stock AGO</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.openingStockAGO}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Closing Stock PMS</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.closingStockPMS}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Closing Stock AGO</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.closingStockAGO}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">PMS Price</p>
+                    <p className="font-medium text-white">
+                      {selectedDailyOpeningReport.multiPricing &&
+                      (selectedDailyOpeningReport.priceBandsPMS || []).length > 1
+                        ? `Avg ₦${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
+                        : selectedDailyOpeningReport.pmsPrice}
+                    </p>
+                    {(selectedDailyOpeningReport.priceBandsPMS || []).length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                        {selectedDailyOpeningReport.priceBandsPMS.map((band, index) => (
+                          <li key={`pms-band-${index}`}>
+                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">AGO Price</p>
+                    <p className="font-medium text-white">
+                      {selectedDailyOpeningReport.multiPricing &&
+                      (selectedDailyOpeningReport.priceBandsAGO || []).length > 1
+                        ? `Avg ₦${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
+                        : selectedDailyOpeningReport.agoPrice}
+                    </p>
+                    {(selectedDailyOpeningReport.priceBandsAGO || []).length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                        {selectedDailyOpeningReport.priceBandsAGO.map((band, index) => (
+                          <li key={`ago-band-${index}`}>
+                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Input Quantity Received (L)</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.quantityReceived}</p>
+                  </div>
+                  {/* PMS Sales — side by side */}
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
+                    <p className="text-xs uppercase text-slate-500 mb-2">Sales PMS (L)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-black/20 px-3 py-2">
+                        <p className="text-xs text-slate-500">Pump meters</p>
+                        <p className={`font-bold text-base ${selectedDailyOpeningReport.pumpSalesLitersPMS != null ? 'text-[#a9cd39]' : 'text-slate-500'}`}>
+                          {selectedDailyOpeningReport.pumpSalesLitersPMS != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersPMS).toLocaleString() + ' L' : '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-black/20 px-3 py-2">
+                        <p className="text-xs text-slate-500">Tank dip (ref)</p>
+                        <p className="font-bold text-base text-slate-300">{selectedDailyOpeningReport.totalSalesLitersPMS}</p>
+                      </div>
+                    </div>
+                    {selectedDailyOpeningReport.pumpSalesLitersPMS != null && (() => {
+                      const gap = Math.abs(selectedDailyOpeningReport.pumpSalesLitersPMS - Number(String(selectedDailyOpeningReport.totalSalesLitersPMS).replace(/,/g, '') || 0))
+                      return gap > 10 ? (
+                        <p className="mt-2 text-xs text-amber-400">⚠ Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
+                      ) : null
+                    })()}
+                  </div>
+                  {/* AGO Sales — side by side */}
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
+                    <p className="text-xs uppercase text-slate-500 mb-2">Sales AGO (L)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-black/20 px-3 py-2">
+                        <p className="text-xs text-slate-500">Pump meters</p>
+                        <p className={`font-bold text-base ${selectedDailyOpeningReport.pumpSalesLitersAGO != null ? 'text-blue-400' : 'text-slate-500'}`}>
+                          {selectedDailyOpeningReport.pumpSalesLitersAGO != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersAGO).toLocaleString() + ' L' : '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-black/20 px-3 py-2">
+                        <p className="text-xs text-slate-500">Tank dip (ref)</p>
+                        <p className="font-bold text-base text-slate-300">{selectedDailyOpeningReport.totalSalesLitersAGO}</p>
+                      </div>
+                    </div>
+                    {selectedDailyOpeningReport.pumpSalesLitersAGO != null && (() => {
+                      const gap = Math.abs(selectedDailyOpeningReport.pumpSalesLitersAGO - Number(String(selectedDailyOpeningReport.totalSalesLitersAGO).replace(/,/g, '') || 0))
+                      return gap > 10 ? (
+                        <p className="mt-2 text-xs text-amber-400">⚠ Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
+                      ) : null
+                    })()}
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">RTT PMS</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.rttPMS}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">RTT AGO</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.rttAGO}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
+                    <p className="text-xs uppercase text-slate-500">Remark</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.managerRemark}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Expense Total (NGN)</p>
+                    <p className="font-medium text-white">
+                      {Math.round(selectedDailyOpeningReport.expenseAmount).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
+                    <p className="text-xs uppercase text-slate-500">Expense Description</p>
+                    <p className="font-medium text-white">{selectedDailyOpeningReport.expenseDescription}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Bank/Channel Deposits Total (NGN)</p>
+                    <p className="font-medium text-white">
+                      {Math.round(Number(selectedDailyOpeningReport.totalPaymentDeposits || 0)).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Cash B/F (NGN)</p>
+                    <p className="font-medium text-white">{Math.round(Number(selectedDailyOpeningReport.cashBf || 0)).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Cash Sales (NGN)</p>
+                    <p className="font-medium text-white">{Math.round(Number(selectedDailyOpeningReport.cashSales || 0)).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Total Amount (NGN)</p>
+                    <p className="font-medium text-white">{Math.round(Number(selectedDailyOpeningReport.totalAmount || 0)).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">POS (NGN)</p>
+                    <p className="font-medium text-white">{Math.round(Number(selectedDailyOpeningReport.posValue || 0)).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Closing Balance (NGN)</p>
+                    <p className="font-medium text-white">{Math.round(Number(selectedDailyOpeningReport.closingBalance || 0)).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Variance (NGN)</p>
+                    <p className="font-medium text-white">
+                      {Math.round(Number(selectedDailyOpeningReport.cashMovementVariance || 0)).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                    <p className="text-xs uppercase text-slate-500">Pump Reading Lines</p>
+                    <p className="font-medium text-white">{Number(selectedDailyOpeningReport.pumpReadingsCount || 0)}</p>
+                  </div>
+                </div>
+
+                {selectedDailyOpeningReport.expenseItems.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
+                    <p className="mb-2 text-xs uppercase text-slate-500">Expense Lines</p>
+                    <div className="space-y-2">
+                      {selectedDailyOpeningReport.expenseItems.map((item, index) => (
+                        <p key={`${item.label}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
+                          {item.label}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {selectedDailyOpeningReport.paymentBreakdown?.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
+                    <p className="mb-2 text-xs uppercase text-slate-500">Bank/Channel Breakdown</p>
+                    <div className="space-y-2">
+                      {selectedDailyOpeningReport.paymentBreakdown.map((item, index) => (
+                        <p key={`${item.channel}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
+                          {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {selectedDailyOpeningReport.pumpMeterRows?.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
+                    <p className="mb-2 text-xs uppercase text-slate-500">Pump Readings</p>
+                    <div className="space-y-2">
+                      {selectedDailyOpeningReport.pumpMeterRows.map((item, index) => (
+                        <p key={`${item.label}-${index}`} className="text-sm text-slate-200">
+                          {item.label}:{' '}
+                          {item.noBaseline
+                            ? 'No baseline'
+                            : `${item.opening ?? '-'} → ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Supervisor Review Button ── */}
+                {(() => {
+                  const report = reports.find((r) =>
+                    r.stationId === selectedDailyOpeningReport.stationId &&
+                    r.date === selectedDailyOpeningReport.reportDate
+                  )
+                  const alreadyReviewed = report?.supervisorReview?.status === 'Reviewed'
+                  return (
+                    <div className="mt-5 border-t border-white/5 pt-5">
+                      {alreadyReviewed ? (
+                        <div className="flex items-center gap-3 rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/5 px-4 py-3">
+                          <span className="text-[#a9cd39] text-xl">✓</span>
+                          <div>
+                            <p className="text-sm font-semibold text-[#a9cd39]">Reviewed</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              by {report.supervisorReview.reviewedBy || currentUser?.name} · {report.supervisorReview.remark || ''}
+                            </p>
+                          </div>
+                          <button type="button"
+                            onClick={() => setSelectedDailyOpeningReport(null)}
+                            className="ml-auto text-xs text-slate-500 hover:text-white underline transition">
+                            Close
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <p className="text-sm font-semibold text-white">Mark this report as reviewed?</p>
+                          <textarea
+                            value={reviewRemark}
+                            onChange={(e) => setReviewRemark(e.target.value)}
+                            placeholder="Add a supervisor remark (optional)..."
+                            rows={2}
+                            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-[#a9cd39]/40 focus:outline-none resize-none"
+                          />
+                          <div className="flex gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDailyOpeningReport(null)}
+                              className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-semibold text-slate-400 hover:bg-white/5 transition"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (report?.id) {
+                                  updateReportSupervisorReview({
+                                    reportId: report.id,
+                                    status: 'Reviewed',
+                                    remark: reviewRemark.trim() || `Reviewed by ${currentUser?.name || 'Supervisor'}`,
+                                  })
+                                }
+                                setReviewRemark('')
+                                setSelectedDailyOpeningReport(null)
+                              }}
+                              className="flex-1 rounded-xl bg-[#a9cd39] py-3 text-sm font-bold text-black hover:bg-[#bcd94a] transition"
+                            >
+                              ✓ Confirm Review
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -2041,15 +2505,11 @@ const SupervisorDashboardPage = () => {
                 <p className="text-2xl font-bold">{filteredDailyOpeningQueueRows.length}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">
-                  {isDailyQueueReviewToday ? 'Total Bank/Channel Deposits (NGN)' : `Bank Deposits · ${dailyQueueReviewLabel}`}
-                </p>
+                <p className="text-sm text-slate-500">Total Bank/Channel Deposits (NGN)</p>
                 <p className="text-2xl font-bold">{Math.round(totalBankDepositsToday).toLocaleString()}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">
-                  {isDailyQueueReviewToday ? 'Net Variance (NGN)' : `Net Variance · ${dailyQueueReviewLabel}`}
-                </p>
+                <p className="text-sm text-slate-500">Net Variance (NGN)</p>
                 <p className="text-2xl font-bold">{Math.round(totalCashVarianceToday).toLocaleString()}</p>
               </Card>
             </div>
@@ -2057,16 +2517,16 @@ const SupervisorDashboardPage = () => {
 
           {filtersScreenOpen ? (
             <Card className="mx-auto max-w-5xl space-y-8 overflow-hidden px-4 py-6 sm:px-8 sm:py-8">
-              <div className="flex flex-wrap items-start gap-4 border-b border-slate-200 pb-6 dark:border-slate-700">
+              <div className="flex flex-wrap items-start gap-4 border-b border-white/8 pb-6 dark:border-slate-700">
                 <button
                   type="button"
                   onClick={closeFiltersScreen}
-                  className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+                  className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
                   ← Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                  <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
                     Cash flow · Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -2075,7 +2535,7 @@ const SupervisorDashboardPage = () => {
                 </div>
               </div>
               {cashFlowFiltersPanel}
-              <div className="-mx-4 flex justify-end border-t border-slate-200 bg-slate-50/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="-mx-4 flex justify-end border-t border-white/8 bg-white/5/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-[#0d1220]/60">
                 <button
                   type="button"
                   onClick={closeFiltersScreen}
@@ -2088,17 +2548,12 @@ const SupervisorDashboardPage = () => {
           ) : (
             <Card className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-semibold">
-                  Cash Flow Queue
-                  {!isDailyQueueReviewToday && (
-                    <span className="ml-2 text-sm font-normal text-slate-500">· {dailyQueueReviewLabel}</span>
-                  )}
-                </h3>
+                <h3 className="text-lg font-semibold">Cash Flow Queue</h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={openFiltersScreen}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white dark:text-slate-900"
+                    className="rounded-lg bg-[#0d1220] px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white/5 dark:text-white"
                   >
                     Filters
                   </button>
@@ -2121,9 +2576,9 @@ const SupervisorDashboardPage = () => {
                   </button>
                 </div>
               </div>
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/8 bg-white/5/90 px-4 py-3 dark:border-slate-700 dark:bg-[#0d1220]/50">
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  <span className="font-medium text-slate-800 dark:text-slate-100">Active filters:</span>{' '}
+                  <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {dailyFiltersSummary}
                   {' · '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
@@ -2131,13 +2586,53 @@ const SupervisorDashboardPage = () => {
               </div>
               {dailyOpeningQueueRows.length ? (
                 filteredDailyOpeningQueueRows.length ? (
-                  <DataTable
-                    columns={visibleCashFlowColumns}
-                    rows={filteredDailyOpeningQueueRows}
-                    onRowClick={handleReportQueueRowClick}
-                    tableClassName="min-w-[1500px]"
-                    wrapHeaders
-                  />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {filteredDailyOpeningQueueRows.map((row) => {
+                      const submitted = row.reportStatus === 'Submitted'
+                      const variance = Math.round(Number(row.cashMovementVariance || 0))
+                      return (
+                        <button
+                          key={row.stationId}
+                          type="button"
+                          onClick={() => {
+                            if (submitted) {
+                              setSelectedDailyOpeningReport(row)
+                            } else {
+                              navigate(`/stations/${row.stationId}/history`)
+                            }
+                          }}
+                          className={`rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${submitted ? 'border-white/10 bg-white/5' : 'border-amber-500/20 bg-amber-500/5'}`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-3">
+                            <div className="min-w-0">
+                              <p className="font-bold text-white truncate">{row.stationName}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{row.managerName}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${submitted ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-amber-500/15 text-amber-400'}`}>
+                              {submitted ? '✓' : 'Pending'}
+                            </span>
+                          </div>
+                          {submitted && (
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              {[
+                                { label: 'Cash B/F', value: 'NGN ' + Math.round(Number(row.cashBf || 0)).toLocaleString() },
+                                { label: 'Cash Sales', value: 'NGN ' + Math.round(Number(row.cashSales || 0)).toLocaleString() },
+                                { label: 'Bank Deposits', value: 'NGN ' + Math.round(Number(row.totalPaymentDeposits || 0)).toLocaleString() },
+                                { label: 'Closing Bal', value: 'NGN ' + Math.round(Number(row.closingBalance || 0)).toLocaleString() },
+                                { label: 'POS', value: 'NGN ' + Math.round(Number(row.posValue || 0)).toLocaleString() },
+                                { label: 'Variance', value: 'NGN ' + variance.toLocaleString() },
+                              ].map(({ label, value }) => (
+                                <div key={label} className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                                  <p className="text-slate-500 text-xs">{label}</p>
+                                  <p className={`font-semibold mt-0.5 ${label === 'Variance' && Math.abs(variance) > 0 ? 'text-amber-400' : 'text-white'}`}>{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 ) : (
                   <EmptyState
                     title="No stations match these filters"
@@ -2160,15 +2655,11 @@ const SupervisorDashboardPage = () => {
           {!filtersScreenOpen && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Card>
-                <p className="text-sm text-slate-500">
-                  {isDailyQueueReviewToday ? 'Expense Reports Submitted' : `Expenses submitted · ${dailyQueueReviewLabel}`}
-                </p>
+                <p className="text-sm text-slate-500">Expense Reports Submitted</p>
                 <p className="text-2xl font-bold text-emerald-600">{expenseSubmittedCount}</p>
               </Card>
               <Card>
-                <p className="text-sm text-slate-500">
-                  {isDailyQueueReviewToday ? 'Total Expense Today (NGN)' : `Total expense · ${dailyQueueReviewLabel}`}
-                </p>
+                <p className="text-sm text-slate-500">Total Expense Today (NGN)</p>
                 <p className="text-2xl font-bold">{Math.round(totalExpenseToday).toLocaleString()}</p>
               </Card>
               <Card>
@@ -2183,16 +2674,16 @@ const SupervisorDashboardPage = () => {
 
           {filtersScreenOpen ? (
             <Card className="mx-auto max-w-5xl space-y-8 overflow-hidden px-4 py-6 sm:px-8 sm:py-8">
-              <div className="flex flex-wrap items-start gap-4 border-b border-slate-200 pb-6 dark:border-slate-700">
+              <div className="flex flex-wrap items-start gap-4 border-b border-white/8 pb-6 dark:border-slate-700">
                 <button
                   type="button"
                   onClick={closeFiltersScreen}
-                  className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+                  className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
                   ← Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                  <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
                     Expense queue · Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -2201,7 +2692,7 @@ const SupervisorDashboardPage = () => {
                 </div>
               </div>
               {expenseQueueFiltersPanel}
-              <div className="-mx-4 flex justify-end border-t border-slate-200 bg-slate-50/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="-mx-4 flex justify-end border-t border-white/8 bg-white/5/90 px-4 py-5 pb-24 sm:-mx-8 sm:px-8 sm:pb-6 dark:border-slate-700 dark:bg-[#0d1220]/60">
                 <button
                   type="button"
                   onClick={closeFiltersScreen}
@@ -2214,17 +2705,12 @@ const SupervisorDashboardPage = () => {
           ) : (
             <Card className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-semibold">
-                  Daily Expense Queue
-                  {!isDailyQueueReviewToday && (
-                    <span className="ml-2 text-sm font-normal text-slate-500">· {dailyQueueReviewLabel}</span>
-                  )}
-                </h3>
+                <h3 className="text-lg font-semibold">Daily Expense Queue</h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={openFiltersScreen}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white dark:text-slate-900"
+                    className="rounded-lg bg-[#0d1220] px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white/5 dark:text-white"
                   >
                     Filters
                   </button>
@@ -2247,9 +2733,9 @@ const SupervisorDashboardPage = () => {
                   </button>
                 </div>
               </div>
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/8 bg-white/5/90 px-4 py-3 dark:border-slate-700 dark:bg-[#0d1220]/50">
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  <span className="font-medium text-slate-800 dark:text-slate-100">Active filters:</span>{' '}
+                  <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {expenseFiltersSummary}
                   {' · '}
                   Showing {filteredExpenseQueueRows.length} of {expenseQueueRows.length} stations
@@ -2260,7 +2746,7 @@ const SupervisorDashboardPage = () => {
                   <DataTable
                     columns={visibleExpenseColumns}
                     rows={filteredExpenseQueueRows}
-                    onRowClick={handleReportQueueRowClick}
+                    onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
                     tableClassName="min-w-[1400px]"
                     wrapHeaders
                   />
@@ -2281,224 +2767,326 @@ const SupervisorDashboardPage = () => {
         </>
       )}
       {activeDashboard === 'month-end-summary' && (
-        <Card className="space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <h3 className="text-lg font-semibold">Month-End Summary by Station</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  exportSupervisorMonthEndSummaryToExcel(monthEndSummaryRows)
-                }
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+        <div className="space-y-5">
+          {/* Header controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Monthly Summary</p>
+              <h3 className="text-2xl font-bold text-white">{selectedMonthLabel}</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={selectedMonthKey}
+                onChange={(e) => setSelectedMonthKey(e.target.value)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
               >
-                Export Month-End Summary
+                {monthEndMonthOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+              <button type="button" onClick={() => exportSupervisorMonthEndSummaryToExcel(monthEndSummaryRows)}
+                className="rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-4 py-2 text-sm font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/10 transition">
+                Export
               </button>
             </div>
           </div>
-          <div className="flex flex-col gap-3 md:flex-row">
-            <button
-              type="button"
-              onClick={() => setMonthEndSection('stock-flow')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                monthEndSection === 'stock-flow'
-                  ? 'bg-rose-600 text-white'
-                  : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
-              }`}
-            >
-              Stock Flow
-            </button>
-            <button
-              type="button"
-              onClick={() => setMonthEndSection('cash-flow')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                monthEndSection === 'cash-flow'
-                  ? 'bg-rose-600 text-white'
-                  : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
-              }`}
-            >
-              Cash Flow
-            </button>
-            <button
-              type="button"
-              onClick={() => setMonthEndSection('expense-monitor')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                monthEndSection === 'expense-monitor'
-                  ? 'bg-rose-600 text-white'
-                  : 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200'
-              }`}
-            >
-              Expenses
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Month</span>
-              <select
-                value={selectedMonthKey}
-                onChange={(event) => setSelectedMonthKey(event.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-              >
-                {monthEndMonthOptions.map((option) => (
-                  <option key={option.key} value={option.key}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <StationMultiSelect
-              stations={stations}
-              selectedIds={monthEndStationIds}
-              onChange={setMonthEndStationIds}
-              label="Stations"
-              className="max-w-none w-full"
-            />
-          </div>
-          {monthEndSummaryRows.length ? (
-            <>
-              <DataTable
-                columns={
-                  monthEndSection === 'stock-flow'
-                    ? monthEndStockColumns
-                    : monthEndSection === 'cash-flow'
-                      ? monthEndCashColumns
-                      : monthEndExpenseColumns
-                }
-                rows={monthEndSummaryRows}
-                tableClassName="min-w-[1650px]"
-                wrapHeaders
-              />
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3 dark:border-slate-700">
-                <p className="text-sm text-slate-500">
-                  {selectedMonthFinalization
-                    ? `Finalized by ${selectedMonthFinalization.finalizedBy} (${selectedMonthFinalization.finalizedAt?.split('T')[0] || '-'})`
-                    : `Ready to finalize ${selectedMonthLabel} summary for admin review.`}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const confirmed = window.confirm(
-                      `Finalize ${selectedMonthLabel} month-end summary and send to admin?`,
-                    )
-                    if (!confirmed) {
-                      return
-                    }
-                    finalizeSupervisorMonthEndSummary({
-                      monthKey: selectedMonthKey,
-                      monthLabel: selectedMonthLabel,
-                      stationSummaries: monthEndSummaryRows,
-                    })
-                  }}
-                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-                >
-                  {selectedMonthFinalization ? 'Re-Finalize Month-End Summary' : 'Finalize Month-End Summary'}
-                </button>
-              </div>
-            </>
-          ) : (
-            <EmptyState
-              title="No summary rows"
-              message="No monthly report data available for selected month/stations."
-            />
+
+          {/* Station filter */}
+          <StationMultiSelect stations={stations} selectedIds={monthEndStationIds} onChange={setMonthEndStationIds} label="Filter stations" className="max-w-none w-full" />
+
+          {monthEndSummaryRows.length ? (() => {
+            // Compute rankings
+            const maxSales = Math.max(...monthEndSummaryRows.map(r => r.salesPms + r.salesAgo), 1)
+            const ranked = [...monthEndSummaryRows]
+              .map(r => ({
+                ...r,
+                totalSalesL: r.salesPms + r.salesAgo,
+                score: (r.compliancePct * 0.4) + ((r.salesPms + r.salesAgo) / maxSales * 100 * 0.4) + (Math.max(0, 100 - Math.abs(r.varianceTotal) / 1000) * 0.2),
+              }))
+              .sort((a, b) => b.score - a.score)
+
+            const medals = ['🥇', '🥈', '🥉']
+            const podiumColors = [
+              'border-yellow-400/30 bg-yellow-400/5',
+              'border-slate-400/30 bg-slate-400/5',
+              'border-amber-700/30 bg-amber-700/5',
+            ]
+
+            return (
+              <>
+                {/* Podium — top 3 */}
+                {ranked.length >= 1 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">🏆 Top Performers</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {ranked.slice(0, 3).map((row, i) => (
+                        <div key={row.stationId} className={`rounded-2xl border p-5 ${podiumColors[i] || 'border-white/10 bg-white/5'}`}>
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-2xl">{medals[i]}</span>
+                            <div>
+                              <p className="font-bold text-white">{row.stationName}</p>
+                              <p className="text-xs text-slate-500">{row.managerName}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Compliance</span>
+                              <span className="font-bold text-white">{row.compliancePct}%</span>
+                            </div>
+                            <div className="h-1 w-full rounded-full bg-white/5">
+                              <div className="h-full rounded-full bg-[#a9cd39] transition-all" style={{ width: `${row.compliancePct}%` }} />
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Sales (L)</span>
+                              <span className="font-semibold text-white">{Math.round(row.totalSalesL).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Days filed</span>
+                              <span className="font-semibold text-white">{row.submittedDays}/{row.expectedDays}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Variance</span>
+                              <span className={`font-semibold ${Math.abs(row.varianceTotal) > 1000 ? 'text-amber-400' : 'text-[#a9cd39]'}`}>NGN {Math.round(row.varianceTotal).toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <div className="mt-3 text-right">
+                            <span className="text-xs text-slate-500">Score: <span className="font-bold text-white">{row.score.toFixed(0)}</span>/100</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Full leaderboard */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">Full Rankings</p>
+                  <div className="space-y-2">
+                    {ranked.map((row, i) => (
+                      <div key={row.stationId} className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3">
+                        <span className="w-6 shrink-0 text-center text-sm font-bold text-slate-500">{i < 3 ? medals[i] : `#${i + 1}`}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <p className="font-semibold text-white truncate">{row.stationName}</p>
+                            <span className="text-xs font-bold text-[#a9cd39] shrink-0">{row.compliancePct}% compliance</span>
+                          </div>
+                          <div className="h-1 w-full rounded-full bg-white/5">
+                            <div className="h-full rounded-full bg-[#a9cd39]/60 transition-all" style={{ width: `${row.compliancePct}%` }} />
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-bold text-white">{Math.round(row.totalSalesL).toLocaleString()} L</p>
+                          <p className="text-xs text-slate-500">{row.submittedDays}/{row.expectedDays} days</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section tabs + data */}
+                <Card className="space-y-4">
+                  <div className="flex gap-2 flex-wrap">
+                    {[['stock-flow','Stock Flow'],['cash-flow','Cash Flow'],['expense-monitor','Expenses']].map(([key, label]) => (
+                      <button key={key} type="button" onClick={() => setMonthEndSection(key)}
+                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${monthEndSection === key ? 'bg-[#a9cd39] text-black' : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {monthEndSummaryRows.map((row) => (
+                      <div key={row.stationId} className="rounded-xl border border-white/5 bg-white/5 p-4 space-y-2">
+                        <p className="font-semibold text-white text-sm">{row.stationName}</p>
+                        {monthEndSection === 'stock-flow' && (
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {[
+                              { l: 'PMS Sales', v: Math.round(row.salesPms).toLocaleString() + ' L' },
+                              { l: 'AGO Sales', v: Math.round(row.salesAgo).toLocaleString() + ' L' },
+                              { l: 'Days Filed', v: `${row.submittedDays}/${row.expectedDays}` },
+                              { l: 'Compliance', v: row.compliancePct + '%' },
+                            ].map(({ l, v }) => (
+                              <div key={l} className="rounded-lg bg-black/20 px-2 py-1.5">
+                                <p className="text-slate-500 text-xs">{l}</p>
+                                <p className="font-semibold text-white">{v}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {monthEndSection === 'cash-flow' && (
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {[
+                              { l: 'Cash Sales', v: 'NGN ' + Math.round(row.cashSalesTotal).toLocaleString() },
+                              { l: 'Bank Deposits', v: 'NGN ' + Math.round(row.bankLodgements).toLocaleString() },
+                              { l: 'POS', v: 'NGN ' + Math.round(row.posTotal).toLocaleString() },
+                              { l: 'Variance', v: 'NGN ' + Math.round(row.varianceTotal).toLocaleString() },
+                            ].map(({ l, v }) => (
+                              <div key={l} className="rounded-lg bg-black/20 px-2 py-1.5">
+                                <p className="text-slate-500 text-xs">{l}</p>
+                                <p className="font-semibold text-white">{v}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {monthEndSection === 'expense-monitor' && (
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {[
+                              { l: 'Total Expenses', v: 'NGN ' + Math.round(row.expenseTotal).toLocaleString() },
+                              { l: 'Expense Lines', v: row.expenseLines },
+                            ].map(({ l, v }) => (
+                              <div key={l} className="rounded-lg bg-black/20 px-2 py-1.5">
+                                <p className="text-slate-500 text-xs">{l}</p>
+                                <p className="font-semibold text-white">{v}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Finalize */}
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/5 px-5 py-4">
+                  <p className="text-sm text-slate-400">
+                    {selectedMonthFinalization
+                      ? `✓ Finalized by ${selectedMonthFinalization.finalizedBy} on ${selectedMonthFinalization.finalizedAt?.split('T')[0]}`
+                      : `Ready to finalize ${selectedMonthLabel} for admin.`}
+                  </p>
+                  <button type="button"
+                    onClick={() => { if(window.confirm(`Finalize ${selectedMonthLabel} and send to admin?`)) finalizeSupervisorMonthEndSummary({ monthKey: selectedMonthKey, monthLabel: selectedMonthLabel, stationSummaries: monthEndSummaryRows }) }}
+                    className="rounded-xl bg-[#c4151d] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#a01018] transition">
+                    {selectedMonthFinalization ? 'Re-Finalize' : 'Finalize Month-End'}
+                  </button>
+                </div>
+              </>
+            )
+          })() : (
+            <EmptyState title="No data for this month" message="Select a different month or add station filters." />
           )}
-        </Card>
+        </div>
       )}
+      {activeDashboard === 'product-requests' && (
+        <div className="space-y-6">
+          {/* Pending requests */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">⬒ Pending Action</p>
+                <h3 className="text-xl font-bold text-white">Product Requests</h3>
+              </div>
+              <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm font-bold text-amber-400">{supervisorQueueRows.length} pending</span>
+            </div>
+            {supervisorQueueRows.length ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {supervisorQueueRows.map((row) => (
+                  <div key={row.id} className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-white">{row.stationName}</p>
+                        <p className="text-sm text-slate-400 mt-0.5">{row.managerName || '—'} · {row.createdDate}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-bold text-amber-400">Pending</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-black/20 px-3 py-2">
+                        <p className="text-xs text-slate-500">Product</p>
+                        <p className="font-semibold text-white">{row.requestedProductType}</p>
+                      </div>
+                      <div className="rounded-xl bg-black/20 px-3 py-2">
+                        <p className="text-xs text-slate-500">Quantity</p>
+                        <p className="font-semibold text-white">{row.requestedLitersLabel} L</p>
+                      </div>
+                    </div>
+                    {row.managerRemark && (
+                      <p className="text-sm text-slate-400 italic">"{row.managerRemark}"</p>
+                    )}
+                    <div className="flex gap-2 pt-1">
+                      <button type="button"
+                        onClick={() => reviewProductRequestBySupervisor({ requestId: row.id, decision: 'approve', remark: `Escalated by ${currentUser?.name || 'Supervisor'}` })}
+                        className="flex-1 rounded-xl border border-[#a9cd39]/30 bg-[#a9cd39]/10 py-2.5 text-sm font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/20 transition">
+                        ✓ Approve & Escalate
+                      </button>
+                      <button type="button"
+                        onClick={() => reviewProductRequestBySupervisor({ requestId: row.id, decision: 'decline', remark: 'Declined by supervisor' })}
+                        className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-sm font-semibold text-rose-400 hover:bg-rose-500/10 transition">
+                        ✗
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="No pending requests" message="All product requests have been reviewed." />
+            )}
+          </div>
+
+          {/* History */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">🕘 History</p>
+                <h3 className="text-xl font-bold text-white">Reviewed Requests</h3>
+              </div>
+              {selectedRequestStationId && (
+                <button type="button" onClick={() => setSelectedRequestStationId(null)}
+                  className="rounded-xl border border-white/10 px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5 transition">
+                  Clear filter
+                </button>
+              )}
+            </div>
+            {filteredSupervisorHistoryRows.length ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {filteredSupervisorHistoryRows.map((row) => {
+                  const approved = row.supervisorDecision === 'approve' || row.supervisorStatus === 'Escalated to Admin'
+                  return (
+                    <div key={row.id} className={`rounded-2xl border p-4 space-y-2 cursor-pointer hover:scale-[1.01] transition ${approved ? 'border-[#a9cd39]/15 bg-[#a9cd39]/5' : 'border-rose-500/15 bg-rose-500/5'}`}
+                      onClick={() => setSelectedRequestStationId(row.stationId === selectedRequestStationId ? null : row.stationId)}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-white">{row.stationName}</p>
+                          <p className="text-sm text-slate-400">{row.createdDate}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${approved ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-rose-500/15 text-rose-400'}`}>
+                          {approved ? 'Escalated' : 'Declined'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-300">{row.requestedProductType} · {Math.round(row.requestedLiters).toLocaleString()} L</p>
+                      {row.reason && row.reason !== '-' && <p className="text-sm text-slate-500 italic">"{row.reason}"</p>}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <EmptyState title={selectedRequestStationId ? 'No history for this station' : 'No history yet'} message="Reviewed requests appear here." />
+            )}
+          </div>
+        </div>
+      )}
+
       {activeDashboard === 'history' && (
-        <Card className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Supervisor Daily Finalization History</h3>
-            <p className="text-sm text-slate-500">Date-attached packets sent to admin</p>
+        <div>
+          <div className="mb-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">🕘 Archive</p>
+            <h3 className="text-xl font-bold text-white">Supervisor History</h3>
           </div>
           {finalizationHistoryRows.length ? (
-            <DataTable
-              columns={finalizationHistoryColumns}
-              rows={finalizationHistoryRows}
-              tableClassName="min-w-[1400px]"
-              wrapCells
-            />
-          ) : (
-            <EmptyState
-              title="No finalized history yet"
-              message="Finalize a daily review packet to create history records."
-            />
-          )}
-        </Card>
-      )}
-      {activeDashboard === 'inspector-visits' && (
-        <Card className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold">Visitation Reports</h3>
-              <p className="text-sm text-slate-500">Field inspection snapshots submitted by station inspectors.</p>
-            </div>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Filter by station</span>
-              <select
-                value={inspectorVisitStationFilter}
-                onChange={(event) => setInspectorVisitStationFilter(event.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-              >
-                <option value="">All stations</option>
-                {stations.map((station) => (
-                  <option key={station.id} value={station.id}>
-                    {station.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {inspectorVisitRows.length ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700">
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Station</th>
-                    <th className="px-3 py-2">Inspector</th>
-                    <th className="px-3 py-2">Manager</th>
-                    <th className="px-3 py-2">Arrival</th>
-                    <th className="px-3 py-2">Departure</th>
-                    <th className="px-3 py-2">Cash</th>
-                    <th className="px-3 py-2">POS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inspectorVisitRows.map((visit) => (
-                    <tr
-                      key={visit.id}
-                      onClick={() => setSelectedInspectorVisit(visit)}
-                      className="cursor-pointer border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/60"
-                    >
-                      <td className="px-3 py-3">{visit.visitDate}</td>
-                      <td className="px-3 py-3 font-medium">{visit.stationName}</td>
-                      <td className="px-3 py-3">{visit.inspectorName || '—'}</td>
-                      <td className="px-3 py-3">{visit.managerInCharge || '—'}</td>
-                      <td className="px-3 py-3">{visit.arrivalTime || '—'}</td>
-                      <td className="px-3 py-3">{visit.departureTime || '—'}</td>
-                      <td className="px-3 py-3">{Number(visit.cash || 0).toLocaleString()}</td>
-                      <td className="px-3 py-3">{Number(visit.pos || 0).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {finalizationHistoryRows.map((row, i) => (
+                <div key={i} className="rounded-2xl border border-white/8 bg-white/5 p-4 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-bold text-white">{row.date || row.monthKey || '—'}</p>
+                      <p className="text-sm text-slate-400 mt-0.5">by {row.finalizedBy || '—'}</p>
+                    </div>
+                    <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">Finalized</span>
+                  </div>
+                  {row.generalRemark && <p className="text-sm text-slate-400 italic">"{row.generalRemark}"</p>}
+                </div>
+              ))}
             </div>
           ) : (
-            <EmptyState
-              title="No inspector visits yet"
-              message="Visit reports will appear here once inspectors submit them from the field."
-            />
+            <EmptyState title="No history yet" message="Finalized daily reviews will appear here." />
           )}
-        </Card>
+        </div>
       )}
-      <DailyOpeningReportModal
-        report={selectedDailyOpeningReport}
-        onClose={() => setSelectedDailyOpeningReport(null)}
-      />
-      <InspectorVisitDetailModal
-        visit={selectedInspectorVisit}
-        onClose={() => setSelectedInspectorVisit(null)}
-        title="Inspector visit report"
-      />
     </div>
   )
 }

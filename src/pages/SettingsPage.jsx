@@ -2,15 +2,15 @@ import Card from '../components/ui/Card'
 import { useAppStore } from '../store/useAppStore'
 
 const ToggleSetting = ({ label, value, onChange }) => (
-  <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
-    <span className="text-sm text-slate-700 dark:text-slate-200">{label}</span>
+  <label className="flex items-center justify-between gap-3 rounded-lg border border-white/8 px-3 py-2 dark:border-slate-800">
+    <span className="text-sm text-slate-200 dark:text-slate-200">{label}</span>
     <button
       type="button"
       onClick={() => onChange(!value)}
       className={`rounded-full px-3 py-1 text-xs font-semibold ${
         value
           ? 'bg-emerald-600 text-white'
-          : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+          : 'bg-slate-200 text-slate-200 dark:bg-slate-700 dark:text-slate-200'
       }`}
     >
       {value ? 'Enabled' : 'Disabled'}
@@ -42,14 +42,14 @@ const SettingsPage = () => {
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Choose your preferred interface mode.
         </p>
-        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+        <div className="flex items-center justify-between rounded-lg border border-white/8 p-3 dark:border-slate-800">
           <p className="text-sm">
             Current mode: <span className="font-semibold capitalize">{theme}</span>
           </p>
           <button
             type="button"
             onClick={toggleTheme}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+            className="rounded-lg border border-white/10 px-3 py-2 text-sm dark:border-slate-700"
           >
             Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
           </button>
@@ -71,7 +71,7 @@ const SettingsPage = () => {
               onChange={(event) =>
                 updateAppSettings('stockThresholds', 'criticalMax', Number(event.target.value || 0))
               }
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
             />
           </label>
           <label className="space-y-1">
@@ -84,7 +84,7 @@ const SettingsPage = () => {
                 const nextValue = Number(event.target.value || 0)
                 updateAppSettings('stockThresholds', 'warningMax', Math.max(nextValue, criticalMax + 1))
               }}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
             />
           </label>
         </div>

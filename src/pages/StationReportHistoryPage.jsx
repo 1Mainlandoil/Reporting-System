@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import DataTable from '../components/ui/DataTable'
 import EmptyState from '../components/ui/EmptyState'
@@ -8,8 +8,8 @@ import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
 import { ROLES } from '../constants/roles'
 import { exportStationHistoryToExcel } from '../utils/exportExcel'
-import { buildLastPumpClosingMap, getClosingForProduct, getQuantityRemainingForProduct } from '../utils/reportFields'
-import { addCalendarDaysIso, formatStaffCalendarDay } from '../utils/reportPending'
+import { getClosingForProduct } from '../utils/reportFields'
+import { addCalendarDaysIso, formatStaffCalendarDay, getOldestMissingReportDateUpTo } from '../utils/reportPending'
 
 const REVIEW_STATUS_OPTIONS = ['Reviewed', 'Needs Attention', 'Escalated']
 
@@ -87,7 +87,6 @@ const buildPumpMeterRows = (priorMap, todayList = []) => {
 
 const StationReportHistoryPage = () => {
   const { stationId } = useParams()
-  const [searchParams] = useSearchParams()
   const role = useAppStore((state) => state.role)
   const currentUser = useAppStore((state) => state.currentUser)
   const stations = useAppStore((state) => state.stations)
@@ -116,40 +115,66 @@ const StationReportHistoryPage = () => {
   const todayIso = new Date().toISOString().split('T')[0]
   const reportDatesSet = useMemo(() => new Set(chronAsc.map((r) => r.date)), [chronAsc])
 
+  const reportSubmitOpening = useMemo(() => {
+    if (!historyFilterDate) {
+      return { pms: 0, ago: 0 }
+    }
+    const prior = [...chronAsc]
+      .filter((r) => r.date < historyFilterDate)
+      .sort((a, b) => b.date.localeCompare(a.date))[0]
+    return {
+      pms: prior ? getClosingForProduct(prior, 'pms') : 0,
+      ago: prior ? getClosingForProduct(prior, 'ago') : 0,
+    }
+  }, [chronAsc, historyFilterDate])
+  const reportSubmitCashBf = useMemo(() => {
+    if (!historyFilterDate) {
+      return 0
+    }
+    const prior = [...chronAsc]
+      .filter((r) => r.date < historyFilterDate)
+      .sort((a, b) => b.date.localeCompare(a.date))[0]
+    return Number(prior?.closingBalance || 0)
+  }, [chronAsc, historyFilterDate])
+
   const filterDateAlreadySubmitted = Boolean(historyFilterDate && reportDatesSet.has(historyFilterDate))
 
   const isStaffOwnStation = role === ROLES.STAFF && currentUser?.stationId === stationId
 
+  /** Single date staff may file next (matches submitReport catch-up validation). */
+  const nextAllowedSubmitDate = useMemo(() => {
+    const oldest = getOldestMissingReportDateUpTo(todayIso, reportDatesSet)
+    if (oldest != null) {
+      return oldest
+    }
+    if (chronAsc.length === 0) {
+      return todayIso
+    }
+    return null
+  }, [todayIso, reportDatesSet, chronAsc.length])
+
   const staffReportDateSelectOptions = useMemo(() => {
-    const rangeStart = addCalendarDaysIso(todayIso, -550)
+    let rangeStart = chronAsc.length ? chronAsc[0].date : todayIso
+    const capStart = addCalendarDaysIso(todayIso, -550)
+    if (rangeStart < capStart) {
+      rangeStart = capStart
+    }
     const rows = []
     let d = rangeStart
     while (d <= todayIso) {
       const submitted = reportDatesSet.has(d)
+      const isNextToFile =
+        nextAllowedSubmitDate != null && d === nextAllowedSubmitDate && !submitted
       rows.push({
         iso: d,
         submitted,
-        disabled: submitted,
+        /** Submitted days greyed out; other missing days greyed until prior gaps are filed. */
+        disabled: submitted || !isNextToFile,
       })
       d = addCalendarDaysIso(d, 1)
     }
     return rows
-  }, [todayIso, reportDatesSet])
-
-  useEffect(() => {
-    if (!isStaffOwnStation) {
-      return
-    }
-    const fromUrl = searchParams.get('date')?.slice(0, 10)
-    if (
-      fromUrl &&
-      /^\d{4}-\d{2}-\d{2}$/.test(fromUrl) &&
-      fromUrl <= todayIso &&
-      !reportDatesSet.has(fromUrl)
-    ) {
-      setHistoryFilterDate(fromUrl)
-    }
-  }, [isStaffOwnStation, searchParams, todayIso, reportDatesSet])
+  }, [chronAsc, todayIso, reportDatesSet, nextAllowedSubmitDate])
 
   useEffect(() => {
     if (!isStaffOwnStation || !historyFilterDate) {
@@ -157,8 +182,15 @@ const StationReportHistoryPage = () => {
     }
     if (reportDatesSet.has(historyFilterDate)) {
       setHistoryFilterDate('')
+      return
     }
-  }, [isStaffOwnStation, historyFilterDate, reportDatesSet])
+    if (
+      nextAllowedSubmitDate != null &&
+      historyFilterDate !== nextAllowedSubmitDate
+    ) {
+      setHistoryFilterDate(nextAllowedSubmitDate)
+    }
+  }, [isStaffOwnStation, historyFilterDate, reportDatesSet, nextAllowedSubmitDate])
 
   const filteredReports = reports.filter((report) => {
     if (historyFilterDate && report.date !== historyFilterDate) {
@@ -166,32 +198,6 @@ const StationReportHistoryPage = () => {
     }
     return true
   })
-
-  const reportsWithReview = useMemo(() => {
-    const enrichedById = new Map()
-    for (let index = 0; index < chronAsc.length; index += 1) {
-      const report = chronAsc[index]
-      const priorReports = chronAsc.slice(0, index)
-      const priorMap = buildLastPumpClosingMap(priorReports)
-      const pumpRows = buildPumpMeterRows(priorMap, report.pumpReadings)
-      enrichedById.set(report.id, {
-        ...report,
-        pumpMeterRows: pumpRows,
-        quantityRemainingPMS: getQuantityRemainingForProduct(report, 'pms'),
-        quantityRemainingAGO: getQuantityRemainingForProduct(report, 'ago'),
-      })
-    }
-    return filteredReports.map((report) => {
-      const enriched = enrichedById.get(report.id) || report
-      return {
-        ...enriched,
-        reviewStatus: report.supervisorReview?.status || '-',
-        supervisorNote: report.supervisorReview?.remark || '-',
-        reviewedBy: report.supervisorReview?.reviewedBy || '-',
-      }
-    })
-  }, [chronAsc, filteredReports])
-
   const isSupervisor = role === ROLES.SUPERVISOR
 
   if (!station) {
@@ -262,6 +268,31 @@ const StationReportHistoryPage = () => {
       .join(', ')
   }
 
+  const reportsWithReview = useMemo(() => {
+    const priorClosings = new Map()
+    const enrichedById = new Map()
+    for (const report of chronAsc) {
+      const pumpRows = buildPumpMeterRows(priorClosings, report.pumpReadings)
+      for (const row of pumpRows) {
+        if (row.closing != null) {
+          priorClosings.set(row.label, row.closing)
+        }
+      }
+      enrichedById.set(report.id, {
+        ...report,
+        pumpMeterRows: pumpRows,
+      })
+    }
+    return filteredReports.map((report) => {
+      const enriched = enrichedById.get(report.id) || report
+      return {
+        ...enriched,
+        reviewStatus: report.supervisorReview?.status || '-',
+        supervisorNote: report.supervisorReview?.remark || '-',
+        reviewedBy: report.supervisorReview?.reviewedBy || '-',
+      }
+    })
+  }, [chronAsc, filteredReports])
   const selectedReport =
     reportsWithReview.find((report) => report.id === selectedReportId) ||
     reports.find((report) => report.id === selectedReportId) ||
@@ -295,14 +326,9 @@ const StationReportHistoryPage = () => {
       render: (row) => getReceivedProductType(row),
     },
     {
-      key: 'receivedPMS',
-      header: 'Received PMS (L)',
-      render: (row) => Math.round(Number(row.receivedPMS ?? 0)).toLocaleString(),
-    },
-    {
-      key: 'receivedAGO',
-      header: 'Received AGO (L)',
-      render: (row) => Math.round(Number(row.receivedAGO ?? 0)).toLocaleString(),
+      key: 'receivedQuantity',
+      header: 'Received Quantity (L)',
+      render: (row) => Math.round(Number(row.receivedPMS ?? 0) + Number(row.receivedAGO ?? 0)).toLocaleString(),
     },
     {
       key: 'sales',
@@ -374,6 +400,36 @@ const StationReportHistoryPage = () => {
       header: 'Reviewed By',
       render: (row) => row.reviewedBy,
     },
+    {
+      key: 'eodAttachments',
+      header: 'EOD Attachments',
+      render: (row) => {
+        const attachments = Array.isArray(row.eodAttachments) ? row.eodAttachments : []
+        if (!attachments.length) return <span className="text-slate-500">—</span>
+        return (
+          <div className="flex flex-wrap gap-2">
+            {attachments.map((att, i) => (
+              <a
+                key={i}
+                href={att.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-lg border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-2.5 py-1 text-xs font-medium text-[#a9cd39] hover:bg-[#a9cd39]/15 transition"
+              >
+                📎 {att.label || `File ${i + 1}`}
+              </a>
+            ))}
+          </div>
+        )
+      },
+    },
+    {
+      key: 'discrepancyFlag',
+      header: 'Flags',
+      render: (row) => row.hasDiscrepancy
+        ? <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">⚠ Discrepancy</span>
+        : <span className="text-slate-500">—</span>,
+    },
   ]
 
   const handleReviewSubmit = (report) => {
@@ -390,110 +446,150 @@ const StationReportHistoryPage = () => {
     setIsReviewModalOpen(false)
   }
 
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 mx-auto max-w-4xl">
       <Card>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-bold">{station.name} Report History</h2>
-            <p className="text-sm text-slate-500">Daily submissions from this retail station.</p>
-          </div>
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-5">
           <Link
             to="/"
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium dark:border-slate-700"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white transition"
+            title="Back to home"
           >
-            Back to Home
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </Link>
-          <button
-            type="button"
-            onClick={async () => {
-              setExportNotice('')
-              if (!filteredReports.length) {
-                setExportNotice(historyFilterDate ? 'No report saved for this date.' : 'No reports to export.')
-                return
-              }
-              exportStationHistoryToExcel(station.name, filteredReports)
-              await refreshFromSupabase()
-            }}
-            className="hidden rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white md:inline-flex"
-            title="Exports rows matching the selected date (or all dates if cleared)"
-          >
-            Export to Excel (filtered)
-          </button>
-        </div>
-        <ErrorNotice message={exportNotice} />
-        <div className="mt-4 space-y-3 rounded-xl border border-dashed border-slate-300 p-4 dark:border-slate-600">
-          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            Report date
-            {isStaffOwnStation ? (
-              <span className="font-normal text-slate-500 dark:text-slate-400">
-                {' '}
-                — filters the table and sets which day you submit for
-              </span>
-            ) : null}
-          </p>
-          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
-            <label className="space-y-1">
-              <span className="text-xs text-slate-500">Choose date</span>
-              {isStaffOwnStation ? (
-                <select
-                  value={historyFilterDate}
-                  onChange={(event) => setHistoryFilterDate(event.target.value)}
-                  aria-label="Report date"
-                  className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 md:w-72"
-                >
-                  <option value="">All dates (table only)</option>
-                  {staffReportDateSelectOptions.map(({ iso, submitted, disabled }) => (
-                    <option key={iso} value={iso} disabled={disabled}>
-                      {formatStaffCalendarDay(iso)} ({iso})
-                      {submitted ? ' · submitted' : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="date"
-                  value={historyFilterDate}
-                  max={todayIso}
-                  onChange={(event) => setHistoryFilterDate(event.target.value)}
-                  aria-label="Report date"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 md:w-52"
-                />
-              )}
-            </label>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Report History</p>
+            <h2 className="text-xl font-bold text-white truncate">{station.name}</h2>
+          </div>
+          {reports.length > 0 && (
             <button
               type="button"
-              onClick={() => setHistoryFilterDate('')}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600"
+              onClick={async () => {
+                setExportNotice('')
+                if (!filteredReports.length) { setExportNotice(historyFilterDate ? 'No report for this date.' : 'No reports to export.'); return }
+                exportStationHistoryToExcel(station.name, filteredReports)
+                await refreshFromSupabase()
+              }}
+              className="shrink-0 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-3 py-2 text-xs font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/10 transition"
             >
-              Show all dates
+              Export Excel
             </button>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              Showing {filteredReports.length} of {reports.length} reports
-              {historyFilterDate ? ` · ${historyFilterDate}` : ''}
-            </span>
-          </div>
+          )}
         </div>
+        <ErrorNotice message={exportNotice} />
 
+        {/* Date filter — only show if there are reports */}
+        {reports.length > 0 && (
+          <div className="rounded-2xl border border-white/5 bg-white/5 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-white">
+                Filter by date
+              </p>
+              <span className="text-xs text-slate-500">
+                {filteredReports.length} of {reports.length} report{reports.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {isStaffOwnStation ? (
+              /* Staff calendar — tap a date card */
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500">Select a date to view or submit a report for that day</p>
+                <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-1">
+                  {/* All dates option */}
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilterDate('')}
+                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition ${
+                      !historyFilterDate
+                        ? 'border-[#a9cd39]/40 bg-[#a9cd39]/10 text-[#a9cd39]'
+                        : 'border-white/5 bg-white/3 text-slate-300 hover:border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="font-medium">All dates</span>
+                    {!historyFilterDate && <span className="text-xs">✓ selected</span>}
+                  </button>
+                  {staffReportDateSelectOptions.slice().reverse().map(({ iso, submitted, disabled }) => (
+                    <button
+                      key={iso}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => !disabled && setHistoryFilterDate(iso)}
+                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition ${
+                        historyFilterDate === iso
+                          ? 'border-[#a9cd39]/40 bg-[#a9cd39]/10'
+                          : submitted
+                            ? 'border-white/5 bg-white/5'
+                            : disabled
+                              ? 'border-white/3 bg-white/2 opacity-40 cursor-not-allowed'
+                              : 'border-amber-500/20 bg-amber-500/5 hover:border-amber-500/30'
+                      }`}
+                    >
+                      <div>
+                        <p className={`font-medium ${historyFilterDate === iso ? 'text-[#a9cd39]' : submitted ? 'text-white' : disabled ? 'text-slate-600' : 'text-amber-300'}`}>
+                          {formatStaffCalendarDay(iso)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">{iso}</p>
+                      </div>
+                      <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${
+                        submitted ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
+                        : disabled ? 'bg-white/5 text-slate-600'
+                        : 'bg-amber-500/15 text-amber-400'
+                      }`}>
+                        {submitted ? 'Submitted' : disabled ? 'Locked' : 'Pending'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Admin/supervisor date picker */
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="block space-y-1.5">
+                  <span className="text-xs text-slate-400">Pick a date</span>
+                  <input
+                    type="date"
+                    value={historyFilterDate}
+                    max={todayIso}
+                    onChange={(event) => setHistoryFilterDate(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-[#a9cd39]/40 focus:outline-none"
+                  />
+                </label>
+                {historyFilterDate && (
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilterDate('')}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-300 hover:bg-white/10 transition"
+                  >
+                    Clear filter
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Staff catch-up form */}
         {isStaffOwnStation && (
-          <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
+          <div className="mt-5 border-t border-white/5 pt-5">
             {!historyFilterDate ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Choose a report date above to submit for that day.
-              </p>
+              <p className="text-sm text-slate-500">Select a pending date above to submit a report for that day.</p>
             ) : filterDateAlreadySubmitted ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Already submitted for {historyFilterDate}.
-              </p>
+              <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-slate-400">
+                ✓ Report already submitted for <span className="font-semibold text-white">{historyFilterDate}</span>.
+              </div>
             ) : (
               <StaffClosingReportForm
                 key={historyFilterDate}
                 stationId={stationId}
-                isFirstReport
+                carriedOpening={reportSubmitOpening}
+                carriedCashBf={reportSubmitCashBf}
                 reportingConfiguration={reportingConfiguration}
                 submitReport={submitReport}
                 reportDate={historyFilterDate}
+                openingBannerTitle="Opening stock for selected date (prior closing)"
                 formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled}
                 submitButtonLabel={`Submit for ${historyFilterDate}`}
                 onSubmitted={() => refreshFromSupabase()}

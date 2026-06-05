@@ -113,7 +113,7 @@ const AuthCallbackPage = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#a9cd39]/90 px-4 dark:bg-[#a9cd39]/90">
       <Card className="w-full max-w-md">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Authentication</h1>
+        <h1 className="text-xl font-bold text-white dark:text-white">Authentication</h1>
         <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{message}</p>
         {(message.toLowerCase().includes('expired') ||
           message.toLowerCase().includes('invalid') ||

@@ -1,55 +1,44 @@
 import { useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
-import { linksByRole } from '../../constants/navigation'
-import { isChatMessageUnread } from '../../utils/chatMessages'
+import { MAINLAND_LOGO_SRC } from '../../constants/brandLogo'
 
 const mobileMenuByRole = {
   supervisor: [
-    { label: 'Dashboard', path: '/supervisor?view=dashboard' },
-    { label: 'Reports', path: '/supervisor?view=daily-openings' },
-    { label: 'Visitation Report', path: '/supervisor?view=inspector-visits' },
-    { label: 'History', path: '/supervisor?view=history' },
-    { label: 'Reconciliation', path: '/reconciliation' },
-    { label: 'Alerts', path: '/alerts' },
-    { label: 'Analytics', path: '/analytics' },
-    { label: 'Stations', path: '/stations' },
-    { label: 'Users', path: '/users' },
-    { label: 'Settings', path: '/settings' },
+    { label: 'Dashboard', path: '/supervisor?view=dashboard', icon: '▦' },
+    { label: 'Reports', path: '/supervisor?view=daily-openings', icon: '☰' },
+    { label: 'Product Requests', path: '/supervisor?view=product-requests', icon: '⬒' },
+    { label: 'History', path: '/supervisor?view=history', icon: '🕘' },
+    { label: 'Reconciliation', path: '/reconciliation', icon: '◍' },
+    { label: 'Alerts', path: '/alerts', icon: '⚑' },
+    { label: 'Analytics', path: '/analytics', icon: '◔' },
+    { label: 'Stations', path: '/stations', icon: '⌂' },
+    { label: 'Users', path: '/users', icon: '◌' },
+    { label: 'Settings', path: '/settings', icon: '⚙' },
   ],
   admin: [
-    { label: 'Dashboard', path: '/admin/dashboard' },
-    { label: 'Reports', path: '/admin/reports' },
-    { label: 'Product Requests', path: '/admin/product-requests' },
-    { label: 'Inspector Visits', path: '/admin/inspector-visits' },
-    { label: 'History', path: '/admin/history' },
-    { label: 'Reconciliation', path: '/reconciliation' },
-    { label: 'Alerts', path: '/alerts' },
-    { label: 'Analytics', path: '/analytics' },
-    { label: 'Stations', path: '/stations' },
-    { label: 'Users', path: '/users' },
-    { label: 'Settings', path: '/settings' },
-  ],
-  terminal_operator: [
-    { label: 'Product Requests', path: '/terminal-operator' },
-    { label: 'History', path: '/terminal-operator?view=history' },
-    { label: 'Users', path: '/users' },
-    { label: 'Settings', path: '/settings' },
-  ],
-  inspector: [
-    { label: 'New report', path: '/inspector' },
-    { label: 'History', path: '/inspector?view=history' },
-    { label: 'Settings', path: '/settings' },
+    { label: 'Dashboard', path: '/admin/dashboard', icon: '▦' },
+    { label: 'Reports', path: '/admin/reports', icon: '☰' },
+    { label: 'Product Requests', path: '/admin/product-requests', icon: '⬒' },
+    { label: 'History', path: '/admin/history', icon: '🕘' },
+    { label: 'Reconciliation', path: '/reconciliation', icon: '◍' },
+    { label: 'Alerts', path: '/alerts', icon: '⚑' },
+    { label: 'Analytics', path: '/analytics', icon: '◔' },
+    { label: 'Stations', path: '/stations', icon: '⌂' },
+    { label: 'Users', path: '/users', icon: '◌' },
+    { label: 'Settings', path: '/settings', icon: '⚙' },
   ],
 }
 
 const chatUnreadSelector = (state) => {
   const uid = state.currentUser?.id
   if (!uid) return 0
-  return state.chatMessages.filter((m) => isChatMessageUnread(m, uid)).length
+  return state.chatMessages.filter(
+    (m) => m.toUserId === uid && m.fromUserId !== uid && String(m.status || '') !== 'seen',
+  ).length
 }
 
-const Navbar = () => {
+const Navbar = ({ onToggleSidebar }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const role = useAppStore((state) => state.role)
@@ -58,201 +47,191 @@ const Navbar = () => {
   const logout = useAppStore((state) => state.logout)
   const setChatOpen = useAppStore((state) => state.setChatOpen)
   const chatUnreadCount = useAppStore(chatUnreadSelector)
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
-
-  const openChatDrawer = () => {
-    setChatOpen(true)
-    setIsMobileNavOpen(false)
-  }
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const station = getCurrentStation()
-  const links = linksByRole[role] || []
+  const roleLabel = role === 'staff' ? 'Manager' : role === 'supervisor' ? 'Supervisor' : 'Admin'
   const staffHistoryPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : ''
-  const roleLabel =
-    role === 'staff'
-      ? 'manager'
-      : role === 'terminal_operator'
-        ? 'terminal operator'
-        : role === 'inspector'
-          ? 'station inspector'
-          : role
+
   const mobileLinks = role === 'staff'
     ? [
-      ...(staffHistoryPath ? [{ label: 'History', path: staffHistoryPath }] : []),
-      { label: 'Order Product', path: '/staff/stock-ordering' },
-    ]
-    : mobileMenuByRole[role] || links.filter((link) => !['Supervisor', 'Reconciliation'].includes(link.label))
+        ...(staffHistoryPath ? [{ label: 'History', path: staffHistoryPath, icon: '🕘' }] : []),
+        { label: 'Order Product', path: '/staff/stock-ordering', icon: '⬒' },
+      ]
+    : mobileMenuByRole[role] || []
 
   const isMobileLinkActive = (pathWithQuery) => {
     const [path, queryString] = pathWithQuery.split('?')
-    if (location.pathname !== path) {
-      return false
-    }
-    if (!queryString) {
-      return !location.search
-    }
+    if (location.pathname !== path) return false
+    if (!queryString) return !location.search
     const targetParams = new URLSearchParams(queryString)
     const currentParams = new URLSearchParams(location.search)
     return Array.from(targetParams.entries()).every(([key, value]) => currentParams.get(key) === value)
   }
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-      <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <h1 className="text-lg font-bold text-slate-900 dark:text-white">Mainland Report System</h1>
-          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{roleLabel}</p>
-          {currentUser && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {currentUser.name}
-              {station ? ` - ${station.name}` : ''}
-            </p>
-          )}
-        </div>
-        <button
-          onClick={() => setIsMobileNavOpen((prev) => !prev)}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:hidden dark:border-slate-700"
-          aria-label="Toggle navigation menu"
-        >
-          ☰
-        </button>
-        {role === 'staff' && (
-          <div className="hidden items-center gap-2 md:flex">
-            <button
-              type="button"
-              onClick={() => {
-                if (currentUser?.stationId) {
-                  navigate(staffHistoryPath)
-                }
-              }}
-              disabled={!currentUser?.stationId}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              History
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/staff/stock-ordering')}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            >
-              Order Product
-            </button>
-            <button
-              type="button"
-              onClick={() => setChatOpen(true)}
-              className="relative rounded-lg border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 dark:border-blue-500"
-            >
-              Chat
-              {chatUnreadCount > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
-                  {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={logout}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white dark:bg-slate-700"
-            >
-              Logout
-            </button>
+    <>
+      {/* Top navbar */}
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-[#0d1220]/95 backdrop-blur-md">
+        <div className="flex h-16 items-center justify-between px-4">
+          {/* Left — hamburger (supervisor/admin) OR logo (staff) */}
+          <div className="flex items-center gap-3 min-w-0">
+            {onToggleSidebar ? (
+              /* Supervisor/Admin: hamburger on the left */
+              <button
+                onClick={onToggleSidebar}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition"
+                aria-label="Open menu"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <rect x="2" y="4" width="14" height="1.5" rx="0.75" fill="currentColor"/>
+                  <rect x="2" y="8.25" width="10" height="1.5" rx="0.75" fill="currentColor"/>
+                  <rect x="2" y="12.5" width="14" height="1.5" rx="0.75" fill="currentColor"/>
+                </svg>
+              </button>
+            ) : null}
+            <img src={MAINLAND_LOGO_SRC} alt="Mainland Oil" className="h-7 w-auto" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white leading-none">Mainland Oil</p>
+              <p className="text-xs uppercase tracking-widest text-[#a9cd39] leading-none mt-0.5">{roleLabel}</p>
+            </div>
           </div>
-        )}
-        {role === 'inspector' && (
-          <div className="hidden items-center gap-2 md:flex">
-            <button
-              type="button"
-              onClick={() => navigate('/inspector')}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            >
-              New report
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/inspector?view=history')}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            >
-              History
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/settings')}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            >
-              Settings
-            </button>
-            <button
-              type="button"
-              onClick={() => setChatOpen(true)}
-              className="relative rounded-lg border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 dark:border-blue-500"
-            >
-              Chat
-              {chatUnreadCount > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
-                  {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={logout}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white dark:bg-slate-700"
-            >
-              Logout
-            </button>
-          </div>
-        )}
-      </div>
 
-      {isMobileNavOpen && (
-        <div className="mt-3 max-h-[calc(100dvh-95px)] space-y-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm md:hidden dark:border-slate-800 dark:bg-slate-900/95">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Menu</p>
-            <nav className="space-y-2">
-              {mobileLinks.map((link) => {
-                const isActive = isMobileLinkActive(link.path)
-                return (
-                  <NavLink
-                    key={link.path}
-                    to={link.path}
-                    onClick={() => setIsMobileNavOpen(false)}
-                    className={`block rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
-                      isActive
-                        ? 'border-blue-500 bg-blue-600 text-white shadow-sm'
-                        : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {link.label}
-                  </NavLink>
-                )
-              })}
-            </nav>
-          </div>
-          <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-800">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Messages</p>
-            <button
-              type="button"
-              onClick={openChatDrawer}
-              className="relative flex w-full items-center justify-center rounded-xl border border-blue-600 bg-blue-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-blue-500"
-            >
-              Open Chat
-              {chatUnreadCount > 0 && (
-                <span className="ml-2 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-bold">
-                  {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-                </span>
-              )}
-            </button>
-          </div>
-          <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-800">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Account</p>
-            <button
-              onClick={logout}
-              className="w-full rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-medium text-white dark:bg-slate-700"
-            >
-              Logout
-            </button>
+          {/* Right — user info + staff menu button */}
+          <div className="flex items-center gap-2">
+            {currentUser && (
+              <div className="text-right mr-1">
+                <p className="text-xs font-semibold text-white leading-none">{currentUser.name}</p>
+                {station
+                  ? <p className="text-xs text-slate-400 leading-none mt-0.5">{station.name}</p>
+                  : <p className="text-xs text-[#a9cd39] leading-none mt-0.5">{roleLabel}</p>
+                }
+              </div>
+            )}
+
+            {/* Chat button (staff desktop) */}
+            {role === 'staff' && (
+              <button
+                type="button"
+                onClick={() => setChatOpen(true)}
+                className="relative hidden md:flex items-center gap-1.5 rounded-lg border border-[#a9cd39]/30 bg-[#a9cd39]/10 px-3 py-1.5 text-xs font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/20 transition"
+              >
+                💬 Chat
+                {chatUnreadCount > 0 && (
+                  <span className="ml-1 rounded-full bg-[#a9cd39] px-1.5 py-0.5 text-[9px] font-bold text-black">
+                    {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Staff only: right-side menu button */}
+            {!onToggleSidebar && (
+              <button
+                onClick={() => setDrawerOpen(true)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition"
+                aria-label="Open menu"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <rect x="2" y="4" width="14" height="1.5" rx="0.75" fill="currentColor"/>
+                  <rect x="2" y="8.25" width="10" height="1.5" rx="0.75" fill="currentColor"/>
+                  <rect x="2" y="12.5" width="14" height="1.5" rx="0.75" fill="currentColor"/>
+                </svg>
+              </button>
+            )}
           </div>
         </div>
+      </header>
+
+      {/* Drawer backdrop */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+          onClick={() => setDrawerOpen(false)}
+        />
       )}
-    </header>
+
+      {/* Right slide drawer */}
+      <aside
+        className={`fixed right-0 top-0 z-[70] h-full w-72 bg-[#0d1220] border-l border-white/5 flex flex-col transition-transform duration-300 ease-out ${
+          drawerOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Drawer header */}
+        <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <img src={MAINLAND_LOGO_SRC} alt="" className="h-7 w-auto" />
+            <div>
+              <p className="text-sm font-bold text-white">Menu</p>
+              <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{roleLabel}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white transition"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* User info */}
+        {currentUser && (
+          <div className="mx-4 mt-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3">
+            <p className="text-sm font-semibold text-white">{currentUser.name}</p>
+            {station && <p className="text-xs text-[#a9cd39] mt-0.5">{station.name}</p>}
+            <p className="text-xs text-slate-500 mt-0.5 uppercase tracking-wider">{roleLabel}</p>
+          </div>
+        )}
+
+        {/* Nav links */}
+        <nav className="mt-4 flex-1 overflow-y-auto px-4 space-y-1">
+          {mobileLinks.map((link) => {
+            const isActive = isMobileLinkActive(link.path)
+            return (
+              <NavLink
+                key={link.path}
+                to={link.path}
+                onClick={() => setDrawerOpen(false)}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                  isActive
+                    ? 'bg-[#a9cd39]/15 text-[#a9cd39] border border-[#a9cd39]/30'
+                    : 'text-slate-300 hover:bg-white/5 hover:text-white border border-transparent'
+                }`}
+              >
+                <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs ${isActive ? 'bg-[#a9cd39]/20' : 'bg-white/5'}`}>
+                  {link.icon}
+                </span>
+                {link.label}
+              </NavLink>
+            )
+          })}
+        </nav>
+
+        {/* Bottom actions */}
+        <div className="border-t border-white/5 p-4 space-y-2">
+          <button
+            type="button"
+            onClick={() => { setChatOpen(true); setDrawerOpen(false) }}
+            className="relative flex w-full items-center gap-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-3 py-2.5 text-sm font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/20 transition"
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#a9cd39]/20 text-xs">💬</span>
+            Chat
+            {chatUnreadCount > 0 && (
+              <span className="ml-auto rounded-full bg-[#a9cd39] px-2 py-0.5 text-xs font-bold text-black">
+                {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => { logout(); setDrawerOpen(false) }}
+            className="flex w-full items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 transition"
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10 text-xs">⎋</span>
+            Logout
+          </button>
+        </div>
+      </aside>
+    </>
   )
 }
 

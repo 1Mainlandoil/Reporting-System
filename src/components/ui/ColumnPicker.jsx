@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 const btnSecondary =
-  'inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 active:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+  'inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 shadow-sm transition hover:bg-white/5 active:bg-white/8 dark:border-slate-600 dark:bg-[#0d1220] dark:text-slate-200 dark:hover:bg-slate-800'
 
 const ColumnPicker = ({
   columns,
@@ -24,9 +24,9 @@ const ColumnPicker = ({
 
   return (
     <div
-      className={`flex w-full max-w-xl flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`.trim()}
+      className={`flex w-full max-w-xl flex-col gap-4 rounded-2xl border border-white/8 bg-white/5 p-5 shadow-sm dark:border-slate-700 dark:bg-[#0d1220] ${className}`.trim()}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/5 pb-3 dark:border-slate-800">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {summaryLabel}
         </span>
@@ -49,7 +49,7 @@ const ColumnPicker = ({
         ) : null}
       </div>
 
-      <div className="min-h-[10rem] rounded-lg border border-slate-200 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-950/50">
+      <div className="min-h-[10rem] rounded-lg border border-white/8 bg-white/5/90 dark:border-slate-700 dark:bg-slate-950/50">
         <div className="max-h-52 space-y-1 overflow-y-auto p-2">
           {pickable.length === 0 ? (
             <p className="px-2 py-6 text-center text-sm text-slate-500 dark:text-slate-400">No columns.</p>
@@ -57,11 +57,11 @@ const ColumnPicker = ({
             pickable.map((col) => (
               <label
                 key={col.key}
-                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-800 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-800/80"
+                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-100 hover:bg-white/5 dark:text-slate-200 dark:hover:bg-slate-800/80"
               >
                 <input
                   type="checkbox"
-                  className="size-4 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-900"
+                  className="size-4 shrink-0 rounded border-white/10 text-emerald-600 focus:ring-emerald-500 dark:border-slate-600 dark:bg-[#0d1220]"
                   checked={visibleKeys.has(col.key)}
                   onChange={() => onToggleKey(col.key)}
                 />
@@ -72,7 +72,7 @@ const ColumnPicker = ({
         </div>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+      <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
         Uncheck to hide from table and Excel export. At least one column must stay visible.
       </p>
     </div>

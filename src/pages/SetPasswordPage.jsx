@@ -42,7 +42,7 @@ const SetPasswordPage = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#a9cd39]/90 px-4 dark:bg-[#a9cd39]/90">
       <Card className="w-full max-w-md">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Set Password</h1>
+        <h1 className="text-xl font-bold text-white dark:text-white">Set Password</h1>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
           Create your password for future logins.
         </p>
@@ -53,25 +53,25 @@ const SetPasswordPage = () => {
             </div>
           )}
           <label className="space-y-1">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Password</span>
+            <span className="text-sm font-medium text-slate-200 dark:text-slate-200">Password</span>
             <input
               required
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="At least 8 characters"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 dark:border-slate-700 dark:bg-[#0d1220]"
             />
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Confirm Password</span>
+            <span className="text-sm font-medium text-slate-200 dark:text-slate-200">Confirm Password</span>
             <input
               required
               type="password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
               placeholder="Re-enter password"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 dark:border-slate-700 dark:bg-[#0d1220]"
             />
           </label>
           <button className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white">Save Password</button>
