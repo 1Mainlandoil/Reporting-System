@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
 
 const CANONICAL_STATIONS = [
@@ -63,9 +63,11 @@ export default function ITAdminPage() {
   const [tab, setTab] = useState('users')
   const [stations, setStations] = useState([])
   const [users, setUsers] = useState([])
+  const [reports, setReports] = useState([])
   const [search, setSearch] = useState('')
   const [selectedUser, setSelectedUser] = useState(null)
   const [editForm, setEditForm] = useState({})
+  const [resetForm, setResetForm] = useState({ scope: 'single', stationId: '', date: '', fromDate: '', toDate: '' })
   const [modalConfig, setModalConfig] = useState(null)
   const modalResolveRef = useRef(null)
 
@@ -107,10 +109,86 @@ export default function ITAdminPage() {
     return data || []
   }, [])
 
-  useEffect(() => { if (authed) { loadStations(); loadUsers() } }, [authed, loadStations, loadUsers])
+  const loadReports = useCallback(async () => {
+    if (!supabase) return []
+    const { data, error } = await supabase
+      .from('daily_reports')
+      .select('id,station_id,date,total_sales_liters_pms,total_sales_liters_ago,closing_balance,created_at')
+      .order('date', { ascending: false })
+    if (error) { showNotice(`Failed to load reports: ${error.message}`, 'error'); return [] }
+    setReports(data || [])
+    return data || []
+  }, [])
+
+  useEffect(() => { if (authed) { loadStations(); loadUsers(); loadReports() } }, [authed, loadStations, loadReports, loadUsers])
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || id || '-'
   const stationLocation = (id) => stations.find((s) => s.id === id)?.location || '-'
+
+  const matchingResetReports = useMemo(() => {
+    const { scope, stationId, date, fromDate, toDate } = resetForm
+    return reports.filter((report) => {
+      if (scope === 'all') return true
+      if ((scope === 'station' || scope === 'single') && !stationId) return false
+      if (scope === 'station') return report.station_id === stationId
+      if (scope === 'single') return report.station_id === stationId && report.date === date
+      if (scope === 'range') {
+        if (!fromDate || !toDate) return false
+        if (stationId && report.station_id !== stationId) return false
+        return report.date >= fromDate && report.date <= toDate
+      }
+      return false
+    })
+  }, [reports, resetForm])
+
+  const resetSummary = useMemo(() => {
+    const { scope, stationId, date, fromDate, toDate } = resetForm
+    if (scope === 'all') return 'all station reports'
+    if (scope === 'station') return `${stationName(stationId)} reports`
+    if (scope === 'single') return `${stationName(stationId)} report for ${date || 'selected date'}`
+    if (scope === 'range') return `${stationId ? stationName(stationId) : 'all stations'} reports from ${fromDate || 'start'} to ${toDate || 'end'}`
+    return 'selected reports'
+  }, [resetForm, stations])
+
+  const handleDeleteReports = async () => {
+    if (!supabase) return
+    if (matchingResetReports.length === 0) {
+      showNotice('No matching reports found for this reset selection.', 'error')
+      return
+    }
+    if (!(await runSecurityGate('delete daily reports', `${resetSummary} (${matchingResetReports.length})`))) return
+    const typed = await showModal({
+      title: 'Final delete confirmation',
+      hint: `This will permanently delete ${matchingResetReports.length} report(s): ${resetSummary}. Type DELETE REPORTS to continue.`,
+      label: 'Type DELETE REPORTS',
+      placeholder: 'DELETE REPORTS',
+      inputMode: 'text',
+    })
+    if (typed === null || typed.trim().toUpperCase() !== 'DELETE REPORTS') {
+      showNotice('Report deletion cancelled.', 'error')
+      return
+    }
+
+    let query = supabase.from('daily_reports').delete()
+    if (resetForm.scope === 'all') {
+      query = query.not('id', 'is', null)
+    } else if (resetForm.scope === 'station') {
+      query = query.eq('station_id', resetForm.stationId)
+    } else if (resetForm.scope === 'single') {
+      query = query.eq('station_id', resetForm.stationId).eq('date', resetForm.date)
+    } else if (resetForm.scope === 'range') {
+      query = query.gte('date', resetForm.fromDate).lte('date', resetForm.toDate)
+      if (resetForm.stationId) query = query.eq('station_id', resetForm.stationId)
+    }
+
+    const { error } = await query
+    if (error) {
+      showNotice(`Could not delete reports: ${error.message}`, 'error')
+      return
+    }
+    showNotice(`${matchingResetReports.length} report(s) deleted from ${resetSummary}.`)
+    await loadReports()
+  }
 
   const handleGateSubmit = async (e) => {
     e.preventDefault()
@@ -360,6 +438,7 @@ export default function ITAdminPage() {
           <button type="button" className={tabBtnClass('users')} onClick={() => setTab('users')}>Users</button>
           <button type="button" className={tabBtnClass('create')} onClick={() => setTab('create')}>Create Users</button>
           <button type="button" className={tabBtnClass('stations')} onClick={() => setTab('stations')}>Stations</button>
+          <button type="button" className={tabBtnClass('reset')} onClick={() => setTab('reset')}>Reset</button>
         </nav>
 
         {tab === 'users' && (
@@ -488,6 +567,148 @@ export default function ITAdminPage() {
                   <tbody>{stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => <tr key={s.id} className="border-b"><td className="px-3 py-2 font-mono text-xs">{s.id}</td><td className="px-3 py-2 font-medium">{s.name}</td><td className="px-3 py-2">{s.location}</td></tr>)}</tbody>
                 </table>
               </div>
+            </div>
+          </section>
+        )}
+
+        {tab === 'reset' && (
+          <section className="mt-4 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 shadow">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-red-300">Maintenance</p>
+                  <h2 className="mt-1 text-xl font-bold text-white">Report Reset Tools</h2>
+                  <p className="mt-1 text-sm text-slate-400">Delete reports only when correcting test data, duplicate submissions, or wrong station/date entries.</p>
+                </div>
+                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-300">
+                  {reports.length} total reports
+                </span>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">Reset scope</label>
+                  <select
+                    value={resetForm.scope}
+                    onChange={(e) => setResetForm((prev) => ({ ...prev, scope: e.target.value }))}
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-3 text-sm text-white"
+                  >
+                    <option value="single">One station report on one date</option>
+                    <option value="station">All reports for one station</option>
+                    <option value="range">Reports by date range</option>
+                    <option value="all">All reports</option>
+                  </select>
+                </div>
+
+                {resetForm.scope !== 'all' && (
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">
+                      Station {resetForm.scope === 'range' ? '(optional)' : ''}
+                    </label>
+                    <select
+                      value={resetForm.stationId}
+                      onChange={(e) => setResetForm((prev) => ({ ...prev, stationId: e.target.value }))}
+                      className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-3 text-sm text-white"
+                    >
+                      <option value="">{resetForm.scope === 'range' ? 'All stations' : 'Select station'}</option>
+                      {stations.map((station) => (
+                        <option key={station.id} value={station.id}>{station.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {resetForm.scope === 'single' && (
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">Report date</label>
+                    <input
+                      type="date"
+                      value={resetForm.date}
+                      onChange={(e) => setResetForm((prev) => ({ ...prev, date: e.target.value }))}
+                      className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-3 text-sm text-white"
+                    />
+                  </div>
+                )}
+
+                {resetForm.scope === 'range' && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">From</label>
+                      <input
+                        type="date"
+                        value={resetForm.fromDate}
+                        onChange={(e) => setResetForm((prev) => ({ ...prev, fromDate: e.target.value }))}
+                        className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-3 text-sm text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">To</label>
+                      <input
+                        type="date"
+                        value={resetForm.toDate}
+                        onChange={(e) => setResetForm((prev) => ({ ...prev, toDate: e.target.value }))}
+                        className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-3 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Preview</p>
+                  <p className="mt-2 text-3xl font-black text-white">{matchingResetReports.length}</p>
+                  <p className="text-sm text-slate-400">matching report(s): {resetSummary}</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteReports}
+                  disabled={matchingResetReports.length === 0}
+                  className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-red-600/20 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Delete Selected Reports
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow dark:bg-slate-800">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Matching Reports</h2>
+                  <p className="text-sm text-slate-400">Preview the latest affected records before deletion.</p>
+                </div>
+                <button type="button" onClick={loadReports} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/5">Refresh</button>
+              </div>
+              <div className="mt-4 max-h-[520px] overflow-y-auto rounded-xl border border-white/8">
+                {matchingResetReports.length ? (
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-[#111827] text-xs uppercase text-slate-400">
+                      <tr>
+                        <th className="px-3 py-2">Station</th>
+                        <th className="px-3 py-2">Date</th>
+                        <th className="px-3 py-2">Sales</th>
+                        <th className="px-3 py-2">Closing</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matchingResetReports.slice(0, 80).map((report) => (
+                        <tr key={report.id || `${report.station_id}-${report.date}`} className="border-t border-white/8">
+                          <td className="px-3 py-2 font-medium text-white">{stationName(report.station_id)}</td>
+                          <td className="px-3 py-2 text-slate-300">{report.date}</td>
+                          <td className="px-3 py-2 text-slate-400">
+                            PMS {Math.round(Number(report.total_sales_liters_pms || 0)).toLocaleString()} · AGO {Math.round(Number(report.total_sales_liters_ago || 0)).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-slate-300">NGN {Math.round(Number(report.closing_balance || 0)).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="p-6 text-sm text-slate-400">No matching reports for the current reset selection.</div>
+                )}
+              </div>
+              {matchingResetReports.length > 80 && (
+                <p className="mt-3 text-xs text-slate-500">Showing first 80 of {matchingResetReports.length} matching reports.</p>
+              )}
             </div>
           </section>
         )}
