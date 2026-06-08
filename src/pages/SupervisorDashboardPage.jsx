@@ -105,6 +105,19 @@ const differenceTone = (value) => {
   return 'text-red-300'
 }
 
+const reportStatusRank = (status) => {
+  if (status === 'Submitted') return 0
+  if (status === 'Pending') return 1
+  return 2
+}
+
+const portfolioStatusRank = (status) => {
+  if (status === 'safe') return 0
+  if (status === 'warning') return 1
+  if (status === 'critical') return 2
+  return 3
+}
+
 const SupervisorDashboardPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -128,7 +141,6 @@ const SupervisorDashboardPage = () => {
   const finalizeSupervisorMonthEndSummary = useAppStore((state) => state.finalizeSupervisorMonthEndSummary)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [statusFilter, setStatusFilter] = useState('all')
-  const [showFullDailyOpeningColumns, setShowFullDailyOpeningColumns] = useState(false)
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
   const [reviewRemark, setReviewRemark] = useState('')
   const [selectedRequestStationId, setSelectedRequestStationId] = useState(null)
@@ -240,10 +252,10 @@ const SupervisorDashboardPage = () => {
   }, [reports, stations, stockThresholds])
 
   const filteredPortfolio = useMemo(() => {
-    if (statusFilter === 'all') {
-      return portfolio
-    }
-    return portfolio.filter((station) => station.status === statusFilter)
+    const rows = statusFilter === 'all'
+      ? portfolio
+      : portfolio.filter((station) => station.status === statusFilter)
+    return [...rows].sort((a, b) => portfolioStatusRank(a.status) - portfolioStatusRank(b.status) || a.stationName.localeCompare(b.stationName))
   }, [portfolio, statusFilter])
 
   const topRisk = useMemo(
@@ -400,6 +412,7 @@ const SupervisorDashboardPage = () => {
           paymentBreakdown,
           totalPaymentDeposits,
           posValue,
+          eodAttachments: Array.isArray(latestToday?.eodAttachments) ? latestToday.eodAttachments : [],
           cashBf,
           cashSales,
           totalAmount,
@@ -420,15 +433,17 @@ const SupervisorDashboardPage = () => {
 
   const filteredDailyOpeningQueueRows = useMemo(
     () =>
-      dailyOpeningQueueRows.filter((row) => {
-        if (!matchesStationMultiFilter(row.stationId, dailyQueueFilters)) {
-          return false
-        }
-        if (dailyQueueFilters.reportStatus !== 'all' && row.reportStatus !== dailyQueueFilters.reportStatus) {
-          return false
-        }
-        return true
-      }),
+      dailyOpeningQueueRows
+        .filter((row) => {
+          if (!matchesStationMultiFilter(row.stationId, dailyQueueFilters)) {
+            return false
+          }
+          if (dailyQueueFilters.reportStatus !== 'all' && row.reportStatus !== dailyQueueFilters.reportStatus) {
+            return false
+          }
+          return true
+        })
+        .sort((a, b) => reportStatusRank(a.reportStatus) - reportStatusRank(b.reportStatus) || a.stationName.localeCompare(b.stationName)),
     [dailyOpeningQueueRows, dailyQueueFilters],
   )
   const totalBankDepositsToday = useMemo(
@@ -838,6 +853,8 @@ const SupervisorDashboardPage = () => {
           expenseStatus: latestToday ? (totalExpense > 0 ? 'Submitted' : 'No Expense') : 'Pending',
           totalExpense,
           expenseLines: expenseItems.length || (latestToday?.expenseDescription ? 1 : 0),
+          expenseItems,
+          expenseDescription: latestToday?.expenseDescription || '',
           topCategory,
           reportDate: latestToday ? latestToday.date : 'Pending',
           pendingSubmissionDays: pendingInfo.pendingDays,
@@ -851,15 +868,17 @@ const SupervisorDashboardPage = () => {
 
   const filteredExpenseQueueRows = useMemo(
     () =>
-      expenseQueueRows.filter((row) => {
-        if (!matchesStationMultiFilter(row.stationId, expenseQueueFilters)) {
-          return false
-        }
-        if (expenseQueueFilters.expenseStatus !== 'all' && row.expenseStatus !== expenseQueueFilters.expenseStatus) {
-          return false
-        }
-        return true
-      }),
+      expenseQueueRows
+        .filter((row) => {
+          if (!matchesStationMultiFilter(row.stationId, expenseQueueFilters)) {
+            return false
+          }
+          if (expenseQueueFilters.expenseStatus !== 'all' && row.expenseStatus !== expenseQueueFilters.expenseStatus) {
+            return false
+          }
+          return true
+        })
+        .sort((a, b) => reportStatusRank(a.expenseStatus) - reportStatusRank(b.expenseStatus) || a.stationName.localeCompare(b.stationName)),
     [expenseQueueRows, expenseQueueFilters],
   )
 
@@ -1175,11 +1194,8 @@ const SupervisorDashboardPage = () => {
   )
 
   const dailyOpeningColumns = useMemo(
-    () =>
-      showFullDailyOpeningColumns
-        ? [...dailyOpeningColumnsCompactDefs, ...dailyOpeningColumnsFullExtraDefs]
-        : dailyOpeningColumnsCompactDefs,
-    [showFullDailyOpeningColumns, dailyOpeningColumnsCompactDefs, dailyOpeningColumnsFullExtraDefs],
+    () => [...dailyOpeningColumnsCompactDefs, ...dailyOpeningColumnsFullExtraDefs],
+    [dailyOpeningColumnsCompactDefs, dailyOpeningColumnsFullExtraDefs],
   )
 
   const dailyOpeningPickableKeys = useMemo(
@@ -1758,13 +1774,18 @@ const SupervisorDashboardPage = () => {
             { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: '⚠' },
             { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: '⛔' },
           ].map(({ label, value, color, accent, icon }) => (
-            <div key={label} className={`rounded-2xl border ${accent} bg-white/5 p-4`}>
+            <button
+              key={label}
+              type="button"
+              onClick={() => setStatusFilter(label === 'Stations' ? 'all' : label.toLowerCase())}
+              className={`rounded-2xl border ${statusFilter === (label === 'Stations' ? 'all' : label.toLowerCase()) ? accent : 'border-white/8'} bg-white/5 p-4 text-left transition hover:scale-[1.01] hover:bg-white/10`}
+            >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
                 <span className={`text-lg ${color}`}>{icon}</span>
               </div>
               <p className={`text-3xl font-bold ${color}`}>{value}</p>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -1775,16 +1796,9 @@ const SupervisorDashboardPage = () => {
               <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Stock Portfolio</p>
               <h3 className="text-lg font-bold text-white">Station Inventory Status</h3>
             </div>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
-            >
-              <option value="all">All</option>
-              <option value="critical">Critical</option>
-              <option value="warning">Warning</option>
-              <option value="safe">Safe</option>
-            </select>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-300">
+              {statusFilter === 'all' ? 'All stations' : statusFilter}
+            </span>
           </div>
           {filteredPortfolio.length ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1937,7 +1951,7 @@ const SupervisorDashboardPage = () => {
           ) : (
             <Card className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-semibold">Daily Opening Stock Queue (Alphabetical)</h3>
+                <h3 className="text-lg font-semibold">Daily Opening Stock Queue</h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -1945,13 +1959,6 @@ const SupervisorDashboardPage = () => {
                     className="rounded-lg bg-[#0d1220] px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-white/5 dark:text-white"
                   >
                     Filters
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowFullDailyOpeningColumns((prev) => !prev)}
-                    className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 dark:border-slate-700 dark:bg-[#0d1220] dark:text-slate-200"
-                  >
-                    {showFullDailyOpeningColumns ? 'Compact View' : 'Full Columns'}
                   </button>
                   <button
                     type="button"
@@ -2409,6 +2416,43 @@ const SupervisorDashboardPage = () => {
                     </div>
                   </div>
                 )}
+                {selectedDailyOpeningReport.eodAttachments?.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">EOD Attachments</p>
+                      <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">
+                        {selectedDailyOpeningReport.eodAttachments.length} file(s)
+                      </span>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {selectedDailyOpeningReport.eodAttachments.map((item, index) => (
+                        <a
+                          key={`${item.url || item.fileName || item.label}-${index}`}
+                          href={item.url || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => {
+                            if (!item.url) event.preventDefault()
+                          }}
+                          className="rounded-xl border border-white/8 bg-black/20 p-3 transition hover:bg-black/30"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-white">{item.label || item.category || 'EOD file'}</p>
+                              <p className="mt-1 truncate text-xs text-slate-400">{item.fileName || 'Uploaded attachment'}</p>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-300">
+                              {item.category || 'EOD'}
+                            </span>
+                          </div>
+                          <p className={`mt-2 text-xs font-semibold ${item.url ? 'text-[#a9cd39]' : 'text-slate-500'}`}>
+                            {item.url ? 'Open file' : 'No file link'}
+                          </p>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {selectedDailyOpeningReport.pumpMeterRows?.length > 0 && (
                   <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
                     <p className="mb-2 text-xs uppercase text-slate-500">Pump Readings</p>
@@ -2743,13 +2787,83 @@ const SupervisorDashboardPage = () => {
               </div>
               {expenseQueueRows.length ? (
                 filteredExpenseQueueRows.length ? (
-                  <DataTable
-                    columns={visibleExpenseColumns}
-                    rows={filteredExpenseQueueRows}
-                    onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
-                    tableClassName="min-w-[1400px]"
-                    wrapHeaders
-                  />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {filteredExpenseQueueRows.map((row) => {
+                      const submitted = row.expenseStatus === 'Submitted'
+                      const pending = row.expenseStatus === 'Pending'
+                      const statusClass = submitted
+                        ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
+                        : pending
+                          ? 'bg-amber-500/15 text-amber-400'
+                          : 'bg-slate-500/15 text-slate-300'
+                      const expenseLines = Array.isArray(row.expenseItems) && row.expenseItems.length
+                        ? row.expenseItems
+                        : row.expenseDescription
+                          ? [{ label: row.expenseDescription, amount: row.totalExpense }]
+                          : []
+                      return (
+                        <button
+                          key={row.stationId}
+                          type="button"
+                          onClick={() => navigate(`/stations/${row.stationId}`)}
+                          className={`rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${
+                            submitted
+                              ? 'border-white/10 bg-white/5'
+                              : pending
+                                ? 'border-amber-500/20 bg-amber-500/5'
+                                : 'border-slate-500/15 bg-white/[0.03]'
+                          }`}
+                        >
+                          <div className="mb-3 flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate font-bold text-white">{row.stationName}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">{row.managerName}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${statusClass}`}>
+                              {submitted ? 'Submitted' : row.expenseStatus}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                              <p className="text-xs text-slate-500">Total Expense</p>
+                              <p className="mt-0.5 font-semibold text-white">NGN {Math.round(Number(row.totalExpense || 0)).toLocaleString()}</p>
+                            </div>
+                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                              <p className="text-xs text-slate-500">Lines</p>
+                              <p className="mt-0.5 font-semibold text-white">{row.expenseLines}</p>
+                            </div>
+                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                              <p className="text-xs text-slate-500">Top Type</p>
+                              <p className="mt-0.5 truncate font-semibold text-white">{row.topCategory}</p>
+                            </div>
+                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                              <p className="text-xs text-slate-500">Date</p>
+                              <p className="mt-0.5 font-semibold text-white">{row.reportDate}</p>
+                            </div>
+                          </div>
+
+                          {submitted && expenseLines.length > 0 && (
+                            <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-black/15 p-3">
+                              {expenseLines.slice(0, 4).map((item, index) => (
+                                <div key={`${item.label}-${index}`} className="flex justify-between gap-3 text-xs">
+                                  <span className="truncate text-slate-400">{item.label || 'Expense'}</span>
+                                  <span className="shrink-0 font-semibold text-white">NGN {Math.round(Number(item.amount || 0)).toLocaleString()}</span>
+                                </div>
+                              ))}
+                              {expenseLines.length > 4 && (
+                                <p className="text-xs font-semibold text-slate-500">+ {expenseLines.length - 4} more line(s)</p>
+                              )}
+                            </div>
+                          )}
+
+                          {pending && (
+                            <p className="mt-3 text-xs text-amber-300">{row.pendingSubmissionTableTitle || 'Report pending'}</p>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 ) : (
                   <EmptyState
                     title="No stations match these filters"

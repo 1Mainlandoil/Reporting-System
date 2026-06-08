@@ -926,6 +926,7 @@ const StaffClosingReportForm = ({
     // Define all slots (banks + expenses + any extra added manually)
     const fixedSlots = [
       ...paymentBreakdown.map((item) => ({ slotId: `bank-${item.id}`, slotLabel: item.channel, category: 'Bank' })),
+      ...(Number(formData.posValue || 0) > 0 ? [{ slotId: 'pos-eod', slotLabel: 'POS', category: 'POS' }] : []),
       ...expenseItems.map((item) => ({ slotId: `exp-${item.id}`, slotLabel: item.label, category: 'Expense' })),
     ]
     const extraSlots = extraSlotIds.map((sid) => ({ slotId: sid, slotLabel: 'Extra Document', category: 'Extra' }))
@@ -949,6 +950,8 @@ const StaffClosingReportForm = ({
       const anyUploading = files.some((f) => f.status === 'uploading')
       const badgeCls = category === 'Bank'
         ? 'bg-blue-500/15 text-blue-400'
+        : category === 'POS'
+          ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
         : category === 'Expense'
           ? 'bg-purple-500/15 text-purple-400'
           : 'bg-white/10 text-slate-400'
@@ -1236,6 +1239,157 @@ const StaffClosingReportForm = ({
     </div>
   )
 
+  const renderReceiptReviewStep = () => {
+    const money = (value) => `NGN ${Math.round(Number(value || 0)).toLocaleString()}`
+    const liters = (value) => `${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} L`
+    const totalExpenses = expenseItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const totalBankPayments = paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const cashSales = Number(formData.cashSales || 0)
+    const posValue = Number(formData.posValue || 0)
+    const totalCash = effectiveCashBf + cashSales
+    const closingCash = isFirstReport && formData.closingBalanceOverride !== ''
+      ? Number(formData.closingBalanceOverride || 0)
+      : totalCash - totalBankPayments - posValue
+    const cashDifference = totalCash - totalBankPayments - posValue - closingCash
+    const pmsPumpSold = pumpSales.pms != null ? Number(pumpSales.pms || 0) : null
+    const agoPumpSold = pumpSales.ago != null ? Number(pumpSales.ago || 0) : null
+    const discrepancies = buildDiscrepancies()
+    const bankUploads = eodUploads.filter((u) => u.slotId?.startsWith('bank-') && u.status === 'done')
+    const posUploads = eodUploads.filter((u) => u.slotId === 'pos-eod' && u.status === 'done')
+    const expenseUploads = eodUploads.filter((u) => u.slotId?.startsWith('exp-') && u.status === 'done')
+    const eodName = (upload) => upload.file?.name || upload.fileName || 'Uploaded file'
+
+    const ReviewSection = ({ title, children }) => (
+      <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+        <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#a9cd39]">{title}</p>
+        <div className="space-y-2">{children}</div>
+      </section>
+    )
+    const ReviewRow = ({ label, value, strong = false, tone = 'text-white' }) => (
+      <div className="flex items-start justify-between gap-4 rounded-xl bg-black/20 px-3 py-2.5 text-sm">
+        <span className="text-slate-400">{label}</span>
+        <span className={`text-right ${strong ? 'text-base font-black' : 'font-semibold'} ${tone}`}>{value}</span>
+      </div>
+    )
+
+    return (
+      <div className="flex min-h-[70vh] flex-col">
+        <StepHeader label={steps[9]} current={10} total={totalSteps} />
+        <p className="mb-1 text-2xl font-bold text-white">Review your report</p>
+        <p className="mb-6 text-sm text-slate-500">Check every entry before sending it to your supervisor.</p>
+        <div className="flex-1 space-y-4">
+          <ReviewSection title="Report details">
+            <ReviewRow label="Report date" value={reportDate || new Date().toISOString().slice(0, 10)} />
+            <ReviewRow label="Station ID" value={stationId || '-'} />
+            <ReviewRow label="Sales today" value={isNoSalesDay ? 'No' : 'Yes'} tone={isNoSalesDay ? 'text-amber-300' : 'text-[#a9cd39]'} strong />
+          </ReviewSection>
+
+          <ReviewSection title="Stock">
+            <ReviewRow label="Open PMS" value={liters(effectiveOpening.pms)} />
+            <ReviewRow label="Open AGO" value={liters(effectiveOpening.ago)} />
+            <ReviewRow label="Received PMS" value={liters(formData.receivedProduct === 'yes' ? formData.receivedQuantityPMS : 0)} />
+            <ReviewRow label="Received AGO" value={liters(formData.receivedProduct === 'yes' ? formData.receivedQuantityAGO : 0)} />
+            <ReviewRow label="Closing PMS" value={liters(formData.closingStockPMS)} />
+            <ReviewRow label="Closing AGO" value={liters(formData.closingStockAGO)} />
+            <ReviewRow label="RTT PMS" value={liters(formData.rttPMS)} />
+            <ReviewRow label="RTT AGO" value={liters(formData.rttAGO)} />
+            <ReviewRow label="PMS sold" value={pmsPumpSold == null ? 'No pump reading added' : liters(pmsPumpSold)} strong tone="text-[#a9cd39]" />
+            <ReviewRow label="AGO sold" value={agoPumpSold == null ? 'No pump reading added' : liters(agoPumpSold)} strong tone="text-blue-300" />
+          </ReviewSection>
+
+          <ReviewSection title="Pump readings">
+            {pumpReadings.length ? pumpReadings.map((item) => {
+              const quantitySold = item.opening != null && item.closing != null ? Number(item.closing) - Number(item.opening) : 0
+              return (
+                <div key={item.id} className="rounded-xl border border-white/8 bg-black/20 p-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <ReviewRow label="Pump name" value={item.label} />
+                    <ReviewRow label="Product type" value={item.productType || 'PMS'} />
+                    <ReviewRow label="Opening" value={item.opening != null ? Number(item.opening).toLocaleString() : 'No opening entered'} />
+                    <ReviewRow label="Closing" value={Number(item.closing || 0).toLocaleString()} />
+                    <ReviewRow label="Sold" value={liters(quantitySold)} strong tone="text-[#a9cd39]" />
+                  </div>
+                </div>
+              )
+            }) : (
+              <ReviewRow label="Pump readings" value="No pump readings added" tone="text-amber-300" />
+            )}
+          </ReviewSection>
+
+          <ReviewSection title="Prices">
+            <ReviewRow label="PMS price" value={money(formData.pmsPrice) + ' per litre'} />
+            <ReviewRow label="AGO price" value={money(formData.agoPrice) + ' per litre'} />
+            {(priceBandsPMS.length > 0 || priceBandsAGO.length > 0) ? (
+              <>
+                {priceBandsPMS.map((band, index) => <ReviewRow key={`pms-${index}`} label={`PMS price entry ${index + 1}`} value={`${money(band.price)} for ${liters(band.liters)}`} />)}
+                {priceBandsAGO.map((band, index) => <ReviewRow key={`ago-${index}`} label={`AGO price entry ${index + 1}`} value={`${money(band.price)} for ${liters(band.liters)}`} />)}
+              </>
+            ) : (
+              <ReviewRow label="Multiple price entries" value="None" />
+            )}
+          </ReviewSection>
+
+          <ReviewSection title="Expenses">
+            {expenseItems.length ? expenseItems.map((item, index) => (
+              <ReviewRow key={item.id || `${item.label}-${index}`} label={item.label} value={money(item.amount)} />
+            )) : (
+              <ReviewRow label="Expense lines" value="No expenses entered" />
+            )}
+            <ReviewRow label="Total expense" value={money(totalExpenses)} strong />
+            <ReviewRow label="Expense evidence uploaded" value={`${expenseUploads.length} file(s)`} />
+            {expenseUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`Expense file ${index + 1}`} value={eodName(upload)} />)}
+          </ReviewSection>
+
+          <ReviewSection title="Cash">
+            <ReviewRow label="Cash B/F" value={money(effectiveCashBf)} />
+            <ReviewRow label="Cash sales" value={money(cashSales)} />
+            <ReviewRow label="Bank lodgements" value={money(totalBankPayments)} />
+            <ReviewRow label="POS" value={money(posValue)} />
+            <ReviewRow label="Closing cash balance" value={money(closingCash)} strong />
+            <ReviewRow label="Difference" value={money(cashDifference)} tone={Math.abs(cashDifference) > 0 ? 'text-amber-300' : 'text-[#a9cd39]'} />
+          </ReviewSection>
+
+          <ReviewSection title="Bank and evidence">
+            {paymentBreakdown.length ? paymentBreakdown.map((item) => (
+              <ReviewRow key={item.id} label={item.channel} value={money(item.amount)} />
+            )) : (
+              <ReviewRow label="Bank/channel entries" value="No bank lodgement entered" />
+            )}
+            <ReviewRow label="Bank evidence uploaded" value={`${bankUploads.length} file(s)`} />
+            {bankUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`Bank file ${index + 1}`} value={eodName(upload)} />)}
+            <ReviewRow label="POS evidence uploaded" value={`${posUploads.length} file(s)`} />
+            {posUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`POS file ${index + 1}`} value={eodName(upload)} />)}
+          </ReviewSection>
+
+          <ReviewSection title="Remarks">
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Manager remark</span>
+              <textarea
+                value={formData.remark}
+                onChange={(e) => setFormData((prev) => ({ ...prev, remark: e.target.value }))}
+                className="h-24 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white placeholder-slate-600 focus:outline-none resize-none"
+                placeholder="Any additional notes..."
+              />
+            </label>
+            {discrepancies.length ? discrepancies.map((item, index) => (
+              <div key={`${item.field}-${index}`} className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-sm">
+                <p className="font-bold text-amber-300">{item.field}</p>
+                <p className="mt-1 text-slate-300">System expected: {item.systemValue}</p>
+                <p className="text-slate-300">Manager entered: {item.enteredValue}</p>
+                <p className="mt-1 text-amber-200">Reason: {item.reason || 'No reason entered'}</p>
+              </div>
+            )) : (
+              <ReviewRow label="Discrepancy reasons" value="None" tone="text-[#a9cd39]" />
+            )}
+          </ReviewSection>
+
+          {submitError && <p className="text-sm text-rose-400">{submitError}</p>}
+        </div>
+        <NavButtons onBack={() => setStep(8)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
+      </div>
+    )
+  }
+
   const renderStep = () => {
     if (isNoSalesDay) {
       return step === 0 ? renderStep0() : renderNoSalesStep()
@@ -1250,7 +1404,7 @@ const StaffClosingReportForm = ({
       case 6: return renderPaymentsStep()
       case 7: return renderEodStep()
       case 8: return renderPumpStep()
-      case 9: return renderSubmitStep()
+      case 9: return renderReceiptReviewStep()
       default: return renderStep0()
     }
   }
