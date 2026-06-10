@@ -384,6 +384,8 @@ const SupervisorDashboardPage = () => {
           totalSalesLitersAGO: latestToday
             ? Math.round(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0).toLocaleString()
             : 'Not Submitted',
+          managerEnteredSalesLitersPMS: latestToday?.managerEnteredSalesLitersPMS ?? null,
+          managerEnteredSalesLitersAGO: latestToday?.managerEnteredSalesLitersAGO ?? null,
           dipSalesLitersPMS: latestToday
             ? latestToday.dipSalesLitersPMS ?? (
               Number(latestToday.openingStockPMS ?? latestToday.openingPMS ?? 0)
@@ -1698,8 +1700,8 @@ const SupervisorDashboardPage = () => {
       : hasAgoMeter
         ? directPumpDelta.AGO + toFiniteNumber(row.receivedAGO) - toFiniteNumber(row.rttAGO)
         : toFiniteNumber(row.totalSalesLitersAGO)
-    const managerPms = toFiniteNumber(row.dipSalesLitersPMS ?? row.totalSalesLitersPMS)
-    const managerAgo = toFiniteNumber(row.dipSalesLitersAGO ?? row.totalSalesLitersAGO)
+    const managerPms = toFiniteNumber(row.managerEnteredSalesLitersPMS ?? row.dipSalesLitersPMS ?? row.totalSalesLitersPMS)
+    const managerAgo = toFiniteNumber(row.managerEnteredSalesLitersAGO ?? row.dipSalesLitersAGO ?? row.totalSalesLitersAGO)
     const bookPms = toFiniteNumber(row.openingStockPMS) + toFiniteNumber(row.receivedPMS) - toFiniteNumber(row.rttPMS) - toFiniteNumber(systemPms)
     const bookAgo = toFiniteNumber(row.openingStockAGO) + toFiniteNumber(row.receivedAGO) - toFiniteNumber(row.rttAGO) - toFiniteNumber(systemAgo)
 
@@ -2128,7 +2130,7 @@ const SupervisorDashboardPage = () => {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-xs font-black uppercase tracking-widest text-amber-300">Quantity sold</p>
-                          <p className="mt-1 text-sm text-slate-300">System pump meters vs manager tank-dip reference.</p>
+                          <p className="mt-1 text-sm text-slate-300">System pump meters vs manager-entered sales reference.</p>
                         </div>
                         <span className={`rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-black ${
                           Math.abs(selectedReportDetail.pmsDiff) <= 1 && Math.abs(selectedReportDetail.agoDiff) <= 1

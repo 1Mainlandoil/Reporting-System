@@ -32,6 +32,8 @@ const defaultForm = {
   noSalesNote: '',
   rttPMS: '',
   rttAGO: '',
+  managerSalesPMS: '',
+  managerSalesAGO: '',
   cashSales: '',
   posValue: '',
   remark: '',
@@ -296,6 +298,12 @@ const StaffClosingReportForm = ({
     if (formDisabled || !reportingConfiguration.dailyOpeningStockFormatEnabled) { window.alert('Daily reporting is disabled.'); return }
 
     if (!isNoSalesDay) {
+      if (formData.managerSalesPMS === '' || formData.managerSalesAGO === '') {
+        const msg = 'Enter your PMS and AGO total sales litres before submitting.'
+        setSubmitError(msg)
+        window.alert(msg)
+        return
+      }
       const previewPmsLiters = Number(previewSales.pms || 0)
       const previewAgoLiters = Number(previewSales.ago || 0)
       const pmsBandCheck = validatePriceBandsForProduct({ bands: priceBandsPMS, totalSalesLiters: previewPmsLiters, productLabel: 'PMS', multiPriceEnabled: pmsMultiPrice === 'yes' })
@@ -335,6 +343,25 @@ const StaffClosingReportForm = ({
     const dipSalesAGO = computeSalesFromMovement({ opening: openingStockAGO, received: receivedAGO, closing: closingStockAGO, rtt: rttAGO })
     const totalSalesLitersPMS = pumpSalesPMS != null ? pumpSalesPMS + receivedPMS - rttPMS : dipSalesPMS
     const totalSalesLitersAGO = pumpSalesAGO != null ? pumpSalesAGO + receivedAGO - rttAGO : dipSalesAGO
+    const managerEnteredSalesLitersPMS = isNoSalesDay ? 0 : Number(formData.managerSalesPMS || 0)
+    const managerEnteredSalesLitersAGO = isNoSalesDay ? 0 : Number(formData.managerSalesAGO || 0)
+    const salesDiscrepancies = []
+    if (!isNoSalesDay && Math.abs(managerEnteredSalesLitersPMS - totalSalesLitersPMS) > 1) {
+      salesDiscrepancies.push({
+        field: 'PMS Sales Quantity',
+        systemValue: `${totalSalesLitersPMS.toLocaleString()} L`,
+        enteredValue: `${managerEnteredSalesLitersPMS.toLocaleString()} L`,
+        reason: 'Manager-entered PMS sales differs from system pump calculation',
+      })
+    }
+    if (!isNoSalesDay && Math.abs(managerEnteredSalesLitersAGO - totalSalesLitersAGO) > 1) {
+      salesDiscrepancies.push({
+        field: 'AGO Sales Quantity',
+        systemValue: `${totalSalesLitersAGO.toLocaleString()} L`,
+        enteredValue: `${managerEnteredSalesLitersAGO.toLocaleString()} L`,
+        reason: 'Manager-entered AGO sales differs from system pump calculation',
+      })
+    }
     const effectiveExpenseItems = isNoSalesDay ? [] : reportingConfiguration.expenseLineItemsEnabled ? expenseItems : []
     const totalExpense = effectiveExpenseItems.reduce((sum, item) => sum + item.amount, 0)
     const expenseDescription = effectiveExpenseItems.map((item) => item.label).join(', ')
@@ -355,6 +382,7 @@ const StaffClosingReportForm = ({
     const pmsPrice = isNoSalesDay ? 0 : pmsMultiPrice === 'yes' ? weightedAveragePrice(resolvedPriceBandsPMS, totalSalesLitersPMS) : Number(formData.pmsPrice || 0)
     const agoPrice = isNoSalesDay ? 0 : agoMultiPrice === 'yes' ? weightedAveragePrice(resolvedPriceBandsAGO, totalSalesLitersAGO) : Number(formData.agoPrice || 0)
 
+    const discrepancies = [...buildDiscrepancies(), ...salesDiscrepancies]
     const payload = {
       stationId, openingStockPMS, openingStockAGO, closingStockPMS, closingStockAGO,
       pmsPrice, agoPrice, multiPricing: !isNoSalesDay && (pmsMultiPrice === 'yes' || agoMultiPrice === 'yes'),
@@ -363,6 +391,10 @@ const StaffClosingReportForm = ({
       receivedProduct: !isNoSalesDay && formData.receivedProduct === 'yes',
       receivedProductType: receivedProductType === 'BOTH' ? null : receivedProductType,
       quantityReceived: receivedQuantity, totalSalesLitersPMS, totalSalesLitersAGO,
+      calculatedSalesLitersPMS: totalSalesLitersPMS,
+      calculatedSalesLitersAGO: totalSalesLitersAGO,
+      managerEnteredSalesLitersPMS,
+      managerEnteredSalesLitersAGO,
       rttPMS, rttAGO, expenseItems: effectiveExpenseItems, expenseAmount: totalExpense, expenseDescription,
       remark: isNoSalesDay ? `No Sales Day - ${formData.noSalesReason}${formData.noSalesNote ? `: ${formData.noSalesNote}` : ''}` : formData.remark,
       noSalesDay: isNoSalesDay,
@@ -373,8 +405,8 @@ const StaffClosingReportForm = ({
       remarks: isNoSalesDay ? `No Sales Day - ${formData.noSalesReason}${formData.noSalesNote ? `: ${formData.noSalesNote}` : ''}` : formData.remark,
       paymentBreakdown: normalizedPaymentBreakdown, totalPaymentDeposits, posValue,
       cashSales, cashBf: effectiveCashBf, totalAmount, closingBalance, pumpReadings: normalizedPumpReadings,
-      discrepancies: buildDiscrepancies(),
-      hasDiscrepancy: buildDiscrepancies().length > 0,
+      discrepancies,
+      hasDiscrepancy: discrepancies.length > 0,
       pumpSalesLitersPMS: pumpSalesPMS,
       pumpSalesLitersAGO: pumpSalesAGO,
       dipSalesLitersPMS: dipSalesPMS,
@@ -1295,6 +1327,26 @@ const StaffClosingReportForm = ({
             <ReviewRow label="RTT AGO" value={liters(formData.rttAGO)} />
             <ReviewRow label="PMS sold" value={pmsPumpSold == null ? 'No pump reading added' : liters(pmsPumpSold)} strong tone="text-[#a9cd39]" />
             <ReviewRow label="AGO sold" value={agoPumpSold == null ? 'No pump reading added' : liters(agoPumpSold)} strong tone="text-blue-300" />
+            <div className="rounded-2xl border border-[#a9cd39]/15 bg-[#a9cd39]/5 p-4">
+              <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Manager sales reference</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Enter your own total litres sold. Supervisor will compare this with the system pump calculation.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormInput
+                  type="number"
+                  label="PMS sold by manager"
+                  value={formData.managerSalesPMS}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, managerSalesPMS: e.target.value }))}
+                />
+                <FormInput
+                  type="number"
+                  label="AGO sold by manager"
+                  value={formData.managerSalesAGO}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, managerSalesAGO: e.target.value }))}
+                />
+              </div>
+            </div>
           </ReviewSection>
 
           <ReviewSection title="Pump readings">

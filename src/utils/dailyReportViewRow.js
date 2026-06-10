@@ -95,8 +95,18 @@ export const buildDailyReportViewRow = ({
     latestToday.rttPMS,
     latestToday.rttAGO,
   )
-  const managerSalesPMS = Number(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0)
-  const managerSalesAGO = Number(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0)
+  const managerSalesPMS = Number(
+    latestToday.managerEnteredSalesLitersPMS ??
+    latestToday.totalSalesLitersPMS ??
+    latestToday.salesPMS ??
+    0,
+  )
+  const managerSalesAGO = Number(
+    latestToday.managerEnteredSalesLitersAGO ??
+    latestToday.totalSalesLitersAGO ??
+    latestToday.salesAGO ??
+    0,
+  )
   const calculatedSalesPMS =
     latestToday.calculatedSalesLitersPMS != null
       ? Number(latestToday.calculatedSalesLitersPMS)

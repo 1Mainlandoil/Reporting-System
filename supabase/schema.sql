@@ -239,6 +239,10 @@ alter table public.daily_reports
   add column if not exists calculated_sales_liters_pms numeric,
   add column if not exists calculated_sales_liters_ago numeric;
 
+alter table public.daily_reports
+  add column if not exists manager_entered_sales_liters_pms numeric,
+  add column if not exists manager_entered_sales_liters_ago numeric;
+
 create table if not exists public.inspector_visits (
   id text primary key,
   station_id text not null references public.stations(id) on delete cascade,

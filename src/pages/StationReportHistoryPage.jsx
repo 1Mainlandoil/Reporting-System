@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
-import DataTable from '../components/ui/DataTable'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorNotice from '../components/ui/ErrorNotice'
 import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
@@ -12,6 +11,15 @@ import { getClosingForProduct } from '../utils/reportFields'
 import { addCalendarDaysIso, formatStaffCalendarDay, getOldestMissingReportDateUpTo } from '../utils/reportPending'
 
 const REVIEW_STATUS_OPTIONS = ['Reviewed', 'Needs Attention', 'Escalated']
+
+const formatNumber = (value, digits = 0) =>
+  Number(value || 0).toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  })
+
+const formatMoney = (value) => `NGN ${formatNumber(Math.round(Number(value || 0)))}`
+const formatLiters = (value, digits = 0) => `${formatNumber(Number(value || 0), digits)} L`
 
 const getReceivedProductType = (row) => {
   if (row?.noSalesDay) {
@@ -97,6 +105,7 @@ const StationReportHistoryPage = () => {
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [reviewDrafts, setReviewDrafts] = useState({})
   const [selectedReportId, setSelectedReportId] = useState('')
+  const [selectedHistoryReportId, setSelectedHistoryReportId] = useState('')
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [historyFilterDate, setHistoryFilterDate] = useState('')
   const [exportNotice, setExportNotice] = useState('')
@@ -268,6 +277,18 @@ const StationReportHistoryPage = () => {
       .join(', ')
   }
 
+  const getSalesPms = (row) => Number(row.totalSalesLitersPMS ?? row.salesPMS ?? 0)
+  const getSalesAgo = (row) => Number(row.totalSalesLitersAGO ?? row.salesAGO ?? 0)
+
+  const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
+
+  const getReviewClass = (status) => {
+    if (status === 'Reviewed') return 'border-[#a9cd39]/25 bg-[#a9cd39]/10 text-[#a9cd39]'
+    if (status === 'Needs Attention') return 'border-amber-400/25 bg-amber-400/10 text-amber-300'
+    if (status === 'Escalated') return 'border-red-400/25 bg-red-400/10 text-red-300'
+    return 'border-white/10 bg-white/5 text-slate-300'
+  }
+
   const reportsWithReview = useMemo(() => {
     const priorClosings = new Map()
     const enrichedById = new Map()
@@ -297,6 +318,67 @@ const StationReportHistoryPage = () => {
     reportsWithReview.find((report) => report.id === selectedReportId) ||
     reports.find((report) => report.id === selectedReportId) ||
     null
+  const selectedHistoryReport =
+    reportsWithReview.find((report) => report.id === selectedHistoryReportId) ||
+    reports.find((report) => report.id === selectedHistoryReportId) ||
+    null
+
+  const historyInsights = (() => {
+    const source = chronAsc
+    const totalReports = source.length
+    const totalPms = source.reduce((sum, row) => sum + getSalesPms(row), 0)
+    const totalAgo = source.reduce((sum, row) => sum + getSalesAgo(row), 0)
+    const totalCashSales = source.reduce((sum, row) => sum + Number(row.cashSales ?? 0), 0)
+    const totalBank = source.reduce((sum, row) => sum + getPaymentTotal(row), 0)
+    const totalPos = source.reduce((sum, row) => sum + getPosValue(row), 0)
+    const totalExpenses = source.reduce((sum, row) => sum + getExpenseTotal(row), 0)
+    const reviewedReports = source.filter((row) => row.supervisorReview?.status === 'Reviewed').length
+    const reportsWithEod = source.filter((row) => Array.isArray(row.eodAttachments) && row.eodAttachments.length > 0).length
+    const flaggedReports = source.filter(
+      (row) =>
+        row.hasDiscrepancy ||
+        (Array.isArray(row.discrepancies) && row.discrepancies.length > 0) ||
+        Math.abs(getCashMovementGap(row)) > 0.5,
+    ).length
+    const highestSalesReport = [...source].sort((a, b) => getReportTotalLiters(b) - getReportTotalLiters(a))[0]
+    const lastReport = source[source.length - 1]
+    const oldestMissing = getOldestMissingReportDateUpTo(todayIso, reportDatesSet)
+    let missingDays = 0
+    if (oldestMissing) {
+      let cursor = oldestMissing
+      while (cursor <= todayIso) {
+        if (!reportDatesSet.has(cursor)) missingDays += 1
+        cursor = addCalendarDaysIso(cursor, 1)
+      }
+    }
+    const expenseLabels = new Map()
+    source.forEach((row) => {
+      if (!Array.isArray(row.expenseItems)) return
+      row.expenseItems.forEach((item) => {
+        const label = String(item.label || 'Other').trim() || 'Other'
+        expenseLabels.set(label, (expenseLabels.get(label) || 0) + 1)
+      })
+    })
+    const commonExpense = [...expenseLabels.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'None yet'
+
+    return {
+      totalReports,
+      totalPms,
+      totalAgo,
+      totalCashSales,
+      totalBank,
+      totalPos,
+      totalExpenses,
+      reviewedReports,
+      reportsWithEod,
+      flaggedReports,
+      highestSalesReport,
+      lastReport,
+      oldestMissing,
+      missingDays,
+      commonExpense,
+    }
+  })()
 
   const columns = [
     { key: 'date', header: 'Date' },
@@ -601,9 +683,109 @@ const StationReportHistoryPage = () => {
 
       {reports.length ? (
         filteredReports.length ? (
-          <Card>
-            <DataTable columns={columns} rows={reportsWithReview} />
-          </Card>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {[
+                ['Reports', formatNumber(historyInsights.totalReports), `${historyInsights.missingDays} missing`],
+                ['PMS sold', formatLiters(historyInsights.totalPms), 'pump readings'],
+                ['AGO sold', formatLiters(historyInsights.totalAgo), 'pump readings'],
+                ['Cash sales', formatMoney(historyInsights.totalCashSales), 'total reported'],
+                ['Bank paid', formatMoney(historyInsights.totalBank), 'lodgements'],
+                ['POS', formatMoney(historyInsights.totalPos), 'card payments'],
+                ['Expenses', formatMoney(historyInsights.totalExpenses), historyInsights.commonExpense],
+                ['Reviewed', `${historyInsights.reviewedReports}/${historyInsights.totalReports}`, `${historyInsights.flaggedReports} flagged`],
+              ].map(([label, value, hint]) => (
+                <div
+                  key={label}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/8 to-white/[0.03] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.18)]"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                  <p className="mt-2 text-lg font-bold text-white">{value}</p>
+                  <p className="mt-1 text-xs text-slate-400">{hint}</p>
+                </div>
+              ))}
+            </div>
+
+            <Card className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Station timeline</p>
+                  <h3 className="text-xl font-bold text-white">Tap any report to open the full breakdown</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Last report: {historyInsights.lastReport?.date || 'None'}.
+                    {historyInsights.highestSalesReport
+                      ? ` Best volume: ${historyInsights.highestSalesReport.date} (${formatLiters(getReportTotalLiters(historyInsights.highestSalesReport))}).`
+                      : ''}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  <span className="text-slate-500">EOD attached</span>{' '}
+                  <strong className="text-white">{historyInsights.reportsWithEod}/{historyInsights.totalReports}</strong>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {reportsWithReview.map((report) => {
+                  const attachmentCount = Array.isArray(report.eodAttachments) ? report.eodAttachments.length : 0
+                  const hasFlag =
+                    report.hasDiscrepancy ||
+                    (Array.isArray(report.discrepancies) && report.discrepancies.length > 0) ||
+                    Math.abs(getCashMovementGap(report)) > 0.5
+                  return (
+                    <button
+                      key={report.id}
+                      type="button"
+                      onClick={() => setSelectedHistoryReportId(report.id)}
+                      className="group rounded-2xl border border-white/10 bg-[#111827]/80 p-4 text-left shadow-[0_18px_45px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:border-[#a9cd39]/35 hover:bg-[#141d2d]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#a9cd39]">{report.date}</p>
+                          <h4 className="mt-1 text-lg font-bold text-white">{report.managerName || report.submittedBy || 'Manager report'}</h4>
+                        </div>
+                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getReviewClass(report.reviewStatus)}`}>
+                          {report.reviewStatus === '-' ? 'Not reviewed' : report.reviewStatus}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <div className="rounded-xl bg-black/20 px-3 py-2">
+                          <p className="text-xs text-slate-500">PMS sold</p>
+                          <p className="text-sm font-bold text-white">{formatLiters(getSalesPms(report), 1)}</p>
+                        </div>
+                        <div className="rounded-xl bg-black/20 px-3 py-2">
+                          <p className="text-xs text-slate-500">AGO sold</p>
+                          <p className="text-sm font-bold text-white">{formatLiters(getSalesAgo(report), 1)}</p>
+                        </div>
+                        <div className="rounded-xl bg-black/20 px-3 py-2">
+                          <p className="text-xs text-slate-500">Cash sales</p>
+                          <p className="text-sm font-bold text-white">{formatMoney(report.cashSales)}</p>
+                        </div>
+                        <div className="rounded-xl bg-black/20 px-3 py-2">
+                          <p className="text-xs text-slate-500">Expenses</p>
+                          <p className="text-sm font-bold text-white">{formatMoney(getExpenseTotal(report))}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300">
+                          {attachmentCount} EOD file{attachmentCount === 1 ? '' : 's'}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300">
+                          {Array.isArray(report.pumpReadings) ? report.pumpReadings.length : 0} pump line{Array.isArray(report.pumpReadings) && report.pumpReadings.length === 1 ? '' : 's'}
+                        </span>
+                        {hasFlag && (
+                          <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 font-semibold text-amber-300">
+                            Needs check
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </Card>
+          </div>
         ) : (
           <EmptyState
             title={historyFilterDate ? 'No report on this date' : 'No matching reports'}
@@ -619,6 +801,221 @@ const StationReportHistoryPage = () => {
           title="No report history"
           message="This station has not submitted any report entries yet."
         />
+      )}
+      {selectedHistoryReport && (
+        <div className="fixed inset-0 z-[70] overflow-y-auto bg-[#060a12]/95 p-3 backdrop-blur-xl md:p-6">
+          <div className="mx-auto max-w-6xl space-y-4">
+            <div className="sticky top-0 z-10 -mx-3 border-b border-white/10 bg-[#060a12]/95 px-3 py-3 backdrop-blur-xl md:-mx-6 md:px-6">
+              <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Full report</p>
+                  <h3 className="truncate text-xl font-bold text-white">{station.name} - {selectedHistoryReport.date}</h3>
+                  <p className="truncate text-sm text-slate-400">{selectedHistoryReport.managerName || selectedHistoryReport.submittedBy || 'Manager submission'}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedHistoryReportId('')}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Close report"
+                >
+                  x
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <section className="rounded-3xl border border-white/10 bg-[#101722] p-5 lg:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Stock and sales</p>
+                    <h4 className="text-lg font-bold text-white">Product movement</h4>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getReviewClass(selectedHistoryReport.reviewStatus)}`}>
+                    {!selectedHistoryReport.reviewStatus || selectedHistoryReport.reviewStatus === '-' ? 'Not reviewed' : selectedHistoryReport.reviewStatus}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {[
+                    ['Opening PMS', formatLiters(selectedHistoryReport.openingStockPMS ?? selectedHistoryReport.openingPMS)],
+                    ['Opening AGO', formatLiters(selectedHistoryReport.openingStockAGO ?? selectedHistoryReport.openingAGO)],
+                    ['Closing PMS', formatLiters(getClosingForProduct(selectedHistoryReport, 'pms'))],
+                    ['Closing AGO', formatLiters(getClosingForProduct(selectedHistoryReport, 'ago'))],
+                    ['Received PMS', formatLiters(selectedHistoryReport.receivedPMS)],
+                    ['Received AGO', formatLiters(selectedHistoryReport.receivedAGO)],
+                    ['PMS sold', formatLiters(getSalesPms(selectedHistoryReport), 1)],
+                    ['AGO sold', formatLiters(getSalesAgo(selectedHistoryReport), 1)],
+                    ['RTT PMS', formatLiters(selectedHistoryReport.rttPMS, 1)],
+                    ['RTT AGO', formatLiters(selectedHistoryReport.rttAGO, 1)],
+                    ['PMS price', `${formatMoney(selectedHistoryReport.pmsPrice)}/L`],
+                    ['AGO price', `${formatMoney(selectedHistoryReport.agoPrice)}/L`],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/8 bg-black/20 p-3">
+                      <p className="text-xs text-slate-500">{label}</p>
+                      <p className="mt-1 text-sm font-bold text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-white/10 bg-[#101722] p-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cash</p>
+                <h4 className="text-lg font-bold text-white">Money movement</h4>
+                <div className="mt-4 space-y-2">
+                  {[
+                    ['Cash B/F', formatMoney(selectedHistoryReport.cashBf)],
+                    ['Cash sales', formatMoney(selectedHistoryReport.cashSales)],
+                    ['Total cash', formatMoney(Number(selectedHistoryReport.cashBf ?? 0) + Number(selectedHistoryReport.cashSales ?? 0))],
+                    ['Bank lodgements', formatMoney(getPaymentTotal(selectedHistoryReport))],
+                    ['POS', formatMoney(getPosValue(selectedHistoryReport))],
+                    ['Closing cash', formatMoney(selectedHistoryReport.closingBalance)],
+                    ['Variance', formatMoney(getCashMovementGap(selectedHistoryReport))],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-2">
+                      <span className="text-sm text-slate-400">{label}</span>
+                      <strong className="text-sm text-white">{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <section className="rounded-3xl border border-white/10 bg-[#101722] p-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Pump readings</p>
+                <h4 className="text-lg font-bold text-white">Meters used for sales</h4>
+                <div className="mt-4 space-y-2">
+                  {(Array.isArray(selectedHistoryReport.pumpMeterRows) && selectedHistoryReport.pumpMeterRows.length
+                    ? selectedHistoryReport.pumpMeterRows
+                    : selectedHistoryReport.pumpReadings || []
+                  ).map((item, index) => {
+                    const label = item.label || `Pump ${index + 1}`
+                    const opening = item.opening ?? item.start ?? '-'
+                    const closing = item.closing ?? item.end ?? getReadingValue(item) ?? '-'
+                    const sold = item.delta != null ? item.delta : Number(closing) - Number(opening)
+                    return (
+                      <div key={`${label}-${index}`} className="rounded-2xl border border-white/8 bg-black/20 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold text-white">{label}</p>
+                          {item.productType && (
+                            <span className="rounded-full border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-2 py-0.5 text-xs font-semibold text-[#a9cd39]">
+                              {item.productType}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                          <div>
+                            <p className="text-xs text-slate-500">Opening</p>
+                            <p className="font-bold text-white">{opening}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Closing</p>
+                            <p className="font-bold text-white">{closing}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Sold</p>
+                            <p className="font-bold text-white">{Number.isFinite(sold) ? formatLiters(sold, 1) : '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {(!selectedHistoryReport.pumpReadings || selectedHistoryReport.pumpReadings.length === 0) &&
+                    (!selectedHistoryReport.pumpMeterRows || selectedHistoryReport.pumpMeterRows.length === 0) && (
+                      <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-400">No pump readings recorded.</p>
+                    )}
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-white/10 bg-[#101722] p-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Expenses</p>
+                <h4 className="text-lg font-bold text-white">Expense breakdown</h4>
+                <div className="mt-4 space-y-2">
+                  {Array.isArray(selectedHistoryReport.expenseItems) && selectedHistoryReport.expenseItems.length ? (
+                    selectedHistoryReport.expenseItems.map((item, index) => (
+                      <div key={`${item.label}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-2">
+                        <span className="text-sm text-slate-300">{item.label || `Expense ${index + 1}`}</span>
+                        <strong className="text-sm text-white">{formatMoney(item.amount)}</strong>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-400">
+                      {selectedHistoryReport.expenseDescription || 'No expenses recorded.'}
+                    </p>
+                  )}
+                  <div className="mt-3 rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/10 p-3">
+                    <p className="text-xs text-[#a9cd39]">Total expense</p>
+                    <p className="text-lg font-bold text-white">{formatMoney(getExpenseTotal(selectedHistoryReport))}</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <section className="rounded-3xl border border-white/10 bg-[#101722] p-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Bank, POS and EOD</p>
+                <h4 className="text-lg font-bold text-white">Payments and evidence</h4>
+                <div className="mt-4 space-y-2">
+                  {Array.isArray(selectedHistoryReport.paymentBreakdown) && selectedHistoryReport.paymentBreakdown.length ? (
+                    selectedHistoryReport.paymentBreakdown.map((item, index) => (
+                      <div key={`${item.channel}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-2">
+                        <span className="text-sm text-slate-300">{item.channel || `Bank ${index + 1}`}</span>
+                        <strong className="text-sm text-white">{formatMoney(item.amount)}</strong>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-400">No bank lodgement recorded.</p>
+                  )}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {Array.isArray(selectedHistoryReport.eodAttachments) && selectedHistoryReport.eodAttachments.length ? (
+                    selectedHistoryReport.eodAttachments.map((att, index) => (
+                      <a
+                        key={`${att.url || att.fileName}-${index}`}
+                        href={att.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-3 py-2 text-sm font-semibold text-[#a9cd39] transition hover:bg-[#a9cd39]/15"
+                      >
+                        {att.label || att.category || `EOD file ${index + 1}`}
+                      </a>
+                    ))
+                  ) : (
+                    <span className="rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-sm text-slate-400">No EOD files attached.</span>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-white/10 bg-[#101722] p-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Notes</p>
+                <h4 className="text-lg font-bold text-white">Remarks and review</h4>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                    <p className="text-xs text-slate-500">Manager remark</p>
+                    <p className="mt-1 text-sm text-white">{selectedHistoryReport.remark || selectedHistoryReport.remarks || 'No remark added.'}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                    <p className="text-xs text-slate-500">Supervisor note</p>
+                    <p className="mt-1 text-sm text-white">{selectedHistoryReport.supervisorNote || 'No supervisor note yet.'}</p>
+                    <p className="mt-2 text-xs text-slate-500">Reviewed by: {selectedHistoryReport.reviewedBy || '-'}</p>
+                  </div>
+                  {isSupervisor && reportingConfiguration.supervisorReviewWorkflowEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedReportId(selectedHistoryReport.id)
+                        setSelectedHistoryReportId('')
+                        setIsReviewModalOpen(true)
+                      }}
+                      className="w-full rounded-2xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-4 py-3 text-sm font-bold text-[#a9cd39] transition hover:bg-[#a9cd39]/15"
+                    >
+                      Review this report
+                    </button>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
       )}
       {isSupervisor && reports.length > 0 && reportingConfiguration.supervisorReviewWorkflowEnabled && (
         <Card className="space-y-4">

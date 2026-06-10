@@ -86,6 +86,10 @@ export const mapReportRow = (row) => {
   noSalesNote: row.no_sales_note || '',
   totalSalesLitersPMS: row.total_sales_liters_pms,
   totalSalesLitersAGO: row.total_sales_liters_ago,
+  managerEnteredSalesLitersPMS:
+    row.manager_entered_sales_liters_pms != null ? Number(row.manager_entered_sales_liters_pms) : null,
+  managerEnteredSalesLitersAGO:
+    row.manager_entered_sales_liters_ago != null ? Number(row.manager_entered_sales_liters_ago) : null,
   calculatedSalesLitersPMS:
     row.calculated_sales_liters_pms != null ? Number(row.calculated_sales_liters_pms) : null,
   calculatedSalesLitersAGO:
@@ -424,6 +428,10 @@ export const insertReport = async (report) => {
     eod_attachments: Array.isArray(report.eodAttachments) ? report.eodAttachments : [],
     has_discrepancy: Boolean(report.hasDiscrepancy),
     discrepancies: Array.isArray(report.discrepancies) ? report.discrepancies : [],
+    manager_entered_sales_liters_pms:
+      report.managerEnteredSalesLitersPMS == null ? null : Number(report.managerEnteredSalesLitersPMS),
+    manager_entered_sales_liters_ago:
+      report.managerEnteredSalesLitersAGO == null ? null : Number(report.managerEnteredSalesLitersAGO),
   }
 
   const upsertReport = async (rowPayload) => {
