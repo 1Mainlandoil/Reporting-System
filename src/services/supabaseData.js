@@ -131,6 +131,12 @@ export const mapReportRow = (row) => {
   eodAttachments: Array.isArray(row.eod_attachments) ? row.eod_attachments : [],
   hasDiscrepancy: Boolean(row.has_discrepancy),
   discrepancies: Array.isArray(row.discrepancies) ? row.discrepancies : [],
+  supervisorCorrectionHistory: Array.isArray(row.supervisor_correction_history) ? row.supervisor_correction_history : [],
+  finalizationStatus: row.report_finalization_status || '',
+  finalizedBy: row.report_finalized_by || '',
+  finalizedByUserId: row.report_finalized_by_user_id || null,
+  finalizedAt: row.report_finalized_at || null,
+  finalizationRemark: row.report_finalization_remark || '',
   }
 }
 
@@ -432,6 +438,12 @@ export const insertReport = async (report) => {
       report.managerEnteredSalesLitersPMS == null ? null : Number(report.managerEnteredSalesLitersPMS),
     manager_entered_sales_liters_ago:
       report.managerEnteredSalesLitersAGO == null ? null : Number(report.managerEnteredSalesLitersAGO),
+    supervisor_correction_history: Array.isArray(report.supervisorCorrectionHistory) ? report.supervisorCorrectionHistory : [],
+    report_finalization_status: report.finalizationStatus || '',
+    report_finalized_by: report.finalizedBy || '',
+    report_finalized_by_user_id: report.finalizedByUserId || null,
+    report_finalized_at: report.finalizedAt || null,
+    report_finalization_remark: report.finalizationRemark || '',
   }
 
   const upsertReport = async (rowPayload) => {
@@ -458,11 +470,11 @@ export const insertReport = async (report) => {
     await upsertReport(payload)
   } catch (error) {
     if (isMissingColumnError(error)) {
-      // Backward compatibility: allow submission even if DB schema is behind new optional fields.
-      await upsertReport(basePayload)
-    } else {
-      throw error
+      throw new Error(
+        `Report was not saved because the database schema is missing a required report field: ${error.message}. Apply the latest Supabase schema before submitting reports.`,
+      )
     }
+    throw error
   }
 
   return true

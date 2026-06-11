@@ -63,19 +63,28 @@ const getReadingValue = (item) => {
 
 const buildPumpMeterRows = (priorMap, todayList = []) => {
   const todayMap = new Map()
+  const todayOpeningMap = new Map()
   for (const item of todayList) {
     const label = String(item?.label || '').trim()
     if (!label) continue
     const reading = getReadingValue(item)
     if (reading == null || Number.isNaN(reading)) continue
     todayMap.set(label, reading)
+    const opening = item.opening != null && item.opening !== '' ? Number(item.opening) : null
+    if (opening != null && !Number.isNaN(opening)) {
+      todayOpeningMap.set(label, opening)
+    }
   }
 
   const labels = new Set([...priorMap.keys(), ...todayMap.keys()])
   return [...labels]
     .sort((a, b) => a.localeCompare(b))
     .map((label) => {
-      const opening = priorMap.has(label) ? priorMap.get(label) : null
+      const opening = todayOpeningMap.has(label)
+        ? todayOpeningMap.get(label)
+        : priorMap.has(label)
+          ? priorMap.get(label)
+          : null
       const todayClosing = todayMap.has(label) ? todayMap.get(label) : null
       if (todayClosing != null) {
         return {

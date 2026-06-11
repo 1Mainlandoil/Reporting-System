@@ -243,6 +243,14 @@ alter table public.daily_reports
   add column if not exists manager_entered_sales_liters_pms numeric,
   add column if not exists manager_entered_sales_liters_ago numeric;
 
+alter table public.daily_reports
+  add column if not exists supervisor_correction_history jsonb not null default '[]'::jsonb,
+  add column if not exists report_finalization_status text not null default '',
+  add column if not exists report_finalized_by text not null default '',
+  add column if not exists report_finalized_by_user_id text,
+  add column if not exists report_finalized_at timestamptz,
+  add column if not exists report_finalization_remark text not null default '';
+
 create table if not exists public.inspector_visits (
   id text primary key,
   station_id text not null references public.stations(id) on delete cascade,

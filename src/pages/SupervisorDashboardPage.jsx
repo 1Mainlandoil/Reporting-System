@@ -61,22 +61,34 @@ const buildPumpRowsWithCarry = (previousReadings = [], todayReadings = []) => {
     prevMap.set(label, reading)
   }
   const todayMap = new Map()
+  const todayOpeningMap = new Map()
+  const todayProductMap = new Map()
   for (const item of todayReadings) {
     const label = String(item?.label || '').trim()
     const reading = getPumpReadingValue(item)
     if (!label || reading == null || Number.isNaN(reading)) continue
     todayMap.set(label, reading)
+    const opening = item.opening != null && item.opening !== '' ? Number(item.opening) : null
+    if (opening != null && !Number.isNaN(opening)) {
+      todayOpeningMap.set(label, opening)
+    }
+    todayProductMap.set(label, item.productType === 'AGO' ? 'AGO' : 'PMS')
   }
 
-  const labels = new Set([...prevMap.keys(), ...todayMap.keys()])
+  const labels = new Set([...todayMap.keys()])
   return [...labels]
     .sort((a, b) => a.localeCompare(b))
     .map((label) => {
-      const opening = prevMap.has(label) ? prevMap.get(label) : null
+      const opening = todayOpeningMap.has(label)
+        ? todayOpeningMap.get(label)
+        : prevMap.has(label)
+          ? prevMap.get(label)
+          : null
       const closing = todayMap.has(label) ? todayMap.get(label) : opening
       const used = todayMap.has(label)
       return {
         label,
+        productType: todayProductMap.get(label) || 'PMS',
         opening,
         closing,
         used,
@@ -132,6 +144,8 @@ const SupervisorDashboardPage = () => {
   const escalateStationIntervention = useAppStore((state) => state.escalateStationIntervention)
   const revertEscalationIntervention = useAppStore((state) => state.revertEscalationIntervention)
   const unflagStationIntervention = useAppStore((state) => state.unflagStationIntervention)
+  const correctReportBySupervisor = useAppStore((state) => state.correctReportBySupervisor)
+  const finalizeReportBySupervisor = useAppStore((state) => state.finalizeReportBySupervisor)
 
   const productRequests = useAppStore((state) => state.productRequests)
   const reviewProductRequestBySupervisor = useAppStore((state) => state.reviewProductRequestBySupervisor)
@@ -143,6 +157,10 @@ const SupervisorDashboardPage = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
   const [reviewRemark, setReviewRemark] = useState('')
+  const [correctionOpen, setCorrectionOpen] = useState(false)
+  const [correctionReason, setCorrectionReason] = useState('')
+  const [correctionDraft, setCorrectionDraft] = useState(null)
+  const [finalizeRemark, setFinalizeRemark] = useState('')
   const [selectedRequestStationId, setSelectedRequestStationId] = useState(null)
   const [generalFinalizationRemark, setGeneralFinalizationRemark] = useState('')
   const [stationReviewDrafts, setStationReviewDrafts] = useState({})
@@ -422,7 +440,7 @@ const SupervisorDashboardPage = () => {
           cashMovementVariance,
           pumpReadings,
           pumpMeterRows,
-          pumpReadingsCount: pumpMeterRows.length,
+          pumpReadingsCount: pumpReadings.length,
           sortKey: station.name.toLowerCase(),
           pendingSubmissionDays: pendingInfo.pendingDays,
           pendingSubmissionNoHistory: pendingInfo.noPriorSubmissions,
@@ -1719,6 +1737,78 @@ const SupervisorDashboardPage = () => {
     }
   }, [selectedDailyOpeningReport])
 
+  const selectedRawReport = useMemo(() => {
+    if (!selectedDailyOpeningReport) return null
+    return reports.find(
+      (report) =>
+        report.stationId === selectedDailyOpeningReport.stationId &&
+        report.date === selectedDailyOpeningReport.reportDate,
+    ) || null
+  }, [reports, selectedDailyOpeningReport])
+
+  const buildCorrectionDraft = (report) => {
+    if (!report) return null
+    const savedPumpReadings = Array.isArray(report.pumpReadings)
+      ? report.pumpReadings
+          .filter((item) => item && (item.label || item.opening != null || item.closing != null))
+          .map((item) => ({
+            label: item.label || '',
+            productType: item.productType === 'AGO' ? 'AGO' : 'PMS',
+            opening: item.opening ?? item.start ?? '',
+            closing: item.closing ?? item.end ?? '',
+          }))
+      : []
+    const visiblePumpRows = Array.isArray(selectedDailyOpeningReport?.pumpMeterRows)
+      ? selectedDailyOpeningReport.pumpMeterRows
+          .filter((item) => item && item.used)
+          .map((item) => ({
+            label: item.label || '',
+            productType: item.productType === 'AGO' ? 'AGO' : 'PMS',
+            opening: item.opening ?? '',
+            closing: item.closing ?? '',
+          }))
+      : []
+    return {
+      openingStockPMS: report.openingStockPMS ?? report.openingPMS ?? 0,
+      openingStockAGO: report.openingStockAGO ?? report.openingAGO ?? 0,
+      closingStockPMS: getClosingForProduct(report, 'pms'),
+      closingStockAGO: getClosingForProduct(report, 'ago'),
+      receivedPMS: report.receivedPMS ?? 0,
+      receivedAGO: report.receivedAGO ?? 0,
+      rttPMS: report.rttPMS ?? 0,
+      rttAGO: report.rttAGO ?? 0,
+      cashBf: report.cashBf ?? 0,
+      cashSales: report.cashSales ?? 0,
+      posValue: report.posValue ?? 0,
+      closingBalance: report.closingBalance ?? 0,
+      remark: report.remark ?? report.remarks ?? '',
+      pumpReadings: savedPumpReadings.length ? savedPumpReadings : visiblePumpRows,
+      paymentBreakdown: Array.isArray(report.paymentBreakdown)
+        ? report.paymentBreakdown.map((item) => ({ channel: item.channel || '', amount: item.amount || 0 }))
+        : [],
+      expenseItems: Array.isArray(report.expenseItems)
+        ? report.expenseItems.map((item) => ({ label: item.label || '', amount: item.amount || 0 }))
+        : [],
+    }
+  }
+
+  const finalisedReportRows = useMemo(
+    () =>
+      reports
+        .filter((report) => report.finalizationStatus === 'finalized')
+        .map((report) => {
+          const station = stations.find((item) => item.id === report.stationId)
+          const manager = users.find((user) => user.stationId === report.stationId)
+          return {
+            ...report,
+            stationName: station?.name || report.stationId,
+            managerName: manager?.name || 'Unassigned',
+          }
+        })
+        .sort((a, b) => String(b.finalizedAt || b.date).localeCompare(String(a.finalizedAt || a.date))),
+    [reports, stations, users],
+  )
+
   return (
     <div className="space-y-4">
       {(activeDashboard === 'stock-flow' || activeDashboard === 'cash-flow' || activeDashboard === 'expense-monitor') && (
@@ -2457,10 +2547,10 @@ const SupervisorDashboardPage = () => {
                 )}
                 {selectedDailyOpeningReport.pumpMeterRows?.length > 0 && (
                   <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
-                    <p className="mb-2 text-xs uppercase text-slate-500">Pump Readings</p>
+                    <p className="mb-2 text-xs uppercase text-slate-500">Used Pump Readings</p>
                     <div className="space-y-2">
                       {selectedDailyOpeningReport.pumpMeterRows.map((item, index) => (
-                        <p key={`${item.label}-${index}`} className="text-sm text-slate-200">
+                        <p key={`${item.label}-${index}`} className="break-words text-sm leading-6 text-slate-200">
                           {item.label}:{' '}
                           {item.noBaseline
                             ? 'No baseline'
@@ -2472,14 +2562,69 @@ const SupervisorDashboardPage = () => {
                 )}
 
                 {/* ── Supervisor Review Button ── */}
+                {(!selectedDailyOpeningReport.pumpMeterRows || selectedDailyOpeningReport.pumpMeterRows.length === 0) &&
+                  (selectedDailyOpeningReport.pumpSalesLitersPMS != null || selectedDailyOpeningReport.pumpSalesLitersAGO != null) && (
+                    <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+                      <p className="mb-2 text-xs font-bold uppercase tracking-widest text-amber-300">Pump detail unavailable</p>
+                      <p className="text-sm text-slate-300">
+                        This report has system pump totals, but no saved pump-line breakdown. Use Correct Report to add the exact pump label, product, opening and closing readings.
+                      </p>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div className="rounded-xl bg-black/20 p-3">
+                          <p className="text-xs text-slate-500">PMS pump total</p>
+                          <p className="font-bold text-[#a9cd39]">{formatLiters(selectedDailyOpeningReport.pumpSalesLitersPMS || 0, 2)}</p>
+                        </div>
+                        <div className="rounded-xl bg-black/20 p-3">
+                          <p className="text-xs text-slate-500">AGO pump total</p>
+                          <p className="font-bold text-blue-300">{formatLiters(selectedDailyOpeningReport.pumpSalesLitersAGO || 0, 2)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 {(() => {
-                  const report = reports.find((r) =>
-                    r.stationId === selectedDailyOpeningReport.stationId &&
-                    r.date === selectedDailyOpeningReport.reportDate
-                  )
+                  const report = selectedRawReport
                   const alreadyReviewed = report?.supervisorReview?.status === 'Reviewed'
+                  const alreadyFinalised = report?.finalizationStatus === 'finalized'
                   return (
-                    <div className="mt-5 border-t border-white/5 pt-5">
+                    <div className="mx-3 mt-5 border-t border-white/5 px-1 pb-4 pt-5 sm:mx-4 sm:px-2">
+                      {report && (
+                        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            disabled={alreadyFinalised}
+                            onClick={() => {
+                              setCorrectionDraft(buildCorrectionDraft(report))
+                              setCorrectionReason('')
+                              setCorrectionOpen(true)
+                            }}
+                            className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm font-bold text-amber-300 transition hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Correct Report
+                          </button>
+                          <button
+                            type="button"
+                            disabled={alreadyFinalised}
+                            onClick={() => {
+                              if (!window.confirm('Finalise this report as accounting-ready?')) return
+                              finalizeReportBySupervisor({
+                                reportId: report.id,
+                                remark: finalizeRemark || reviewRemark || `Finalised by ${currentUser?.name || 'Supervisor'}`,
+                              })
+                              setFinalizeRemark('')
+                              setReviewRemark('')
+                              setSelectedDailyOpeningReport(null)
+                            }}
+                            className="rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-4 py-3 text-sm font-bold text-[#a9cd39] transition hover:bg-[#a9cd39]/15 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {alreadyFinalised ? 'Finalised' : 'Finalise Report'}
+                          </button>
+                        </div>
+                      )}
+                      {alreadyFinalised && (
+                        <div className="mb-4 rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/5 px-4 py-3 text-sm text-[#a9cd39]">
+                          Finalised by {report.finalizedBy || 'Supervisor'} on {report.finalizedAt?.split('T')[0] || 'saved date'}.
+                        </div>
+                      )}
                       {alreadyReviewed ? (
                         <div className="flex items-center gap-3 rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/5 px-4 py-3">
                           <span className="text-[#a9cd39] text-xl">✓</span>
@@ -2536,6 +2681,153 @@ const SupervisorDashboardPage = () => {
                     </div>
                   )
                 })()}
+              </div>
+            </div>
+          )}
+          {correctionOpen && correctionDraft && selectedRawReport && (
+            <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/80 p-4 backdrop-blur-sm">
+              <div className="mx-auto max-w-5xl rounded-3xl border border-white/10 bg-[#0d1220] p-5 shadow-2xl">
+                <div className="mb-5 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-amber-300">Supervisor correction</p>
+                    <h3 className="text-xl font-bold text-white">{selectedDailyOpeningReport.stationName}</h3>
+                    <p className="text-sm text-slate-400">{selectedDailyOpeningReport.reportDate}</p>
+                  </div>
+                  <button type="button" onClick={() => setCorrectionOpen(false)} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/10">Close</button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                    <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Stock</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        ['openingStockPMS', 'Opening PMS'],
+                        ['openingStockAGO', 'Opening AGO'],
+                        ['closingStockPMS', 'Closing PMS'],
+                        ['closingStockAGO', 'Closing AGO'],
+                        ['receivedPMS', 'Received PMS'],
+                        ['receivedAGO', 'Received AGO'],
+                        ['rttPMS', 'RTT PMS'],
+                        ['rttAGO', 'RTT AGO'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="space-y-1">
+                          <span className="text-xs text-slate-400">{label}</span>
+                          <input
+                            type="number"
+                            value={correctionDraft[key]}
+                            onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, [key]: event.target.value }))}
+                            className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                    <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Cash</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        ['cashBf', 'Cash B/F'],
+                        ['cashSales', 'Cash sales'],
+                        ['posValue', 'POS'],
+                        ['closingBalance', 'Closing cash'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="space-y-1">
+                          <span className="text-xs text-slate-400">{label}</span>
+                          <input
+                            type="number"
+                            value={correctionDraft[key]}
+                            onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, [key]: event.target.value }))}
+                            className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="mt-4 rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Pump readings</p>
+                    <button
+                      type="button"
+                      onClick={() => setCorrectionDraft((prev) => ({
+                        ...prev,
+                        pumpReadings: [...prev.pumpReadings, { label: '', productType: 'PMS', opening: '', closing: '' }],
+                      }))}
+                      className="rounded-lg border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-3 py-1.5 text-xs font-bold text-[#a9cd39]"
+                    >
+                      Add pump
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {correctionDraft.pumpReadings.map((item, index) => (
+                      <div key={index} className="grid grid-cols-2 gap-2 rounded-xl bg-black/20 p-3 md:grid-cols-5">
+                        <input value={item.label} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, pumpReadings: prev.pumpReadings.map((row, i) => i === index ? { ...row, label: event.target.value } : row) }))} placeholder="Pump" className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none" />
+                        <select value={item.productType} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, pumpReadings: prev.pumpReadings.map((row, i) => i === index ? { ...row, productType: event.target.value } : row) }))} className="rounded-lg border border-white/10 bg-[#111827] px-3 py-2 text-sm text-white outline-none">
+                          <option value="PMS">PMS</option>
+                          <option value="AGO">AGO</option>
+                        </select>
+                        <input type="number" value={item.opening} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, pumpReadings: prev.pumpReadings.map((row, i) => i === index ? { ...row, opening: event.target.value } : row) }))} placeholder="Opening" className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none" />
+                        <input type="number" value={item.closing} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, pumpReadings: prev.pumpReadings.map((row, i) => i === index ? { ...row, closing: event.target.value } : row) }))} placeholder="Closing" className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none" />
+                        <button type="button" onClick={() => setCorrectionDraft((prev) => ({ ...prev, pumpReadings: prev.pumpReadings.filter((_, i) => i !== index) }))} className="rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-300">Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                    <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Bank lodgements</p>
+                    <div className="space-y-2">
+                      {correctionDraft.paymentBreakdown.map((item, index) => (
+                        <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                          <input value={item.channel} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, paymentBreakdown: prev.paymentBreakdown.map((row, i) => i === index ? { ...row, channel: event.target.value } : row) }))} placeholder="Bank/channel" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
+                          <input type="number" value={item.amount} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, paymentBreakdown: prev.paymentBreakdown.map((row, i) => i === index ? { ...row, amount: event.target.value } : row) }))} placeholder="Amount" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
+                          <button type="button" onClick={() => setCorrectionDraft((prev) => ({ ...prev, paymentBreakdown: prev.paymentBreakdown.filter((_, i) => i !== index) }))} className="rounded-lg border border-rose-400/20 px-3 text-rose-300">x</button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setCorrectionDraft((prev) => ({ ...prev, paymentBreakdown: [...prev.paymentBreakdown, { channel: '', amount: '' }] }))} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-slate-300">Add bank line</button>
+                    </div>
+                  </section>
+                  <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                    <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Expenses</p>
+                    <div className="space-y-2">
+                      {correctionDraft.expenseItems.map((item, index) => (
+                        <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                          <input value={item.label} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, expenseItems: prev.expenseItems.map((row, i) => i === index ? { ...row, label: event.target.value } : row) }))} placeholder="Expense" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
+                          <input type="number" value={item.amount} onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, expenseItems: prev.expenseItems.map((row, i) => i === index ? { ...row, amount: event.target.value } : row) }))} placeholder="Amount" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none" />
+                          <button type="button" onClick={() => setCorrectionDraft((prev) => ({ ...prev, expenseItems: prev.expenseItems.filter((_, i) => i !== index) }))} className="rounded-lg border border-rose-400/20 px-3 text-rose-300">x</button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setCorrectionDraft((prev) => ({ ...prev, expenseItems: [...prev.expenseItems, { label: '', amount: '' }] }))} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-slate-300">Add expense</button>
+                    </div>
+                  </section>
+                </div>
+
+                <label className="mt-4 block space-y-2">
+                  <span className="text-xs font-black uppercase tracking-widest text-amber-300">Correction reason</span>
+                  <textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} rows={3} className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none focus:border-amber-300/40" placeholder="Explain why this report is being corrected..." />
+                </label>
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <button type="button" onClick={() => setCorrectionOpen(false)} className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-bold text-slate-300 hover:bg-white/10">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!correctionReason.trim()) {
+                        window.alert('Enter a correction reason before saving.')
+                        return
+                      }
+                      correctReportBySupervisor({ reportId: selectedRawReport.id, patch: correctionDraft, reason: correctionReason })
+                      setCorrectionOpen(false)
+                      setSelectedDailyOpeningReport(null)
+                    }}
+                    className="flex-1 rounded-xl bg-amber-400 py-3 text-sm font-black text-black hover:bg-amber-300"
+                  >
+                    Save Correction
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -3181,25 +3473,37 @@ const SupervisorDashboardPage = () => {
         <div>
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">🕘 Archive</p>
-            <h3 className="text-xl font-bold text-white">Supervisor History</h3>
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Trusted archive</p>
+            <h3 className="text-xl font-bold text-white">Finalised Reports</h3>
+            <p className="mt-1 text-sm text-slate-400">Confirmed reports stay here as the clean source for future P/L.</p>
           </div>
-          {finalizationHistoryRows.length ? (
+          {finalisedReportRows.length ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {finalizationHistoryRows.map((row, i) => (
-                <div key={i} className="rounded-2xl border border-white/8 bg-white/5 p-4 space-y-3">
+              {finalisedReportRows.map((row) => (
+                <div key={row.id} className="rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4 space-y-3">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="font-bold text-white">{row.date || row.monthKey || '—'}</p>
                       <p className="text-sm text-slate-400 mt-0.5">by {row.finalizedBy || '—'}</p>
                     </div>
-                    <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">Finalized</span>
+                    <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">Finalised</span>
                   </div>
-                  {row.generalRemark && <p className="text-sm text-slate-400 italic">"{row.generalRemark}"</p>}
+                  <p className="text-sm font-semibold text-white">{row.stationName} · {row.managerName}</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">PMS sold</p><p className="font-bold text-white">{formatLiters(row.totalSalesLitersPMS)}</p></div>
+                    <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">AGO sold</p><p className="font-bold text-white">{formatLiters(row.totalSalesLitersAGO)}</p></div>
+                    <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">Cash sales</p><p className="font-bold text-white">{formatMoney(row.cashSales)}</p></div>
+                    <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">Expense</p><p className="font-bold text-white">{formatMoney(row.expenseAmount)}</p></div>
+                  </div>
+                  <p className="text-xs text-slate-400">Finalised by {row.finalizedBy || 'Supervisor'} on {row.finalizedAt?.split('T')[0] || 'saved date'}</p>
+                  {Array.isArray(row.supervisorCorrectionHistory) && row.supervisorCorrectionHistory.length > 0 && (
+                    <p className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-2.5 py-1.5 text-xs font-semibold text-amber-300">{row.supervisorCorrectionHistory.length} correction(s)</p>
+                  )}
                 </div>
               ))}
             </div>
           ) : (
-            <EmptyState title="No history yet" message="Finalized daily reviews will appear here." />
+            <EmptyState title="No finalised reports yet" message="Reports confirmed by supervisors will appear here." />
           )}
         </div>
       )}

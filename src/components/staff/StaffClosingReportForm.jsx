@@ -41,7 +41,7 @@ const defaultForm = {
   closingBalanceOverride: '',
 }
 
-const STEPS_NORMAL = ['Sales Check', 'Stock', 'Pricing', 'Received', 'Expenses', 'Cash', 'Payments', 'Bank EOD', 'Pump Readings', 'Review & Submit']
+const STEPS_NORMAL = ['Sales Check', 'Stock', 'Sales Quantity', 'Pricing', 'Received', 'Expenses', 'Cash', 'Payments', 'Bank EOD', 'Pump Readings', 'Review & Submit']
 const STEPS_NO_SALES = ['Sales Check', 'Submit']
 
 const StepHeader = ({ label, current, total }) => (
@@ -223,17 +223,35 @@ const StaffClosingReportForm = ({
       if (!pumpState.overrideValue) { window.alert(`Enter the actual opening reading for ${label}.`); return }
       if (!pumpState.reason.trim()) { window.alert(`Please provide a reason for the ${label} opening discrepancy.`); return }
     }
+    if (!priorPump && (pumpDraft.opening === '' || pumpDraft.opening == null)) {
+      window.alert(`Enter the opening reading for ${label}. This pump has no previous baseline yet.`)
+      return
+    }
+    const resolvedOpening = priorPump
+      ? pumpState?.confirmed === false
+        ? Number(pumpState.overrideValue)
+        : Number(priorPump.closing)
+      : Number(pumpDraft.opening)
+    const resolvedClosing = Number(pumpDraft.closing)
+    if (!Number.isFinite(resolvedOpening) || !Number.isFinite(resolvedClosing)) {
+      window.alert(`Enter valid opening and closing readings for ${label}.`)
+      return
+    }
+    if (resolvedClosing < resolvedOpening) {
+      window.alert(`Closing reading for ${label} cannot be lower than opening reading.`)
+      return
+    }
     const entry = {
       id: `pump-${Date.now()}`,
       label,
-      closing: Number(pumpDraft.closing),
+      closing: resolvedClosing,
       productType: pumpDraft.productType || 'PMS',
     }
     if (!priorPump && pumpDraft.opening !== '' && pumpDraft.opening != null) {
       // First time for this pump — manager enters opening
-      entry.opening = Number(pumpDraft.opening)
+      entry.opening = resolvedOpening
     } else if (priorPump) {
-      entry.opening = pumpState?.confirmed === false ? Number(pumpState.overrideValue) : Number(priorPump.closing)
+      entry.opening = resolvedOpening
     }
     setPumpReadings((prev) => [...prev, entry])
     setPumpDraft({ ...DEFAULT_PUMP_READING, productType: pumpDraft.productType }) // keep product type
@@ -304,6 +322,23 @@ const StaffClosingReportForm = ({
         window.alert(msg)
         return
       }
+      if (!pumpReadings.length) {
+        const msg = 'Add at least one pump reading before submitting a sales report.'
+        setSubmitError(msg)
+        window.alert(msg)
+        return
+      }
+      const invalidPumpLine = pumpReadings.find((item) => {
+        const opening = item.opening != null && item.opening !== '' ? Number(item.opening) : Number.NaN
+        const closing = item.closing != null && item.closing !== '' ? Number(item.closing) : Number.NaN
+        return !Number.isFinite(opening) || !Number.isFinite(closing) || closing < opening
+      })
+      if (invalidPumpLine) {
+        const msg = `Fix ${invalidPumpLine.label || 'pump'}: every pump line needs a valid opening and closing reading.`
+        setSubmitError(msg)
+        window.alert(msg)
+        return
+      }
       const previewPmsLiters = Number(previewSales.pms || 0)
       const previewAgoLiters = Number(previewSales.ago || 0)
       const pmsBandCheck = validatePriceBandsForProduct({ bands: priceBandsPMS, totalSalesLiters: previewPmsLiters, productLabel: 'PMS', multiPriceEnabled: pmsMultiPrice === 'yes' })
@@ -330,6 +365,13 @@ const StaffClosingReportForm = ({
         return { label, opening, closing, productType }
       })
       .filter((item) => item.label && item.closing != null)
+    if (!isNoSalesDay && normalizedPumpReadings.length === 0) {
+      const msg = 'Pump readings were not captured correctly. Add the pump line again before submitting.'
+      setSubmitError(msg)
+      window.alert(msg)
+      setSubmitting(false)
+      return
+    }
     // Pump-based sales (primary)
     const calcPumpSales = (productType) => {
       const pumps = normalizedPumpReadings.filter((p) => p.productType === productType)
@@ -642,7 +684,7 @@ const StaffClosingReportForm = ({
         {/* Closing stock + RTT — always shown once opening is resolved */}
         {(openingConfirmed !== null || isFirstReport) && (
           <div className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Closing Tank Dip & RTT <span className="normal-case font-normal text-slate-600">(reference only)</span></p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Closing Tank Dip & RTT</p>
             {[
               { name: 'closingStockPMS', label: 'Closing Stock PMS (L)' },
               { name: 'closingStockAGO', label: 'Closing Stock AGO (L)' },
@@ -681,10 +723,49 @@ const StaffClosingReportForm = ({
   }
 
   // Step 2 — Pricing
+  const renderManagerSalesStep = () => (
+    <div className="flex min-h-[70vh] flex-col">
+      <StepHeader label={steps[2]} current={3} total={totalSteps} />
+      <p className="text-2xl font-bold text-white mb-1">Sales Quantity</p>
+      <p className="text-sm text-slate-500 mb-6">Enter the litres you recorded for today.</p>
+      <div className="flex-1 space-y-4">
+        <div className="rounded-2xl border border-[#a9cd39]/15 bg-[#a9cd39]/5 p-4">
+          <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Manager reference</p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormInput
+              type="number"
+              min="0"
+              label="PMS sold by manager (L)"
+              value={formData.managerSalesPMS}
+              onChange={(e) => setFormData((prev) => ({ ...prev, managerSalesPMS: e.target.value }))}
+            />
+            <FormInput
+              type="number"
+              min="0"
+              label="AGO sold by manager (L)"
+              value={formData.managerSalesAGO}
+              onChange={(e) => setFormData((prev) => ({ ...prev, managerSalesAGO: e.target.value }))}
+            />
+          </div>
+        </div>
+      </div>
+      <NavButtons
+        onBack={() => setStep(1)}
+        onNext={() => {
+          if (formData.managerSalesPMS === '' || formData.managerSalesAGO === '') {
+            window.alert('Enter your PMS and AGO total sales litres.')
+            return
+          }
+          setStep(3)
+        }}
+      />
+    </div>
+  )
+
   const hasPriorPrices = !isFirstReport && (priorPrices.pms > 0 || priorPrices.ago > 0)
   const renderPricingStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[2]} current={3} total={totalSteps} />
+      <StepHeader label={steps[3]} current={4} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Product Pricing</p>
       <p className="text-sm text-slate-500 mb-4">Set today's selling price per litre</p>
 
@@ -741,11 +822,11 @@ const StaffClosingReportForm = ({
         </div>
       )}
 
-      <NavButtons onBack={() => setStep(1)} onNext={() => {
+      <NavButtons onBack={() => setStep(2)} onNext={() => {
         if (hasPriorPrices && priceConfirmed === null) { window.alert('Please confirm today\'s prices first.'); return }
         if (pmsMultiPrice === 'no' && !formData.pmsPrice.trim()) { window.alert('PMS price is required.'); return }
         if (agoMultiPrice === 'no' && !formData.agoPrice.trim()) { window.alert('AGO price is required.'); return }
-        setStep(3)
+        setStep(4)
       }} />
     </div>
   )
@@ -753,7 +834,7 @@ const StaffClosingReportForm = ({
   // Step 3 — Received Product
   const renderReceivedStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[3]} current={4} total={totalSteps} />
+      <StepHeader label={steps[4]} current={5} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Received Product?</p>
       <p className="text-sm text-slate-500 mb-8">Did the station receive any fuel delivery today?</p>
       <div className="flex-1 space-y-3">
@@ -782,14 +863,14 @@ const StaffClosingReportForm = ({
           </div>
         )}
       </div>
-      <NavButtons onBack={() => setStep(2)} onNext={() => { if (formData.receivedProduct === 'yes' && Number(formData.receivedQuantityPMS || 0) <= 0 && Number(formData.receivedQuantityAGO || 0) <= 0) { window.alert('Enter at least one received quantity.'); return } setStep(4) }} />
+      <NavButtons onBack={() => setStep(3)} onNext={() => { if (formData.receivedProduct === 'yes' && Number(formData.receivedQuantityPMS || 0) <= 0 && Number(formData.receivedQuantityAGO || 0) <= 0) { window.alert('Enter at least one received quantity.'); return } setStep(5) }} />
     </div>
   )
 
   // Step 4 — Expenses
   const renderExpensesStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[4]} current={5} total={totalSteps} />
+      <StepHeader label={steps[5]} current={6} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Expenses</p>
       <p className="text-sm text-slate-500 mb-6">Log any expenses incurred today</p>
       {reportingConfiguration.expenseLineItemsEnabled ? (
@@ -817,7 +898,7 @@ const StaffClosingReportForm = ({
           </div>
         </div>
       ) : <p className="text-sm text-slate-500 flex-1">Expense reporting is disabled in settings.</p>}
-      <NavButtons onBack={() => setStep(3)} onNext={() => setStep(5)} />
+      <NavButtons onBack={() => setStep(4)} onNext={() => setStep(6)} />
     </div>
   )
 
@@ -825,7 +906,7 @@ const StaffClosingReportForm = ({
   const hasPriorCashBf = !isFirstReport && Number(carriedCashBf) > 0
   const renderCashStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[5]} current={6} total={totalSteps} />
+      <StepHeader label={steps[6]} current={7} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Cash Movement</p>
       <p className="text-sm text-slate-500 mb-4">
         {isFirstReport ? 'Enter your baseline cash figures' : "Enter today's cash and POS figures"}
@@ -911,10 +992,10 @@ const StaffClosingReportForm = ({
           </>
         )}
       </div>
-      <NavButtons onBack={() => setStep(4)} onNext={() => {
+      <NavButtons onBack={() => setStep(5)} onNext={() => {
         if (!isFirstReport && hasPriorCashBf && cashBfConfirmed === null) { window.alert('Please confirm your Cash B/F first.'); return }
         if (!isFirstReport && cashBfConfirmed === false && !cashBfOverrideReason.trim()) { window.alert('Please provide a reason for the Cash B/F discrepancy.'); return }
-        setStep(6)
+        setStep(7)
       }} />
     </div>
   )
@@ -922,7 +1003,7 @@ const StaffClosingReportForm = ({
   // Step 6 — Payment Breakdown
   const renderPaymentsStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[6]} current={7} total={totalSteps} />
+      <StepHeader label={steps[7]} current={8} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Bank Deposits</p>
       <p className="text-sm text-slate-500 mb-6">Record payments made to bank channels</p>
       <div className="flex-1 space-y-3">
@@ -948,7 +1029,7 @@ const StaffClosingReportForm = ({
           {paymentBreakdown.length > 0 && <p className="text-sm font-bold text-[#a9cd39]">Total: NGN {paymentBreakdown.reduce((s, i) => s + i.amount, 0).toLocaleString()}</p>}
         </div>
       </div>
-      <NavButtons onBack={() => setStep(5)} onNext={() => setStep(7)} />
+      <NavButtons onBack={() => setStep(6)} onNext={() => setStep(8)} />
     </div>
   )
 
@@ -1033,7 +1114,7 @@ const StaffClosingReportForm = ({
 
     return (
       <div className="flex min-h-[70vh] flex-col">
-        <StepHeader label={steps[7]} current={8} total={totalSteps} />
+        <StepHeader label={steps[8]} current={9} total={totalSteps} />
         <p className="text-2xl font-bold text-white mb-1">EOD Documents</p>
         <p className="text-sm text-slate-500 mb-5">Upload as many files as needed per bank or expense entry</p>
 
@@ -1059,10 +1140,10 @@ const StaffClosingReportForm = ({
         </div>
 
         <NavButtons
-          onBack={() => setStep(6)}
+          onBack={() => setStep(7)}
           onNext={() => {
             if (eodUploads.some((u) => u.status === 'uploading')) { window.alert('Please wait — files are still uploading.'); return }
-            setStep(8)
+            setStep(9)
           }}
           nextLabel="Next →"
         />
@@ -1073,7 +1154,7 @@ const StaffClosingReportForm = ({
   // Step 8 — Pump Readings
   const renderPumpStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[8]} current={9} total={totalSteps} />
+      <StepHeader label={steps[9]} current={10} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Pump Readings</p>
       <p className="text-sm text-slate-500 mb-3">
         {isFirstReport ? 'Enter opening & closing meter readings for each pump' : 'Log the closing meter reading for each pump'}
@@ -1215,14 +1296,14 @@ const StaffClosingReportForm = ({
           )}
         </div>
       </div>
-      <NavButtons onBack={() => setStep(7)} onNext={() => setStep(9)} nextLabel="Next →" />
+      <NavButtons onBack={() => setStep(8)} onNext={() => setStep(10)} nextLabel="Next →" />
     </div>
   )
 
   // Step 9 — Review & Submit
   const renderSubmitStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[9]} current={10} total={totalSteps} />
+      <StepHeader label={steps[10]} current={11} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Review & Submit</p>
       <p className="text-sm text-slate-500 mb-6">Add a final remark and submit your report</p>
       <div className="flex-1 space-y-4">
@@ -1267,7 +1348,7 @@ const StaffClosingReportForm = ({
         )}
         {submitError && <p className="text-sm text-rose-400">{submitError}</p>}
       </div>
-      <NavButtons onBack={() => setStep(8)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
+      <NavButtons onBack={() => setStep(9)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
     </div>
   )
 
@@ -1306,7 +1387,7 @@ const StaffClosingReportForm = ({
 
     return (
       <div className="flex min-h-[70vh] flex-col">
-        <StepHeader label={steps[9]} current={10} total={totalSteps} />
+        <StepHeader label={steps[10]} current={11} total={totalSteps} />
         <p className="mb-1 text-2xl font-bold text-white">Review your report</p>
         <p className="mb-6 text-sm text-slate-500">Check every entry before sending it to your supervisor.</p>
         <div className="flex-1 space-y-4">
@@ -1327,26 +1408,8 @@ const StaffClosingReportForm = ({
             <ReviewRow label="RTT AGO" value={liters(formData.rttAGO)} />
             <ReviewRow label="PMS sold" value={pmsPumpSold == null ? 'No pump reading added' : liters(pmsPumpSold)} strong tone="text-[#a9cd39]" />
             <ReviewRow label="AGO sold" value={agoPumpSold == null ? 'No pump reading added' : liters(agoPumpSold)} strong tone="text-blue-300" />
-            <div className="rounded-2xl border border-[#a9cd39]/15 bg-[#a9cd39]/5 p-4">
-              <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Manager sales reference</p>
-              <p className="mt-1 text-xs text-slate-400">
-                Enter your own total litres sold. Supervisor will compare this with the system pump calculation.
-              </p>
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <FormInput
-                  type="number"
-                  label="PMS sold by manager"
-                  value={formData.managerSalesPMS}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, managerSalesPMS: e.target.value }))}
-                />
-                <FormInput
-                  type="number"
-                  label="AGO sold by manager"
-                  value={formData.managerSalesAGO}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, managerSalesAGO: e.target.value }))}
-                />
-              </div>
-            </div>
+            <ReviewRow label="Manager PMS sold" value={liters(formData.managerSalesPMS)} />
+            <ReviewRow label="Manager AGO sold" value={liters(formData.managerSalesAGO)} />
           </ReviewSection>
 
           <ReviewSection title="Pump readings">
@@ -1437,7 +1500,7 @@ const StaffClosingReportForm = ({
 
           {submitError && <p className="text-sm text-rose-400">{submitError}</p>}
         </div>
-        <NavButtons onBack={() => setStep(8)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
+        <NavButtons onBack={() => setStep(9)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
       </div>
     )
   }
@@ -1449,14 +1512,15 @@ const StaffClosingReportForm = ({
     switch (step) {
       case 0: return renderStep0()
       case 1: return renderStockStep()
-      case 2: return renderPricingStep()
-      case 3: return renderReceivedStep()
-      case 4: return renderExpensesStep()
-      case 5: return renderCashStep()
-      case 6: return renderPaymentsStep()
-      case 7: return renderEodStep()
-      case 8: return renderPumpStep()
-      case 9: return renderReceiptReviewStep()
+      case 2: return renderManagerSalesStep()
+      case 3: return renderPricingStep()
+      case 4: return renderReceivedStep()
+      case 5: return renderExpensesStep()
+      case 6: return renderCashStep()
+      case 7: return renderPaymentsStep()
+      case 8: return renderEodStep()
+      case 9: return renderPumpStep()
+      case 10: return renderReceiptReviewStep()
       default: return renderStep0()
     }
   }
@@ -1508,3 +1572,4 @@ const StaffClosingReportForm = ({
 }
 
 export default StaffClosingReportForm
+

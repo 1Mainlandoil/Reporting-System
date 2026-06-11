@@ -502,6 +502,153 @@ export const useAppStore = create(
               : report,
           ),
         })),
+      correctReportBySupervisor: ({ reportId, patch, reason }) =>
+        set((state) => {
+          const target = state.reports.find((report) => report.id === reportId)
+          if (!target) return { reports: state.reports }
+
+          const reviewer = state.currentUser?.name || 'Supervisor'
+          const reviewedAt = new Date().toISOString()
+          const nextPumpReadings = Array.isArray(patch.pumpReadings)
+            ? patch.pumpReadings
+            : Array.isArray(target.pumpReadings)
+              ? target.pumpReadings
+              : []
+          const receivedPMS = Number(patch.receivedPMS ?? target.receivedPMS ?? 0)
+          const receivedAGO = Number(patch.receivedAGO ?? target.receivedAGO ?? 0)
+          const rttPMS = Number(patch.rttPMS ?? target.rttPMS ?? 0)
+          const rttAGO = Number(patch.rttAGO ?? target.rttAGO ?? 0)
+          const calcPumpSales = (productType) => {
+            const rows = nextPumpReadings.filter((item) => (item.productType === 'AGO' ? 'AGO' : 'PMS') === productType)
+            if (!rows.length) return null
+            return rows.reduce((sum, item) => {
+              const opening = Number(item.opening ?? item.start ?? 0)
+              const closing = Number(item.closing ?? item.end ?? 0)
+              return sum + Math.max(0, closing - opening)
+            }, 0)
+          }
+          const pumpSalesPMS = calcPumpSales('PMS')
+          const pumpSalesAGO = calcPumpSales('AGO')
+          const openingStockPMS = Number(patch.openingStockPMS ?? target.openingStockPMS ?? target.openingPMS ?? 0)
+          const openingStockAGO = Number(patch.openingStockAGO ?? target.openingStockAGO ?? target.openingAGO ?? 0)
+          const closingStockPMS = Number(patch.closingStockPMS ?? target.closingStockPMS ?? 0)
+          const closingStockAGO = Number(patch.closingStockAGO ?? target.closingStockAGO ?? 0)
+          const totalSalesLitersPMS = pumpSalesPMS != null
+            ? pumpSalesPMS + receivedPMS - rttPMS
+            : Number(patch.totalSalesLitersPMS ?? target.totalSalesLitersPMS ?? target.salesPMS ?? 0)
+          const totalSalesLitersAGO = pumpSalesAGO != null
+            ? pumpSalesAGO + receivedAGO - rttAGO
+            : Number(patch.totalSalesLitersAGO ?? target.totalSalesLitersAGO ?? target.salesAGO ?? 0)
+          const cashBf = Number(patch.cashBf ?? target.cashBf ?? 0)
+          const cashSales = Number(patch.cashSales ?? target.cashSales ?? 0)
+          const posValue = Number(patch.posValue ?? target.posValue ?? 0)
+          const paymentBreakdown = Array.isArray(patch.paymentBreakdown)
+            ? patch.paymentBreakdown
+            : Array.isArray(target.paymentBreakdown)
+              ? target.paymentBreakdown
+              : []
+          const totalPaymentDeposits = paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+          const totalAmount = cashBf + cashSales
+          const closingBalance = patch.closingBalance !== '' && patch.closingBalance != null
+            ? Number(patch.closingBalance)
+            : totalAmount - totalPaymentDeposits - posValue
+          const expenseItems = Array.isArray(patch.expenseItems)
+            ? patch.expenseItems
+            : Array.isArray(target.expenseItems)
+              ? target.expenseItems
+              : []
+          const expenseAmount = expenseItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+          const expenseDescription = expenseItems.map((item) => item.label).filter(Boolean).join(', ')
+          const correctionPatch = {
+            ...patch,
+            openingStockPMS,
+            openingStockAGO,
+            openingPMS: openingStockPMS,
+            openingAGO: openingStockAGO,
+            closingStockPMS,
+            closingStockAGO,
+            receivedPMS,
+            receivedAGO,
+            quantityReceived: receivedPMS + receivedAGO,
+            rttPMS,
+            rttAGO,
+            pumpReadings: nextPumpReadings,
+            pumpSalesLitersPMS: pumpSalesPMS,
+            pumpSalesLitersAGO: pumpSalesAGO,
+            totalSalesLitersPMS,
+            totalSalesLitersAGO,
+            salesPMS: totalSalesLitersPMS,
+            salesAGO: totalSalesLitersAGO,
+            calculatedSalesLitersPMS: totalSalesLitersPMS,
+            calculatedSalesLitersAGO: totalSalesLitersAGO,
+            quantityRemainingPMS: computeQuantityRemaining({ previousRemaining: openingStockPMS, received: receivedPMS, salesLiters: totalSalesLitersPMS }),
+            quantityRemainingAGO: computeQuantityRemaining({ previousRemaining: openingStockAGO, received: receivedAGO, salesLiters: totalSalesLitersAGO }),
+            cashBf,
+            cashSales,
+            posValue,
+            paymentBreakdown,
+            totalPaymentDeposits,
+            totalAmount,
+            closingBalance,
+            expenseItems,
+            expenseAmount,
+            expenseDescription,
+            remark: patch.remark ?? target.remark ?? target.remarks ?? '',
+            remarks: patch.remark ?? target.remark ?? target.remarks ?? '',
+          }
+          const changes = Object.entries(correctionPatch)
+            .filter(([key, value]) => JSON.stringify(target[key]) !== JSON.stringify(value))
+            .map(([key, value]) => ({ field: key, from: target[key], to: value }))
+          const correctedReport = {
+            ...target,
+            ...correctionPatch,
+            supervisorCorrectionHistory: [
+              ...(Array.isArray(target.supervisorCorrectionHistory) ? target.supervisorCorrectionHistory : []),
+              {
+                correctedBy: reviewer,
+                correctedByUserId: state.currentUser?.id || null,
+                correctedAt: reviewedAt,
+                reason: String(reason || '').trim(),
+                changes,
+              },
+            ],
+            supervisorReview: {
+              status: 'Corrected',
+              remark: String(reason || '').trim() || 'Corrected by supervisor',
+              reviewedBy: reviewer,
+              reviewedAt,
+            },
+            hasDiscrepancy: true,
+          }
+          insertReport(correctedReport).catch(() => {})
+          return {
+            reports: state.reports.map((report) => report.id === reportId ? correctedReport : report),
+          }
+        }),
+      finalizeReportBySupervisor: ({ reportId, remark }) =>
+        set((state) => {
+          const finalizedAt = new Date().toISOString()
+          const finalizedReport = state.reports.find((report) => report.id === reportId)
+          if (!finalizedReport) return { reports: state.reports }
+          const nextReport = {
+            ...finalizedReport,
+            finalizationStatus: 'finalized',
+            finalizedBy: state.currentUser?.name || 'Supervisor',
+            finalizedByUserId: state.currentUser?.id || null,
+            finalizedAt,
+            finalizationRemark: String(remark || '').trim(),
+            supervisorReview: {
+              status: 'Reviewed',
+              remark: String(remark || '').trim() || 'Finalised by supervisor',
+              reviewedBy: state.currentUser?.name || 'Supervisor',
+              reviewedAt: finalizedAt,
+            },
+          }
+          insertReport(nextReport).catch(() => {})
+          return {
+            reports: state.reports.map((report) => report.id === reportId ? nextReport : report),
+          }
+        }),
       getRoleRoute: () => {
         const state = get()
         if (state.role === ROLES.STAFF) {
