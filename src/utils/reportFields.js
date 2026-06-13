@@ -73,8 +73,8 @@ export const getQuantityRemainingForProduct = (report, productType) => {
   return opening + received - sales
 }
 
-export const computeQuantityRemaining = ({ previousRemaining, received, salesLiters }) =>
-  Number(previousRemaining || 0) + Number(received || 0) - Number(salesLiters || 0)
+export const computeQuantityRemaining = ({ previousRemaining, received, salesLiters, rtt = 0 }) =>
+  Number(previousRemaining || 0) + Number(received || 0) - Number(salesLiters || 0) - Number(rtt || 0)
 
 export const getPumpReadingClosing = (item) => {
   if (!item || typeof item !== 'object') {

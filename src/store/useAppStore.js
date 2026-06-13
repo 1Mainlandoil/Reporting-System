@@ -436,6 +436,8 @@ export const useAppStore = create(
 
         const receivedPMS = Number(restPayload.receivedPMS || 0)
         const receivedAGO = Number(restPayload.receivedAGO || 0)
+        const rttPMS = Number(restPayload.rttPMS || 0)
+        const rttAGO = Number(restPayload.rttAGO || 0)
         const salesLitersPMS = Number(restPayload.totalSalesLitersPMS || 0)
         const salesLitersAGO = Number(restPayload.totalSalesLitersAGO || 0)
         const previousRemainingPMS = openingStockPMS
@@ -444,11 +446,13 @@ export const useAppStore = create(
           previousRemaining: previousRemainingPMS,
           received: receivedPMS,
           salesLiters: salesLitersPMS,
+          rtt: rttPMS,
         })
         const quantityRemainingAGO = computeQuantityRemaining({
           previousRemaining: previousRemainingAGO,
           received: receivedAGO,
           salesLiters: salesLitersAGO,
+          rtt: rttAGO,
         })
         const openingStockPMSStored = openingStockPMS
         const openingStockAGOStored = openingStockAGO
@@ -534,10 +538,10 @@ export const useAppStore = create(
           const closingStockPMS = Number(patch.closingStockPMS ?? target.closingStockPMS ?? 0)
           const closingStockAGO = Number(patch.closingStockAGO ?? target.closingStockAGO ?? 0)
           const totalSalesLitersPMS = pumpSalesPMS != null
-            ? pumpSalesPMS + receivedPMS - rttPMS
+            ? pumpSalesPMS
             : Number(patch.totalSalesLitersPMS ?? target.totalSalesLitersPMS ?? target.salesPMS ?? 0)
           const totalSalesLitersAGO = pumpSalesAGO != null
-            ? pumpSalesAGO + receivedAGO - rttAGO
+            ? pumpSalesAGO
             : Number(patch.totalSalesLitersAGO ?? target.totalSalesLitersAGO ?? target.salesAGO ?? 0)
           const cashBf = Number(patch.cashBf ?? target.cashBf ?? 0)
           const cashSales = Number(patch.cashSales ?? target.cashSales ?? 0)
@@ -581,8 +585,8 @@ export const useAppStore = create(
             salesAGO: totalSalesLitersAGO,
             calculatedSalesLitersPMS: totalSalesLitersPMS,
             calculatedSalesLitersAGO: totalSalesLitersAGO,
-            quantityRemainingPMS: computeQuantityRemaining({ previousRemaining: openingStockPMS, received: receivedPMS, salesLiters: totalSalesLitersPMS }),
-            quantityRemainingAGO: computeQuantityRemaining({ previousRemaining: openingStockAGO, received: receivedAGO, salesLiters: totalSalesLitersAGO }),
+            quantityRemainingPMS: computeQuantityRemaining({ previousRemaining: openingStockPMS, received: receivedPMS, salesLiters: totalSalesLitersPMS, rtt: rttPMS }),
+            quantityRemainingAGO: computeQuantityRemaining({ previousRemaining: openingStockAGO, received: receivedAGO, salesLiters: totalSalesLitersAGO, rtt: rttAGO }),
             cashBf,
             cashSales,
             posValue,

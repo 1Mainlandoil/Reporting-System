@@ -1709,14 +1709,14 @@ const SupervisorDashboardPage = () => {
     const hasPmsMeter = row.pumpSalesLitersPMS != null || (row.pumpReadings || []).some((item) => String(item?.productType || 'PMS').toUpperCase() !== 'AGO')
     const hasAgoMeter = row.pumpSalesLitersAGO != null || (row.pumpReadings || []).some((item) => String(item?.productType || '').toUpperCase() === 'AGO')
     const systemPms = row.pumpSalesLitersPMS != null
-      ? toFiniteNumber(row.pumpSalesLitersPMS) + toFiniteNumber(row.receivedPMS) - toFiniteNumber(row.rttPMS)
+      ? toFiniteNumber(row.pumpSalesLitersPMS)
       : hasPmsMeter
-        ? directPumpDelta.PMS + toFiniteNumber(row.receivedPMS) - toFiniteNumber(row.rttPMS)
+        ? directPumpDelta.PMS
         : toFiniteNumber(row.totalSalesLitersPMS)
     const systemAgo = row.pumpSalesLitersAGO != null
-      ? toFiniteNumber(row.pumpSalesLitersAGO) + toFiniteNumber(row.receivedAGO) - toFiniteNumber(row.rttAGO)
+      ? toFiniteNumber(row.pumpSalesLitersAGO)
       : hasAgoMeter
-        ? directPumpDelta.AGO + toFiniteNumber(row.receivedAGO) - toFiniteNumber(row.rttAGO)
+        ? directPumpDelta.AGO
         : toFiniteNumber(row.totalSalesLitersAGO)
     const managerPms = toFiniteNumber(row.managerEnteredSalesLitersPMS ?? row.dipSalesLitersPMS ?? row.totalSalesLitersPMS)
     const managerAgo = toFiniteNumber(row.managerEnteredSalesLitersAGO ?? row.dipSalesLitersAGO ?? row.totalSalesLitersAGO)
