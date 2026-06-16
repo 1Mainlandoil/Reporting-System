@@ -907,7 +907,7 @@ const SupervisorDashboardPage = () => {
       dailyQueueFilters.stationIds.length === 0 ? 'All stations' : `${dailyQueueFilters.stationIds.length} stations`
     const statusLabel =
       dailyQueueFilters.reportStatus === 'all' ? 'All statuses' : dailyQueueFilters.reportStatus
-    return `${stationsLabel} Â· ${statusLabel}`
+    return `${stationsLabel} - ${statusLabel}`
   }, [dailyQueueFilters])
 
   const expenseFiltersSummary = useMemo(() => {
@@ -915,7 +915,7 @@ const SupervisorDashboardPage = () => {
       expenseQueueFilters.stationIds.length === 0 ? 'All stations' : `${expenseQueueFilters.stationIds.length} stations`
     const statusLabel =
       expenseQueueFilters.expenseStatus === 'all' ? 'All statuses' : expenseQueueFilters.expenseStatus
-    return `${stationsLabel} Â· ${statusLabel}`
+    return `${stationsLabel} - ${statusLabel}`
   }, [expenseQueueFilters])
 
   const expenseSubmittedCount = expenseQueueRows.filter((row) => row.expenseStatus === 'Submitted').length
@@ -1103,7 +1103,7 @@ const SupervisorDashboardPage = () => {
         exportHeader: 'view_full_report',
         exportPick: (row) =>
           row.reportStatus === 'Pending'
-            ? 'Pending â€” use app when submitted'
+            ? 'Pending - use app when submitted'
             : 'Open View Report in app for full breakdown',
         render: (row) => (
           <button
@@ -2075,7 +2075,7 @@ const SupervisorDashboardPage = () => {
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {dailyFiltersSummary}
-                  {' Â· '}
+                  {' - '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
                 </p>
               </div>
@@ -2117,7 +2117,7 @@ const SupervisorDashboardPage = () => {
                               : late ? 'bg-rose-500/15 text-rose-400'
                               : 'bg-amber-500/15 text-amber-400'
                             }`}>
-                              {submitted ? 'âœ“ Submitted'
+                              {submitted ? 'Submitted'
                                : noSales ? 'No Sales'
                                : late ? `Late ${row.pendingSubmissionDays}d`
                                : 'Pending'}
@@ -2146,7 +2146,7 @@ const SupervisorDashboardPage = () => {
                           {pending && (
                             <p className="text-xs text-slate-500 mt-1">
                               {row.pendingSubmissionNoHistory ? 'No report today yet' : `${row.pendingSubmissionDays} day(s) without submission`}
-                              <span className="ml-2 text-[#a9cd39]">â†’ View History</span>
+                              <span className="ml-2 text-[#a9cd39]">View History</span>
                             </p>
                           )}
 
@@ -2154,7 +2154,7 @@ const SupervisorDashboardPage = () => {
                           {(row.hasDiscrepancy || (row.eodAttachments && row.eodAttachments.length > 0)) && (
                             <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-2">
                               {row.hasDiscrepancy && (
-                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">âš  Discrepancy</span>
+                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">Discrepancy</span>
                               )}
                               {row.eodAttachments?.length > 0 && (
                                 <span className="rounded-full bg-[#a9cd39]/10 px-2 py-0.5 text-xs text-[#a9cd39]">ðŸ“Ž {row.eodAttachments.length} EOD</span>
