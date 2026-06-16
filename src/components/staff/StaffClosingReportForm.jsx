@@ -166,8 +166,8 @@ const StaffClosingReportForm = ({
     const pmsPumpsTotal = calcProduct('PMS')
     const agoPumpsTotal = calcProduct('AGO')
     return {
-      pms: pmsPumpsTotal,
-      ago: agoPumpsTotal,
+      pms: pmsPumpsTotal != null ? Math.max(0, pmsPumpsTotal - Number(formData.rttPMS || 0)) : null,
+      ago: agoPumpsTotal != null ? Math.max(0, agoPumpsTotal - Number(formData.rttAGO || 0)) : null,
       hasPumpData: pmsPumpsTotal != null || agoPumpsTotal != null,
     }
   }, [pumpReadings, formData, isNoSalesDay])
@@ -381,8 +381,8 @@ const StaffClosingReportForm = ({
     // Dip-based sales (reference / fallback)
     const dipSalesPMS = computeSalesFromMovement({ opening: openingStockPMS, received: receivedPMS, closing: closingStockPMS, rtt: rttPMS })
     const dipSalesAGO = computeSalesFromMovement({ opening: openingStockAGO, received: receivedAGO, closing: closingStockAGO, rtt: rttAGO })
-    const totalSalesLitersPMS = pumpSalesPMS != null ? pumpSalesPMS : dipSalesPMS
-    const totalSalesLitersAGO = pumpSalesAGO != null ? pumpSalesAGO : dipSalesAGO
+    const totalSalesLitersPMS = pumpSalesPMS != null ? Math.max(0, pumpSalesPMS - rttPMS) : dipSalesPMS
+    const totalSalesLitersAGO = pumpSalesAGO != null ? Math.max(0, pumpSalesAGO - rttAGO) : dipSalesAGO
     const managerEnteredSalesLitersPMS = isNoSalesDay ? 0 : Number(formData.managerSalesPMS || 0)
     const managerEnteredSalesLitersAGO = isNoSalesDay ? 0 : Number(formData.managerSalesAGO || 0)
     const salesDiscrepancies = []

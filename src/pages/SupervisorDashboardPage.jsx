@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import ColumnPicker from '../components/ui/ColumnPicker'
@@ -907,7 +907,7 @@ const SupervisorDashboardPage = () => {
       dailyQueueFilters.stationIds.length === 0 ? 'All stations' : `${dailyQueueFilters.stationIds.length} stations`
     const statusLabel =
       dailyQueueFilters.reportStatus === 'all' ? 'All statuses' : dailyQueueFilters.reportStatus
-    return `${stationsLabel} · ${statusLabel}`
+    return `${stationsLabel} Â· ${statusLabel}`
   }, [dailyQueueFilters])
 
   const expenseFiltersSummary = useMemo(() => {
@@ -915,7 +915,7 @@ const SupervisorDashboardPage = () => {
       expenseQueueFilters.stationIds.length === 0 ? 'All stations' : `${expenseQueueFilters.stationIds.length} stations`
     const statusLabel =
       expenseQueueFilters.expenseStatus === 'all' ? 'All statuses' : expenseQueueFilters.expenseStatus
-    return `${stationsLabel} · ${statusLabel}`
+    return `${stationsLabel} Â· ${statusLabel}`
   }, [expenseQueueFilters])
 
   const expenseSubmittedCount = expenseQueueRows.filter((row) => row.expenseStatus === 'Submitted').length
@@ -1103,7 +1103,7 @@ const SupervisorDashboardPage = () => {
         exportHeader: 'view_full_report',
         exportPick: (row) =>
           row.reportStatus === 'Pending'
-            ? 'Pending — use app when submitted'
+            ? 'Pending â€” use app when submitted'
             : 'Open View Report in app for full breakdown',
         render: (row) => (
           <button
@@ -1184,11 +1184,11 @@ const SupervisorDashboardPage = () => {
             Number(row.totalAmount || 0),
           )}|bank:${Math.round(Number(row.totalPaymentDeposits || 0))}|pos:${Math.round(Number(row.posValue || 0))}|closing:${Math.round(Number(row.closingBalance || 0))}`,
         render: (row) =>
-          `B/F ${Math.round(Number(row.cashBf || 0)).toLocaleString()} · Sales ${Math.round(
+          `B/F ${Math.round(Number(row.cashBf || 0)).toLocaleString()} Â· Sales ${Math.round(
             Number(row.cashSales || 0),
-          ).toLocaleString()} · Total ${Math.round(Number(row.totalAmount || 0)).toLocaleString()} · Bank ${Math.round(
+          ).toLocaleString()} Â· Total ${Math.round(Number(row.totalAmount || 0)).toLocaleString()} Â· Bank ${Math.round(
             Number(row.totalPaymentDeposits || 0),
-          ).toLocaleString()} · POS ${Math.round(Number(row.posValue || 0)).toLocaleString()} · Closing ${Math.round(
+          ).toLocaleString()} Â· POS ${Math.round(Number(row.posValue || 0)).toLocaleString()} Â· Closing ${Math.round(
             Number(row.closingBalance || 0),
           ).toLocaleString()}`,
       },
@@ -1709,14 +1709,14 @@ const SupervisorDashboardPage = () => {
     const hasPmsMeter = row.pumpSalesLitersPMS != null || (row.pumpReadings || []).some((item) => String(item?.productType || 'PMS').toUpperCase() !== 'AGO')
     const hasAgoMeter = row.pumpSalesLitersAGO != null || (row.pumpReadings || []).some((item) => String(item?.productType || '').toUpperCase() === 'AGO')
     const systemPms = row.pumpSalesLitersPMS != null
-      ? toFiniteNumber(row.pumpSalesLitersPMS)
+      ? Math.max(0, toFiniteNumber(row.pumpSalesLitersPMS) - toFiniteNumber(row.rttPMS))
       : hasPmsMeter
-        ? directPumpDelta.PMS
+        ? Math.max(0, directPumpDelta.PMS - toFiniteNumber(row.rttPMS))
         : toFiniteNumber(row.totalSalesLitersPMS)
     const systemAgo = row.pumpSalesLitersAGO != null
-      ? toFiniteNumber(row.pumpSalesLitersAGO)
+      ? Math.max(0, toFiniteNumber(row.pumpSalesLitersAGO) - toFiniteNumber(row.rttAGO))
       : hasAgoMeter
-        ? directPumpDelta.AGO
+        ? Math.max(0, directPumpDelta.AGO - toFiniteNumber(row.rttAGO))
         : toFiniteNumber(row.totalSalesLitersAGO)
     const managerPms = toFiniteNumber(row.managerEnteredSalesLitersPMS ?? row.dipSalesLitersPMS ?? row.totalSalesLitersPMS)
     const managerAgo = toFiniteNumber(row.managerEnteredSalesLitersAGO ?? row.dipSalesLitersAGO ?? row.totalSalesLitersAGO)
@@ -1858,13 +1858,13 @@ const SupervisorDashboardPage = () => {
 
       {activeDashboard === 'dashboard' && (
         <>
-        {/* ── Stat bar ── */}
+        {/* â”€â”€ Stat bar â”€â”€ */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
-            { label: 'Stations', value: portfolio.length, color: 'text-white', accent: 'border-white/10', icon: '⌂' },
-            { label: 'Safe', value: portfolio.filter(p => p.status === 'safe').length, color: 'text-[#a9cd39]', accent: 'border-[#a9cd39]/20', icon: '✓' },
-            { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: '⚠' },
-            { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: '⛔' },
+            { label: 'Stations', value: portfolio.length, color: 'text-white', accent: 'border-white/10', icon: 'âŒ‚' },
+            { label: 'Safe', value: portfolio.filter(p => p.status === 'safe').length, color: 'text-[#a9cd39]', accent: 'border-[#a9cd39]/20', icon: 'âœ“' },
+            { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: 'âš ' },
+            { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: 'â›”' },
           ].map(({ label, value, color, accent, icon }) => (
             <button
               key={label}
@@ -1881,7 +1881,7 @@ const SupervisorDashboardPage = () => {
           ))}
         </div>
 
-        {/* ── Portfolio ── */}
+        {/* â”€â”€ Portfolio â”€â”€ */}
         <Card className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -1936,10 +1936,10 @@ const SupervisorDashboardPage = () => {
           )}
         </Card>
 
-        {/* ── Bottom two panels ── */}
+        {/* â”€â”€ Bottom two panels â”€â”€ */}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Card className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-rose-400">⚠ Top Risk</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-rose-400">âš  Top Risk</p>
             <h3 className="text-base font-bold text-white -mt-1">Stations Needing Attention</h3>
             {!topRisk.length && <p className="text-sm text-slate-500">All stations are in good shape.</p>}
             {topRisk.map((station, i) => (
@@ -1952,7 +1952,7 @@ const SupervisorDashboardPage = () => {
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-xs font-bold text-rose-400">{i + 1}</span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-white truncate">{station.stationName}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{station.daysRemaining.toFixed(0)}d remaining · {Math.round(station.stockRemaining).toLocaleString()} L</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{station.daysRemaining.toFixed(0)}d remaining Â· {Math.round(station.stockRemaining).toLocaleString()} L</p>
                 </div>
                 <StatusBadge status={station.status} />
               </button>
@@ -1960,7 +1960,7 @@ const SupervisorDashboardPage = () => {
           </Card>
 
           <Card className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">🚩 Interventions</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">ðŸš© Interventions</p>
             <h3 className="text-base font-bold text-white -mt-1">Active Flags</h3>
             {!interventions.length && <p className="text-sm text-slate-500">No interventions logged yet.</p>}
             {interventions.slice(0, 5).map((item) => (
@@ -1974,7 +1974,7 @@ const SupervisorDashboardPage = () => {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <button type="button" onClick={() => navigate(`/stations/${item.stationId}/history`)} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-300 hover:bg-white/10 transition">History</button>
                   <button type="button" onClick={() => escalateStationIntervention({ stationId: item.stationId })} disabled={item.stage === 'escalated'} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-40">
-                    {item.stage === 'escalated' ? '✓ Escalated' : 'Escalate'}
+                    {item.stage === 'escalated' ? 'âœ“ Escalated' : 'Escalate'}
                   </button>
                   {item.stage === 'escalated' && (
                     <button type="button" onClick={() => { if(window.confirm('Revert escalation?')) revertEscalationIntervention({ stationId: item.stationId }) }} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-400 hover:text-white transition">Revert</button>
@@ -2017,14 +2017,14 @@ const SupervisorDashboardPage = () => {
                   onClick={closeFiltersScreen}
                   className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
-                  ← Back to queue
+                  â† Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
-                    Daily opening · Filters
+                    Daily opening Â· Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Order: table columns, stations, then submission status—everything drives the queue table and Excel
+                    Order: table columns, stations, then submission statusâ€”everything drives the queue table and Excel
                     export.
                   </p>
                 </div>
@@ -2075,7 +2075,7 @@ const SupervisorDashboardPage = () => {
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {dailyFiltersSummary}
-                  {' · '}
+                  {' Â· '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
                 </p>
               </div>
@@ -2117,7 +2117,7 @@ const SupervisorDashboardPage = () => {
                               : late ? 'bg-rose-500/15 text-rose-400'
                               : 'bg-amber-500/15 text-amber-400'
                             }`}>
-                              {submitted ? '✓ Submitted'
+                              {submitted ? 'âœ“ Submitted'
                                : noSales ? 'No Sales'
                                : late ? `Late ${row.pendingSubmissionDays}d`
                                : 'Pending'}
@@ -2146,7 +2146,7 @@ const SupervisorDashboardPage = () => {
                           {pending && (
                             <p className="text-xs text-slate-500 mt-1">
                               {row.pendingSubmissionNoHistory ? 'No report today yet' : `${row.pendingSubmissionDays} day(s) without submission`}
-                              <span className="ml-2 text-[#a9cd39]">→ View History</span>
+                              <span className="ml-2 text-[#a9cd39]">â†’ View History</span>
                             </p>
                           )}
 
@@ -2154,10 +2154,10 @@ const SupervisorDashboardPage = () => {
                           {(row.hasDiscrepancy || (row.eodAttachments && row.eodAttachments.length > 0)) && (
                             <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-2">
                               {row.hasDiscrepancy && (
-                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">⚠ Discrepancy</span>
+                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">âš  Discrepancy</span>
                               )}
                               {row.eodAttachments?.length > 0 && (
-                                <span className="rounded-full bg-[#a9cd39]/10 px-2 py-0.5 text-xs text-[#a9cd39]">📎 {row.eodAttachments.length} EOD</span>
+                                <span className="rounded-full bg-[#a9cd39]/10 px-2 py-0.5 text-xs text-[#a9cd39]">ðŸ“Ž {row.eodAttachments.length} EOD</span>
                               )}
                             </div>
                           )}
@@ -2190,14 +2190,14 @@ const SupervisorDashboardPage = () => {
                     <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Daily Report</p>
                     <h4 className="text-lg font-bold text-white mt-0.5">{selectedDailyOpeningReport.stationName}</h4>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {selectedDailyOpeningReport.managerName} · {selectedDailyOpeningReport.reportDate}
+                      {selectedDailyOpeningReport.managerName} Â· {selectedDailyOpeningReport.reportDate}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setSelectedDailyOpeningReport(null)}
                     className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 hover:text-white transition shrink-0"
-                  >✕</button>
+                  >âœ•</button>
                 </div>
 
                 <div className="space-y-4 p-5 text-sm">
@@ -2345,14 +2345,14 @@ const SupervisorDashboardPage = () => {
                     <p className="font-medium text-white">
                       {selectedDailyOpeningReport.multiPricing &&
                       (selectedDailyOpeningReport.priceBandsPMS || []).length > 1
-                        ? `Avg ₦${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
+                        ? `Avg â‚¦${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
                         : selectedDailyOpeningReport.pmsPrice}
                     </p>
                     {(selectedDailyOpeningReport.priceBandsPMS || []).length > 0 && (
                       <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
                         {selectedDailyOpeningReport.priceBandsPMS.map((band, index) => (
                           <li key={`pms-band-${index}`}>
-                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                            â‚¦{Number(band.price || 0).toLocaleString()}/L Ã— {Number(band.liters || 0).toLocaleString()} L
                           </li>
                         ))}
                       </ul>
@@ -2363,14 +2363,14 @@ const SupervisorDashboardPage = () => {
                     <p className="font-medium text-white">
                       {selectedDailyOpeningReport.multiPricing &&
                       (selectedDailyOpeningReport.priceBandsAGO || []).length > 1
-                        ? `Avg ₦${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
+                        ? `Avg â‚¦${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
                         : selectedDailyOpeningReport.agoPrice}
                     </p>
                     {(selectedDailyOpeningReport.priceBandsAGO || []).length > 0 && (
                       <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
                         {selectedDailyOpeningReport.priceBandsAGO.map((band, index) => (
                           <li key={`ago-band-${index}`}>
-                            ₦{Number(band.price || 0).toLocaleString()}/L × {Number(band.liters || 0).toLocaleString()} L
+                            â‚¦{Number(band.price || 0).toLocaleString()}/L Ã— {Number(band.liters || 0).toLocaleString()} L
                           </li>
                         ))}
                       </ul>
@@ -2380,14 +2380,14 @@ const SupervisorDashboardPage = () => {
                     <p className="text-xs uppercase text-slate-500">Input Quantity Received (L)</p>
                     <p className="font-medium text-white">{selectedDailyOpeningReport.quantityReceived}</p>
                   </div>
-                  {/* PMS Sales — side by side */}
+                  {/* PMS Sales â€” side by side */}
                   <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
                     <p className="text-xs uppercase text-slate-500 mb-2">Sales PMS (L)</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-lg bg-black/20 px-3 py-2">
                         <p className="text-xs text-slate-500">Pump meters</p>
                         <p className={`font-bold text-base ${selectedDailyOpeningReport.pumpSalesLitersPMS != null ? 'text-[#a9cd39]' : 'text-slate-500'}`}>
-                          {selectedDailyOpeningReport.pumpSalesLitersPMS != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersPMS).toLocaleString() + ' L' : '—'}
+                          {selectedDailyOpeningReport.pumpSalesLitersPMS != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersPMS).toLocaleString() + ' L' : 'â€”'}
                         </p>
                       </div>
                       <div className="rounded-lg bg-black/20 px-3 py-2">
@@ -2398,18 +2398,18 @@ const SupervisorDashboardPage = () => {
                     {selectedDailyOpeningReport.pumpSalesLitersPMS != null && (() => {
                       const gap = Math.abs(selectedDailyOpeningReport.pumpSalesLitersPMS - Number(String(selectedDailyOpeningReport.totalSalesLitersPMS).replace(/,/g, '') || 0))
                       return gap > 10 ? (
-                        <p className="mt-2 text-xs text-amber-400">⚠ Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
+                        <p className="mt-2 text-xs text-amber-400">âš  Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
                       ) : null
                     })()}
                   </div>
-                  {/* AGO Sales — side by side */}
+                  {/* AGO Sales â€” side by side */}
                   <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
                     <p className="text-xs uppercase text-slate-500 mb-2">Sales AGO (L)</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-lg bg-black/20 px-3 py-2">
                         <p className="text-xs text-slate-500">Pump meters</p>
                         <p className={`font-bold text-base ${selectedDailyOpeningReport.pumpSalesLitersAGO != null ? 'text-blue-400' : 'text-slate-500'}`}>
-                          {selectedDailyOpeningReport.pumpSalesLitersAGO != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersAGO).toLocaleString() + ' L' : '—'}
+                          {selectedDailyOpeningReport.pumpSalesLitersAGO != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersAGO).toLocaleString() + ' L' : 'â€”'}
                         </p>
                       </div>
                       <div className="rounded-lg bg-black/20 px-3 py-2">
@@ -2420,7 +2420,7 @@ const SupervisorDashboardPage = () => {
                     {selectedDailyOpeningReport.pumpSalesLitersAGO != null && (() => {
                       const gap = Math.abs(selectedDailyOpeningReport.pumpSalesLitersAGO - Number(String(selectedDailyOpeningReport.totalSalesLitersAGO).replace(/,/g, '') || 0))
                       return gap > 10 ? (
-                        <p className="mt-2 text-xs text-amber-400">⚠ Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
+                        <p className="mt-2 text-xs text-amber-400">âš  Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
                       ) : null
                     })()}
                   </div>
@@ -2554,14 +2554,14 @@ const SupervisorDashboardPage = () => {
                           {item.label}:{' '}
                           {item.noBaseline
                             ? 'No baseline'
-                            : `${item.opening ?? '-'} → ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
+                            : `${item.opening ?? '-'} â†’ ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
                         </p>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* ── Supervisor Review Button ── */}
+                {/* â”€â”€ Supervisor Review Button â”€â”€ */}
                 {(!selectedDailyOpeningReport.pumpMeterRows || selectedDailyOpeningReport.pumpMeterRows.length === 0) &&
                   (selectedDailyOpeningReport.pumpSalesLitersPMS != null || selectedDailyOpeningReport.pumpSalesLitersAGO != null) && (
                     <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
@@ -2627,11 +2627,11 @@ const SupervisorDashboardPage = () => {
                       )}
                       {alreadyReviewed ? (
                         <div className="flex items-center gap-3 rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/5 px-4 py-3">
-                          <span className="text-[#a9cd39] text-xl">✓</span>
+                          <span className="text-[#a9cd39] text-xl">âœ“</span>
                           <div>
                             <p className="text-sm font-semibold text-[#a9cd39]">Reviewed</p>
                             <p className="text-xs text-slate-400 mt-0.5">
-                              by {report.supervisorReview.reviewedBy || currentUser?.name} · {report.supervisorReview.remark || ''}
+                              by {report.supervisorReview.reviewedBy || currentUser?.name} Â· {report.supervisorReview.remark || ''}
                             </p>
                           </div>
                           <button type="button"
@@ -2673,7 +2673,7 @@ const SupervisorDashboardPage = () => {
                               }}
                               className="flex-1 rounded-xl bg-[#a9cd39] py-3 text-sm font-bold text-black hover:bg-[#bcd94a] transition"
                             >
-                              ✓ Confirm Review
+                              âœ“ Confirm Review
                             </button>
                           </div>
                         </div>
@@ -2861,11 +2861,11 @@ const SupervisorDashboardPage = () => {
                   onClick={closeFiltersScreen}
                   className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
-                  ← Back to queue
+                  â† Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
-                    Cash flow · Filters
+                    Cash flow Â· Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
                     Reuse station/status filters from stock flow while reviewing cash and deposit movement.
@@ -2918,7 +2918,7 @@ const SupervisorDashboardPage = () => {
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {dailyFiltersSummary}
-                  {' · '}
+                  {' Â· '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
                 </p>
               </div>
@@ -2947,7 +2947,7 @@ const SupervisorDashboardPage = () => {
                               <p className="text-xs text-slate-500 mt-0.5">{row.managerName}</p>
                             </div>
                             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${submitted ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-amber-500/15 text-amber-400'}`}>
-                              {submitted ? '✓' : 'Pending'}
+                              {submitted ? 'âœ“' : 'Pending'}
                             </span>
                           </div>
                           {submitted && (
@@ -3018,14 +3018,14 @@ const SupervisorDashboardPage = () => {
                   onClick={closeFiltersScreen}
                   className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
-                  ← Back to queue
+                  â† Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
-                    Expense queue · Filters
+                    Expense queue Â· Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Columns, stations, then expense status—applied to the table and Excel export.
+                    Columns, stations, then expense statusâ€”applied to the table and Excel export.
                   </p>
                 </div>
               </div>
@@ -3075,7 +3075,7 @@ const SupervisorDashboardPage = () => {
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {expenseFiltersSummary}
-                  {' · '}
+                  {' Â· '}
                   Showing {filteredExpenseQueueRows.length} of {expenseQueueRows.length} stations
                 </p>
               </div>
@@ -3211,7 +3211,7 @@ const SupervisorDashboardPage = () => {
               }))
               .sort((a, b) => b.score - a.score)
 
-            const medals = ['🥇', '🥈', '🥉']
+            const medals = ['ðŸ¥‡', 'ðŸ¥ˆ', 'ðŸ¥‰']
             const podiumColors = [
               'border-yellow-400/30 bg-yellow-400/5',
               'border-slate-400/30 bg-slate-400/5',
@@ -3220,10 +3220,10 @@ const SupervisorDashboardPage = () => {
 
             return (
               <>
-                {/* Podium — top 3 */}
+                {/* Podium â€” top 3 */}
                 {ranked.length >= 1 && (
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">🏆 Top Performers</p>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">ðŸ† Top Performers</p>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       {ranked.slice(0, 3).map((row, i) => (
                         <div key={row.stationId} className={`rounded-2xl border p-5 ${podiumColors[i] || 'border-white/10 bg-white/5'}`}>
@@ -3355,7 +3355,7 @@ const SupervisorDashboardPage = () => {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/5 px-5 py-4">
                   <p className="text-sm text-slate-400">
                     {selectedMonthFinalization
-                      ? `✓ Finalized by ${selectedMonthFinalization.finalizedBy} on ${selectedMonthFinalization.finalizedAt?.split('T')[0]}`
+                      ? `âœ“ Finalized by ${selectedMonthFinalization.finalizedBy} on ${selectedMonthFinalization.finalizedAt?.split('T')[0]}`
                       : `Ready to finalize ${selectedMonthLabel} for admin.`}
                   </p>
                   <button type="button"
@@ -3377,7 +3377,7 @@ const SupervisorDashboardPage = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">⬒ Pending Action</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">â¬’ Pending Action</p>
                 <h3 className="text-xl font-bold text-white">Product Requests</h3>
               </div>
               <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm font-bold text-amber-400">{supervisorQueueRows.length} pending</span>
@@ -3389,7 +3389,7 @@ const SupervisorDashboardPage = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-bold text-white">{row.stationName}</p>
-                        <p className="text-sm text-slate-400 mt-0.5">{row.managerName || '—'} · {row.createdDate}</p>
+                        <p className="text-sm text-slate-400 mt-0.5">{row.managerName || 'â€”'} Â· {row.createdDate}</p>
                       </div>
                       <span className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-bold text-amber-400">Pending</span>
                     </div>
@@ -3410,12 +3410,12 @@ const SupervisorDashboardPage = () => {
                       <button type="button"
                         onClick={() => reviewProductRequestBySupervisor({ requestId: row.id, decision: 'approve', remark: `Escalated by ${currentUser?.name || 'Supervisor'}` })}
                         className="flex-1 rounded-xl border border-[#a9cd39]/30 bg-[#a9cd39]/10 py-2.5 text-sm font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/20 transition">
-                        ✓ Approve & Escalate
+                        âœ“ Approve & Escalate
                       </button>
                       <button type="button"
                         onClick={() => reviewProductRequestBySupervisor({ requestId: row.id, decision: 'decline', remark: 'Declined by supervisor' })}
                         className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-sm font-semibold text-rose-400 hover:bg-rose-500/10 transition">
-                        ✗
+                        âœ—
                       </button>
                     </div>
                   </div>
@@ -3430,7 +3430,7 @@ const SupervisorDashboardPage = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">🕘 History</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">ðŸ•˜ History</p>
                 <h3 className="text-xl font-bold text-white">Reviewed Requests</h3>
               </div>
               {selectedRequestStationId && (
@@ -3456,7 +3456,7 @@ const SupervisorDashboardPage = () => {
                           {approved ? 'Escalated' : 'Declined'}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-300">{row.requestedProductType} · {Math.round(row.requestedLiters).toLocaleString()} L</p>
+                      <p className="text-sm text-slate-300">{row.requestedProductType} Â· {Math.round(row.requestedLiters).toLocaleString()} L</p>
                       {row.reason && row.reason !== '-' && <p className="text-sm text-slate-500 italic">"{row.reason}"</p>}
                     </div>
                   )
@@ -3472,7 +3472,7 @@ const SupervisorDashboardPage = () => {
       {activeDashboard === 'history' && (
         <div>
           <div className="mb-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">🕘 Archive</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">ðŸ•˜ Archive</p>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Trusted archive</p>
             <h3 className="text-xl font-bold text-white">Finalised Reports</h3>
             <p className="mt-1 text-sm text-slate-400">Confirmed reports stay here as the clean source for future P/L.</p>
@@ -3483,12 +3483,12 @@ const SupervisorDashboardPage = () => {
                 <div key={row.id} className="rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4 space-y-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-bold text-white">{row.date || row.monthKey || '—'}</p>
-                      <p className="text-sm text-slate-400 mt-0.5">by {row.finalizedBy || '—'}</p>
+                      <p className="font-bold text-white">{row.date || row.monthKey || 'â€”'}</p>
+                      <p className="text-sm text-slate-400 mt-0.5">by {row.finalizedBy || 'â€”'}</p>
                     </div>
                     <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">Finalised</span>
                   </div>
-                  <p className="text-sm font-semibold text-white">{row.stationName} · {row.managerName}</p>
+                  <p className="text-sm font-semibold text-white">{row.stationName} Â· {row.managerName}</p>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">PMS sold</p><p className="font-bold text-white">{formatLiters(row.totalSalesLitersPMS)}</p></div>
                     <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">AGO sold</p><p className="font-bold text-white">{formatLiters(row.totalSalesLitersAGO)}</p></div>
@@ -3512,3 +3512,6 @@ const SupervisorDashboardPage = () => {
 }
 
 export default SupervisorDashboardPage
+
+
+

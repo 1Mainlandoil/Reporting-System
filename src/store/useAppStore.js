@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   dailyReports,
@@ -538,10 +538,10 @@ export const useAppStore = create(
           const closingStockPMS = Number(patch.closingStockPMS ?? target.closingStockPMS ?? 0)
           const closingStockAGO = Number(patch.closingStockAGO ?? target.closingStockAGO ?? 0)
           const totalSalesLitersPMS = pumpSalesPMS != null
-            ? pumpSalesPMS
+            ? Math.max(0, pumpSalesPMS - rttPMS)
             : Number(patch.totalSalesLitersPMS ?? target.totalSalesLitersPMS ?? target.salesPMS ?? 0)
           const totalSalesLitersAGO = pumpSalesAGO != null
-            ? pumpSalesAGO
+            ? Math.max(0, pumpSalesAGO - rttAGO)
             : Number(patch.totalSalesLitersAGO ?? target.totalSalesLitersAGO ?? target.salesAGO ?? 0)
           const cashBf = Number(patch.cashBf ?? target.cashBf ?? 0)
           const cashSales = Number(patch.cashSales ?? target.cashSales ?? 0)
@@ -1590,3 +1590,6 @@ export const useAppStore = create(
 )
 
 export const useIsAdmin = () => useAppStore((state) => state.role === ROLES.ADMIN)
+
+
+
