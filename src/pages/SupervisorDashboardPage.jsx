@@ -2190,14 +2190,14 @@ const SupervisorDashboardPage = () => {
                     <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Daily Report</p>
                     <h4 className="text-lg font-bold text-white mt-0.5">{selectedDailyOpeningReport.stationName}</h4>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {selectedDailyOpeningReport.managerName} Â· {selectedDailyOpeningReport.reportDate}
+                      {selectedDailyOpeningReport.managerName} - {selectedDailyOpeningReport.reportDate}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setSelectedDailyOpeningReport(null)}
                     className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 hover:text-white transition shrink-0"
-                  >âœ•</button>
+                  >x</button>
                 </div>
 
                 <div className="space-y-4 p-5 text-sm">
@@ -2554,7 +2554,7 @@ const SupervisorDashboardPage = () => {
                           {item.label}:{' '}
                           {item.noBaseline
                             ? 'No baseline'
-                            : `${item.opening ?? '-'} â†’ ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
+                            : `${item.opening ?? '-'} to ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
                         </p>
                       ))}
                     </div>
@@ -2673,7 +2673,7 @@ const SupervisorDashboardPage = () => {
                               }}
                               className="flex-1 rounded-xl bg-[#a9cd39] py-3 text-sm font-bold text-black hover:bg-[#bcd94a] transition"
                             >
-                              âœ“ Confirm Review
+                              Confirm Review
                             </button>
                           </div>
                         </div>
