@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Card from '../components/ui/Card'
 import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
-import { getClosingForProduct } from '../utils/reportFields'
+import { getClosingForProduct, getPumpHistoryKey, normalizePumpProductType } from '../utils/reportFields'
 import { formatStaffCalendarDay, getDailyReportPendingInfo, getOldestMissingReportDateUpTo, listMissedReportDatesInclusive } from '../utils/reportPending'
 
 const StaffDashboardPage = () => {
@@ -217,7 +217,11 @@ const StaffDashboardPage = () => {
     for (const r of sorted) {
       for (const p of r.pumpReadings) {
         if (p?.label && p.closing != null) {
-          map[p.label] = { closing: Number(p.closing), date: r.date, productType: p.productType || null }
+          const productType = normalizePumpProductType(p.productType)
+          const key = getPumpHistoryKey(p.label, productType)
+          if (key) {
+            map[key] = { closing: Number(p.closing), date: r.date, productType }
+          }
         }
       }
     }

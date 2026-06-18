@@ -1,4 +1,4 @@
-import { getClosingForProduct, getPumpReadingClosing, getPumpReadingOpening, getQuantityRemainingForProduct, buildLastPumpClosingMap } from './reportFields'
+import { getClosingForProduct, getPumpReadingClosing, getPumpReadingOpening, getQuantityRemainingForProduct, buildLastPumpClosingMap, getPumpHistoryKey, normalizePumpProductType } from './reportFields'
 import { computePumpProductSales } from './pumpSales'
 
 const resolveReceivedProductType = (report) => {
@@ -30,30 +30,40 @@ export const buildPumpRowsWithCarry = (allPriorReports = [], todayReadings = [])
   const prevMap = buildLastPumpClosingMap(allPriorReports)
   const todayMap = new Map()
   const todayOpeningMap = new Map()
+  const todayMetaMap = new Map()
   for (const item of todayReadings) {
     const label = String(item?.label || '').trim()
+    const productType = normalizePumpProductType(item?.productType)
+    const key = getPumpHistoryKey(label, productType)
     const reading = getPumpReadingClosing(item)
     const opening = getPumpReadingOpening(item)
-    if (!label || reading == null || Number.isNaN(reading)) continue
-    todayMap.set(label, reading)
+    if (!key || reading == null || Number.isNaN(reading)) continue
+    todayMap.set(key, reading)
+    todayMetaMap.set(key, { label, productType })
     if (opening != null && !Number.isNaN(opening)) {
-      todayOpeningMap.set(label, opening)
+      todayOpeningMap.set(key, opening)
     }
   }
 
-  const labels = new Set([...prevMap.keys(), ...todayMap.keys()])
-  return [...labels]
-    .sort((a, b) => a.localeCompare(b))
-    .map((label) => {
-      const opening = todayOpeningMap.has(label)
-        ? todayOpeningMap.get(label)
-        : prevMap.has(label)
-          ? prevMap.get(label)
+  const keys = new Set([...prevMap.keys(), ...todayMap.keys()])
+  return [...keys]
+    .sort((a, b) => {
+      const aMeta = todayMetaMap.get(a) || prevMap.get(a) || {}
+      const bMeta = todayMetaMap.get(b) || prevMap.get(b) || {}
+      return `${aMeta.label || ''} ${aMeta.productType || ''}`.localeCompare(`${bMeta.label || ''} ${bMeta.productType || ''}`)
+    })
+    .map((key) => {
+      const meta = todayMetaMap.get(key) || prevMap.get(key) || {}
+      const opening = todayOpeningMap.has(key)
+        ? todayOpeningMap.get(key)
+        : prevMap.has(key)
+          ? prevMap.get(key).closing
           : null
-      const closing = todayMap.has(label) ? todayMap.get(label) : opening
-      const used = todayMap.has(label)
+      const closing = todayMap.has(key) ? todayMap.get(key) : opening
+      const used = todayMap.has(key)
       return {
-        label,
+        label: meta.label || '',
+        productType: meta.productType || 'PMS',
         opening,
         closing,
         used,

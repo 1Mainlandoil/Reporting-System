@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { MAINLAND_LOGO_SRC } from '../../constants/brandLogo'
 import { useAppStore } from '../../store/useAppStore'
 import { linksByRole } from '../../constants/navigation'
+import NavIcon from './NavIcon'
 
 const chatUnreadSelector = (state) => {
   const uid = state.currentUser?.id
@@ -23,29 +24,28 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const currentView = new URLSearchParams(location.search).get('view')
 
   const menuItems = [
-    { label: 'Dashboard', icon: '▦', path: role === 'staff' ? '/staff' : linkMap.dashboard },
-    { label: 'Reports', icon: '☰', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
-    ...(role === 'supervisor' ? [{ label: 'Month-End Summary', icon: '◍', path: '/supervisor?view=month-end-summary' }] : []),
-    { label: 'Reconciliation', icon: '◍', path: linkMap.reconciliation },
-    { label: 'Product Requests', icon: '⬒', path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
-    { label: 'History', icon: '🕘', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
-    { label: 'Alerts', icon: '⚑', path: linkMap.alerts },
-    { label: 'Analytics', icon: '◔', path: linkMap.analytics },
-    { label: 'Stations', icon: '⌂', path: linkMap.stations },
-    { label: 'Users', icon: '◌', path: linkMap.users },
-    { label: 'Settings', icon: '⚙', path: linkMap.settings },
+    { label: 'Dashboard', icon: 'dashboard', path: role === 'staff' ? '/staff' : linkMap.dashboard },
+    { label: 'Reports', icon: 'reports', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
+    ...(role === 'supervisor' ? [{ label: 'Month-End Summary', icon: 'summary', path: '/supervisor?view=month-end-summary' }] : []),
+    { label: 'Reconciliation', icon: 'reconciliation', path: linkMap.reconciliation },
+    { label: 'Product Requests', icon: 'product', path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
+    { label: 'History', icon: 'history', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
+    { label: 'Alerts', icon: 'alerts', path: linkMap.alerts },
+    { label: 'Analytics', icon: 'analytics', path: linkMap.analytics },
+    { label: 'Stations', icon: 'stations', path: linkMap.stations },
+    { label: 'Users', icon: 'users', path: linkMap.users },
+    { label: 'Settings', icon: 'settings', path: linkMap.settings },
   ]
 
   const handleNav = () => onClose()
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-[40] h-full w-72 flex flex-col bg-[#0d1220] border-r border-white/5 transition-transform duration-300 ease-out ${
+      className={`fixed left-0 top-0 z-[40] flex h-full w-72 flex-col border-r border-white/5 bg-[#0d1220] transition-transform duration-300 ease-out ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       } ${role === 'supervisor' ? 'border-l-4 border-l-[#c4151d]' : ''}`}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/5 px-5 py-4 mt-16">
+      <div className="mt-16 flex items-center justify-between border-b border-white/5 px-5 py-4">
         <div className="flex items-center gap-3">
           <img src={MAINLAND_LOGO_SRC} alt="Mainland Oil" className="h-7 w-auto" />
           <div>
@@ -54,12 +54,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           </div>
         </div>
         <button
+          type="button"
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white transition"
-        >✕</button>
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-400 transition hover:text-white"
+        >
+          x
+        </button>
       </div>
 
-      {/* User card */}
       {currentUser && (
         <div className="mx-4 mt-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -67,15 +69,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
               {String(currentUser.name || '?')[0].toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{currentUser.name}</p>
+              <p className="truncate text-sm font-semibold text-white">{currentUser.name}</p>
               <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{role}</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Nav links */}
-      <nav className="mt-4 flex-1 overflow-y-auto px-3 space-y-0.5">
+      <nav className="mt-4 flex-1 space-y-0.5 overflow-y-auto px-3">
         {menuItems.map((item) =>
           item.path ? (
             <NavLink
@@ -91,33 +92,38 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 const isCustomActive = role === 'supervisor' && ['Dashboard','Reports','Month-End Summary','Product Requests','History'].includes(item.label)
                   ? isSupervisorDashboard || isSupervisorReports || isSupervisorMonthEnd || isSupervisorProductRequests || isSupervisorHistory
                   : isActive
-                return `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                return `flex items-center gap-3 rounded-xl border px-3 py-3 text-sm font-medium transition ${
                   isCustomActive
-                    ? 'bg-[#a9cd39]/15 text-[#a9cd39] border border-[#a9cd39]/25'
-                    : 'text-slate-300 hover:bg-white/5 hover:text-white border border-transparent'
+                    ? 'border-[#a9cd39]/25 bg-[#a9cd39]/15 text-[#a9cd39]'
+                    : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
                 }`
               }}
             >
-              <span className="text-base">{item.icon}</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5">
+                <NavIcon name={item.icon} />
+              </span>
               <span>{item.label}</span>
             </NavLink>
           ) : (
-            <div key={item.label} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-600 border border-transparent">
-              <span className="text-base">{item.icon}</span>
+            <div key={item.label} className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-sm text-slate-600">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5">
+                <NavIcon name={item.icon} />
+              </span>
               <span>{item.label}</span>
             </div>
           ),
         )}
       </nav>
 
-      {/* Bottom actions */}
-      <div className="border-t border-white/5 p-3 space-y-2">
+      <div className="space-y-2 border-t border-white/5 p-3">
         <button
           type="button"
           onClick={() => { setChatOpen(true); onClose() }}
-          className="relative flex w-full items-center gap-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-3 py-3 text-sm font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/20 transition"
+          className="relative flex w-full items-center gap-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-3 py-3 text-sm font-semibold text-[#a9cd39] transition hover:bg-[#a9cd39]/20"
         >
-          <span className="text-base">💬</span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#a9cd39]/20">
+            <NavIcon name="chat" />
+          </span>
           Chat
           {chatUnreadCount > 0 && (
             <span className="ml-auto rounded-full bg-[#a9cd39] px-2 py-0.5 text-xs font-bold text-black">
@@ -126,10 +132,13 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           )}
         </button>
         <button
+          type="button"
           onClick={() => { logout(); onClose() }}
-          className="flex w-full items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm font-medium text-red-400 hover:bg-red-500/20 transition"
+          className="flex w-full items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-sm font-medium text-red-400 transition hover:bg-red-500/20"
         >
-          <span className="text-base">⎋</span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10">
+            <NavIcon name="logout" />
+          </span>
           Logout
         </button>
       </div>

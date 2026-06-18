@@ -4,7 +4,7 @@ import FormInput from '../ui/FormInput'
 import CustomSelect from '../ui/CustomSelect'
 import ProductPriceSection from './ProductPriceSection'
 import posTerminalCatalog from '../../data/posTerminals.generated.json'
-import { computeSalesFromMovement } from '../../utils/reportFields'
+import { computeSalesFromMovement, getPumpHistoryKey, normalizePumpProductType } from '../../utils/reportFields'
 import {
   computeSalesAmountFromBands,
   normalizePriceBands,
@@ -99,7 +99,7 @@ const StaffClosingReportForm = ({
   historyPath = '',
   carriedCashBf = 0,
   priorPrices = { pms: 0, ago: 0, date: '' },
-  pumpLastClosings = {}, // { [label]: { closing, date, productType } }
+  pumpLastClosings = {}, // { [label::productType]: { closing, date, productType } }
 }) => {
   const [step, setStep] = useState(0)
   const [formData, setFormData] = useState(defaultForm)
@@ -129,7 +129,7 @@ const StaffClosingReportForm = ({
   const [cashBfOverrideReason, setCashBfOverrideReason] = useState('')
   // Price confirmation
   const [priceConfirmed, setPriceConfirmed] = useState(null)
-  // Pump opening confirmation per label: { [label]: { confirmed: null|true|false, overrideValue: '', reason: '' } }
+  // Pump opening confirmation per pump/product: { [label::productType]: { confirmed: null|true|false, overrideValue: '', reason: '' } }
   const [pumpOpeningStates, setPumpOpeningStates] = useState({})
   // EOD uploads: flat array of individual files
   // { fileId, slotId, slotLabel, category, file, url, status:'idle'|'uploading'|'done'|'error', error }
@@ -231,9 +231,11 @@ const StaffClosingReportForm = ({
   const handleAddPumpReading = () => {
     const isOther = pumpDraft.label === 'Other'
     const label = String(isOther ? pumpDraft.otherLabel : pumpDraft.label || '').trim()
+    const productType = normalizePumpProductType(pumpDraft.productType)
+    const historyKey = getPumpHistoryKey(label, productType)
     if (!label || pumpDraft.closing === '') return
-    const priorPump = pumpLastClosings[label] || null // per-pump history lookup
-    const pumpState = pumpOpeningStates[label]
+    const priorPump = historyKey ? pumpLastClosings[historyKey] : null // per-pump/product history lookup
+    const pumpState = pumpOpeningStates[historyKey]
     // If prior exists for this specific pump and not yet answered → block
     if (priorPump && (pumpState?.confirmed === null || pumpState?.confirmed === undefined)) {
       window.alert(`Please confirm the opening reading for ${label} first.`); return
@@ -264,7 +266,7 @@ const StaffClosingReportForm = ({
       id: `pump-${Date.now()}`,
       label,
       closing: resolvedClosing,
-      productType: pumpDraft.productType || 'PMS',
+      productType,
     }
     if (!priorPump && pumpDraft.opening !== '' && pumpDraft.opening != null) {
       // First time for this pump — manager enters opening
@@ -321,7 +323,8 @@ const StaffClosingReportForm = ({
       Object.entries(pumpOpeningStates).forEach(([label, state]) => {
         if (state.confirmed === false) {
           const prior = pumpLastClosings[label]
-          list.push({ field: `Pump ${label} Opening`, systemValue: prior ? `${prior.closing} (${prior.date})` : 'N/A', enteredValue: state.overrideValue, reason: state.reason })
+          const fieldLabel = prior ? `${prior.label} ${prior.productType}` : label
+          list.push({ field: `Pump ${fieldLabel} Opening`, systemValue: prior ? `${prior.closing} (${prior.date})` : 'N/A', enteredValue: state.overrideValue, reason: state.reason })
         }
       })
     }
@@ -1239,21 +1242,23 @@ const StaffClosingReportForm = ({
           {/* Pump opening confirmation — uses per-pump history */}
           {!isFirstReport && (() => {
             const effectiveLabel = pumpDraft.label === 'Other' ? pumpDraft.otherLabel?.trim() : pumpDraft.label
-            const priorPump = effectiveLabel ? pumpLastClosings[effectiveLabel] : null
-            const pumpState = pumpOpeningStates[effectiveLabel] || { confirmed: null, overrideValue: '', reason: '' }
+            const productType = normalizePumpProductType(pumpDraft.productType)
+            const historyKey = getPumpHistoryKey(effectiveLabel, productType)
+            const priorPump = historyKey ? pumpLastClosings[historyKey] : null
+            const pumpState = pumpOpeningStates[historyKey] || { confirmed: null, overrideValue: '', reason: '' }
             if (!priorPump || !effectiveLabel) return null
             return (
               <div className="space-y-3">
                 {pumpState.confirmed === null && (
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                     <p className="text-xs text-slate-400 mb-2">
-                      Last use of <span className="font-semibold text-white">{effectiveLabel}</span>
+                      Last use of <span className="font-semibold text-white">{effectiveLabel} {productType}</span>
                       {priorPump.date ? <span className="text-slate-500"> ({priorPump.date})</span> : ''} closed at <span className="font-bold text-[#a9cd39]">{Number(priorPump.closing).toLocaleString()}</span> — use as opening?
                     </p>
                     <div className="grid grid-cols-2 gap-2">
-                      <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [effectiveLabel]: { ...pumpState, confirmed: true } }))}
+                      <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, confirmed: true } }))}
                         className="rounded-xl border border-[#a9cd39]/30 bg-[#a9cd39]/10 py-2 text-xs font-semibold text-[#a9cd39]">✓ Yes</button>
-                      <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [effectiveLabel]: { ...pumpState, confirmed: false } }))}
+                      <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, confirmed: false } }))}
                         className="rounded-xl border border-white/10 bg-white/5 py-2 text-xs font-semibold text-slate-300">✗ No</button>
                     </div>
                   </div>
@@ -1261,7 +1266,7 @@ const StaffClosingReportForm = ({
                 {pumpState.confirmed === true && (
                   <div className="rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-3 py-2 flex justify-between items-center">
                     <p className="text-xs text-white">Opening: <span className="font-bold text-[#a9cd39]">{priorPump.closing}</span> (confirmed)</p>
-                    <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [effectiveLabel]: { ...pumpState, confirmed: null } }))} className="text-xs text-slate-500 underline">Change</button>
+                    <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, confirmed: null } }))} className="text-xs text-slate-500 underline">Change</button>
                   </div>
                 )}
                 {pumpState.confirmed === false && (
@@ -1273,13 +1278,13 @@ const StaffClosingReportForm = ({
                           window.alert(`Opening reading can't be lower than yesterday's closing of ${priorPump.closing}. Meters don't go backwards.`)
                           return
                         }
-                        setPumpOpeningStates((prev) => ({ ...prev, [effectiveLabel]: { ...pumpState, overrideValue: val } }))
+                        setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, overrideValue: val } }))
                       }}
                     />
                     <div className="space-y-1">
                       <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Reason *</span>
                       <textarea value={pumpState.reason} rows={2}
-                        onChange={(e) => setPumpOpeningStates((prev) => ({ ...prev, [effectiveLabel]: { ...pumpState, reason: e.target.value } }))}
+                        onChange={(e) => setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, reason: e.target.value } }))}
                         placeholder="e.g. Meter was reset / recalibrated"
                         className="w-full rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none resize-none"
                       />
@@ -1308,7 +1313,8 @@ const StaffClosingReportForm = ({
           {/* First time for this pump → show opening field */}
           {(() => {
             const effectiveLabel = pumpDraft.label === 'Other' ? pumpDraft.otherLabel?.trim() : pumpDraft.label
-            const hasPrior = effectiveLabel && pumpLastClosings[effectiveLabel]
+            const historyKey = getPumpHistoryKey(effectiveLabel, pumpDraft.productType)
+            const hasPrior = historyKey && pumpLastClosings[historyKey]
             if (!hasPrior) {
               return <FormInput type="number" label={`Opening Reading${!isFirstReport ? ' (first use of this pump)' : ''}`} value={pumpDraft.opening ?? ''} onChange={(e) => setPumpDraft((prev) => ({ ...prev, opening: e.target.value }))} />
             }

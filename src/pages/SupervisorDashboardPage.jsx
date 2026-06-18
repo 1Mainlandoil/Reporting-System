@@ -11,7 +11,7 @@ import { useAppStore } from '../store/useAppStore'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { buildStationMetrics } from '../utils/stock'
-import { getClosingForProduct } from '../utils/reportFields'
+import { getClosingForProduct, getPumpHistoryKey, normalizePumpProductType } from '../utils/reportFields'
 import {
   exportSupervisorDailyOpeningsToExcel,
   exportSupervisorCashFlowToExcel,
@@ -108,6 +108,30 @@ const resolveReceivedProductType = (report) => {
   return 'PMS'
 }
 
+const normalizeDateRange = (from, to) => {
+  const start = from && to && from > to ? to : from
+  const end = from && to && from > to ? from : to
+  return { start, end }
+}
+
+const eachDateInRange = (from, to) => {
+  const { start, end } = normalizeDateRange(from, to)
+  const dates = []
+  if (!start || !end) return dates
+  const cursor = new Date(`${start}T00:00:00`)
+  const last = new Date(`${end}T00:00:00`)
+  while (cursor <= last) {
+    dates.push(cursor.toISOString().slice(0, 10))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return dates
+}
+
+const formatDateRangeLabel = (from, to) => {
+  const { start, end } = normalizeDateRange(from, to)
+  return start === end ? start : `${start} to ${end}`
+}
+
 const getPumpReadingValue = (item) => {
   if (!item || typeof item !== 'object') return null
   if (item.closing != null && item.closing !== '') return Number(item.closing)
@@ -120,39 +144,48 @@ const buildPumpRowsWithCarry = (previousReadings = [], todayReadings = []) => {
   const prevMap = new Map()
   for (const item of previousReadings) {
     const label = String(item?.label || '').trim()
+    const productType = normalizePumpProductType(item?.productType)
+    const key = getPumpHistoryKey(label, productType)
     const reading = getPumpReadingValue(item)
-    if (!label || reading == null || Number.isNaN(reading)) continue
-    prevMap.set(label, reading)
+    if (!key || reading == null || Number.isNaN(reading)) continue
+    prevMap.set(key, { label, productType, closing: reading })
   }
   const todayMap = new Map()
   const todayOpeningMap = new Map()
   const todayProductMap = new Map()
   for (const item of todayReadings) {
     const label = String(item?.label || '').trim()
+    const productType = normalizePumpProductType(item?.productType)
+    const key = getPumpHistoryKey(label, productType)
     const reading = getPumpReadingValue(item)
-    if (!label || reading == null || Number.isNaN(reading)) continue
-    todayMap.set(label, reading)
+    if (!key || reading == null || Number.isNaN(reading)) continue
+    todayMap.set(key, reading)
     const opening = item.opening != null && item.opening !== '' ? Number(item.opening) : null
     if (opening != null && !Number.isNaN(opening)) {
-      todayOpeningMap.set(label, opening)
+      todayOpeningMap.set(key, opening)
     }
-    todayProductMap.set(label, item.productType === 'AGO' ? 'AGO' : 'PMS')
+    todayProductMap.set(key, { label, productType })
   }
 
-  const labels = new Set([...todayMap.keys()])
-  return [...labels]
-    .sort((a, b) => a.localeCompare(b))
-    .map((label) => {
-      const opening = todayOpeningMap.has(label)
-        ? todayOpeningMap.get(label)
-        : prevMap.has(label)
-          ? prevMap.get(label)
+  const keys = new Set([...todayMap.keys()])
+  return [...keys]
+    .sort((a, b) => {
+      const aMeta = todayProductMap.get(a) || prevMap.get(a) || {}
+      const bMeta = todayProductMap.get(b) || prevMap.get(b) || {}
+      return `${aMeta.label || ''} ${aMeta.productType || ''}`.localeCompare(`${bMeta.label || ''} ${bMeta.productType || ''}`)
+    })
+    .map((key) => {
+      const meta = todayProductMap.get(key) || prevMap.get(key) || {}
+      const opening = todayOpeningMap.has(key)
+        ? todayOpeningMap.get(key)
+        : prevMap.has(key)
+          ? prevMap.get(key).closing
           : null
-      const closing = todayMap.has(label) ? todayMap.get(label) : opening
-      const used = todayMap.has(label)
+      const closing = todayMap.has(key) ? todayMap.get(key) : opening
+      const used = todayMap.has(key)
       return {
-        label,
-        productType: todayProductMap.get(label) || 'PMS',
+        label: meta.label || '',
+        productType: meta.productType || 'PMS',
         opening,
         closing,
         used,
@@ -183,7 +216,8 @@ const differenceTone = (value) => {
 
 const reportStatusRank = (status) => {
   if (status === 'Submitted') return 0
-  if (status === 'Pending') return 1
+  if (status === 'Partial') return 1
+  if (status === 'Pending') return 2
   return 2
 }
 
@@ -357,7 +391,12 @@ const SupervisorDashboardPage = () => {
   )
   const today = new Date().toISOString().split('T')[0]
   const todayMonthKey = today.slice(0, 7)
-  const [reportViewDate, setReportViewDate] = useState(today)
+  const [reportRangeFrom, setReportRangeFrom] = useState(today)
+  const [reportRangeTo, setReportRangeTo] = useState(today)
+  const reportRange = useMemo(() => normalizeDateRange(reportRangeFrom || today, reportRangeTo || reportRangeFrom || today), [reportRangeFrom, reportRangeTo, today])
+  const reportRangeDates = useMemo(() => eachDateInRange(reportRange.start, reportRange.end), [reportRange.start, reportRange.end])
+  const reportRangeLabel = useMemo(() => formatDateRangeLabel(reportRange.start, reportRange.end), [reportRange.start, reportRange.end])
+  const isSingleReportDate = reportRange.start === reportRange.end
   const monthEndMonthOptions = useMemo(() => {
     const options = []
     const base = new Date()
@@ -395,31 +434,35 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const pendingInfo = getDailyReportPendingInfo(reportViewDate, stationReportDates)
-        const pendingFmt = formatPendingSubmissionSummary(pendingInfo, reportViewDate)
+        const rangeReportDates = new Set(reportRangeDates.filter((date) => stationReportDates.has(date)))
+        const pendingDaysInRange = Math.max(0, reportRangeDates.length - rangeReportDates.size)
+        const pendingInfo = getDailyReportPendingInfo(reportRange.end, stationReportDates)
+        const pendingFmt = formatPendingSubmissionSummary(
+          { ...pendingInfo, pendingDays: isSingleReportDate ? pendingInfo.pendingDays : pendingDaysInRange },
+          reportRange.end,
+        )
         const stationReportsToday = reports.filter(
-          (report) => report.stationId === station.id && report.date === reportViewDate,
+          (report) => report.stationId === station.id && report.date >= reportRange.start && report.date <= reportRange.end,
         )
         const latestToday = stationReportsToday.at(-1)
+        const firstToday = stationReportsToday[0]
         const previousReport = [...reports]
-          .filter((report) => report.stationId === station.id && report.date < reportViewDate)
+          .filter((report) => report.stationId === station.id && report.date < reportRange.start)
           .sort((a, b) => b.date.localeCompare(a.date))[0]
         const manager = staffByStation.get(station.id)
         const receivedProductType = latestToday ? resolveReceivedProductType(latestToday) : null
-        const paymentBreakdown = Array.isArray(latestToday?.paymentBreakdown)
-          ? latestToday.paymentBreakdown
-          : []
+        const paymentBreakdown = stationReportsToday.flatMap((report) => Array.isArray(report.paymentBreakdown) ? report.paymentBreakdown : [])
         const posTerminalBreakdown = Array.isArray(latestToday?.posTerminalBreakdown)
           ? latestToday.posTerminalBreakdown
           : []
         const totalPaymentDeposits = paymentBreakdown.length
           ? paymentBreakdown.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-          : Number(latestToday?.totalPaymentDeposits || 0)
-        const posValue = Number(latestToday?.posValue || 0)
+          : stationReportsToday.reduce((sum, report) => sum + Number(report?.totalPaymentDeposits || 0), 0)
+        const posValue = stationReportsToday.reduce((sum, report) => sum + Number(report?.posValue || 0), 0)
         const cashBf = Number(previousReport?.closingBalance || 0)
-        const cashSales = Number(latestToday?.cashSales || 0)
+        const cashSales = stationReportsToday.reduce((sum, report) => sum + Number(report?.cashSales || 0), 0)
         const totalAmount = cashBf + cashSales
-        const closingBalance = totalAmount - totalPaymentDeposits - posValue
+        const closingBalance = latestToday ? Number(latestToday.closingBalance || 0) : totalAmount - totalPaymentDeposits - posValue
         // Variance = Total - Bank Lodgements - POS - Closing (should be 0 if rule is followed)
         const cashMovementVariance = totalAmount - totalPaymentDeposits - posValue - closingBalance
         const pumpReadings = Array.isArray(latestToday?.pumpReadings) ? latestToday.pumpReadings : []
@@ -430,21 +473,25 @@ const SupervisorDashboardPage = () => {
           stationId: station.id,
           stationName: station.name,
           managerName: manager?.name || 'Unassigned',
-          reportStatus: latestToday ? (latestToday.noSalesDay ? 'No Sales Declared' : 'Submitted') : 'Pending',
+          reportStatus: latestToday
+            ? pendingDaysInRange > 0 && !isSingleReportDate
+              ? 'Partial'
+              : latestToday.noSalesDay ? 'No Sales Declared' : 'Submitted'
+            : 'Pending',
           openingStockPMS: latestToday
-            ? latestToday.openingStockPMS ?? latestToday.openingPMS ?? 0
+            ? firstToday?.openingStockPMS ?? firstToday?.openingPMS ?? latestToday.openingStockPMS ?? latestToday.openingPMS ?? 0
             : 'Not Submitted',
           openingStockAGO: latestToday
-            ? latestToday.openingStockAGO ?? latestToday.openingAGO ?? 0
+            ? firstToday?.openingStockAGO ?? firstToday?.openingAGO ?? latestToday.openingStockAGO ?? latestToday.openingAGO ?? 0
             : 'Not Submitted',
           pmsPrice: latestToday ? latestToday.pmsPrice ?? 'Not Submitted' : 'Not Submitted',
           agoPrice: latestToday ? latestToday.agoPrice ?? 'Not Submitted' : 'Not Submitted',
           multiPricing: Boolean(latestToday?.multiPricing),
           priceBandsPMS: Array.isArray(latestToday?.priceBandsPMS) ? latestToday.priceBandsPMS : [],
           priceBandsAGO: Array.isArray(latestToday?.priceBandsAGO) ? latestToday.priceBandsAGO : [],
-          salesAmountPMS: Number(latestToday?.salesAmountPMS || 0),
-          salesAmountAGO: Number(latestToday?.salesAmountAGO || 0),
-          totalSalesAmount: Number(latestToday?.totalSalesAmount || 0),
+          salesAmountPMS: stationReportsToday.reduce((sum, report) => sum + Number(report?.salesAmountPMS || 0), 0),
+          salesAmountAGO: stationReportsToday.reduce((sum, report) => sum + Number(report?.salesAmountAGO || 0), 0),
+          totalSalesAmount: stationReportsToday.reduce((sum, report) => sum + Number(report?.totalSalesAmount || 0), 0),
           receivedProduct: latestToday
             ? latestToday.receivedProduct
               ? `Yes (${receivedProductType || 'Not specified'})`
@@ -453,8 +500,8 @@ const SupervisorDashboardPage = () => {
           quantityReceived: latestToday
             ? Math.round(Number(latestToday.receivedPMS ?? 0) + Number(latestToday.receivedAGO ?? 0)).toLocaleString()
             : 'Not Submitted',
-          receivedPMS: Number(latestToday?.receivedPMS || 0),
-          receivedAGO: Number(latestToday?.receivedAGO || 0),
+          receivedPMS: stationReportsToday.reduce((sum, report) => sum + Number(report?.receivedPMS || 0), 0),
+          receivedAGO: stationReportsToday.reduce((sum, report) => sum + Number(report?.receivedAGO || 0), 0),
           closingStockPMS: latestToday
             ? Math.round(getClosingForProduct(latestToday, 'pms')).toLocaleString()
             : 'Not Submitted',
@@ -464,10 +511,10 @@ const SupervisorDashboardPage = () => {
           closingStockPMSRaw: latestToday ? getClosingForProduct(latestToday, 'pms') : null,
           closingStockAGORaw: latestToday ? getClosingForProduct(latestToday, 'ago') : null,
           totalSalesLitersPMS: latestToday
-            ? Math.round(latestToday.totalSalesLitersPMS ?? latestToday.salesPMS ?? 0).toLocaleString()
+            ? Math.round(stationReportsToday.reduce((sum, report) => sum + Number(report?.totalSalesLitersPMS ?? report?.salesPMS ?? 0), 0)).toLocaleString()
             : 'Not Submitted',
           totalSalesLitersAGO: latestToday
-            ? Math.round(latestToday.totalSalesLitersAGO ?? latestToday.salesAGO ?? 0).toLocaleString()
+            ? Math.round(stationReportsToday.reduce((sum, report) => sum + Number(report?.totalSalesLitersAGO ?? report?.salesAGO ?? 0), 0)).toLocaleString()
             : 'Not Submitted',
           managerEnteredSalesLitersPMS: latestToday?.managerEnteredSalesLitersPMS ?? null,
           managerEnteredSalesLitersAGO: latestToday?.managerEnteredSalesLitersAGO ?? null,
@@ -487,13 +534,13 @@ const SupervisorDashboardPage = () => {
               - Number(latestToday.rttAGO || 0)
             )
             : null,
-          pumpSalesLitersPMS: latestToday?.pumpSalesLitersPMS ?? null,
-          pumpSalesLitersAGO: latestToday?.pumpSalesLitersAGO ?? null,
+          pumpSalesLitersPMS: latestToday ? stationReportsToday.reduce((sum, report) => sum + Number(report?.pumpSalesLitersPMS || 0), 0) : null,
+          pumpSalesLitersAGO: latestToday ? stationReportsToday.reduce((sum, report) => sum + Number(report?.pumpSalesLitersAGO || 0), 0) : null,
           rttPMS: latestToday ? latestToday.rttPMS ?? 'Not Submitted' : 'Not Submitted',
           rttAGO: latestToday ? latestToday.rttAGO ?? 'Not Submitted' : 'Not Submitted',
           managerRemark: latestToday ? latestToday.remark ?? latestToday.remarks ?? '-' : 'Not Submitted',
-          reportDate: latestToday ? latestToday.date : 'Pending',
-          expenseAmount: latestToday ? Number(latestToday.expenseAmount || 0) : 0,
+          reportDate: latestToday ? reportRangeLabel : 'Pending',
+          expenseAmount: latestToday ? stationReportsToday.reduce((sum, report) => sum + Number(report?.expenseAmount || 0), 0) : 0,
           expenseDescription: latestToday ? latestToday.expenseDescription || '-' : 'Not Submitted',
           expenseItems: Array.isArray(latestToday?.expenseItems) ? latestToday.expenseItems : [],
           paymentBreakdown,
@@ -510,14 +557,14 @@ const SupervisorDashboardPage = () => {
           pumpMeterRows,
           pumpReadingsCount: pumpReadings.length,
           sortKey: station.name.toLowerCase(),
-          pendingSubmissionDays: pendingInfo.pendingDays,
+          pendingSubmissionDays: isSingleReportDate ? pendingInfo.pendingDays : pendingDaysInRange,
           pendingSubmissionNoHistory: pendingInfo.noPriorSubmissions,
           pendingSubmissionSummaryExport: pendingFmt.exportText,
           pendingSubmissionTableTitle: pendingFmt.tableTitle,
           pendingSubmissionTableSubtitle: pendingFmt.tableSubtitle || '',
         }
       })
-  }, [reportDatesByStation, reportViewDate, reports, stations, today, users])
+  }, [isSingleReportDate, reportDatesByStation, reportRange.end, reportRange.start, reportRangeDates, reportRangeLabel, reports, stations, today, users])
 
   const filteredDailyOpeningQueueRows = useMemo(
     () =>
@@ -909,17 +956,22 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const pendingInfo = getDailyReportPendingInfo(reportViewDate, stationReportDates)
-        const pendingFmt = formatPendingSubmissionSummary(pendingInfo, reportViewDate)
+        const rangeReportDates = new Set(reportRangeDates.filter((date) => stationReportDates.has(date)))
+        const pendingDaysInRange = Math.max(0, reportRangeDates.length - rangeReportDates.size)
+        const pendingInfo = getDailyReportPendingInfo(reportRange.end, stationReportDates)
+        const pendingFmt = formatPendingSubmissionSummary(
+          { ...pendingInfo, pendingDays: isSingleReportDate ? pendingInfo.pendingDays : pendingDaysInRange },
+          reportRange.end,
+        )
         const stationReportsToday = reports.filter(
-          (report) => report.stationId === station.id && report.date === reportViewDate,
+          (report) => report.stationId === station.id && report.date >= reportRange.start && report.date <= reportRange.end,
         )
         const latestToday = stationReportsToday.at(-1)
         const manager = staffByStation.get(station.id)
-        const expenseItems = Array.isArray(latestToday?.expenseItems) ? latestToday.expenseItems : []
+        const expenseItems = stationReportsToday.flatMap((report) => Array.isArray(report.expenseItems) ? report.expenseItems : [])
         const totalExpense = expenseItems.length
           ? expenseItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-          : Number(latestToday?.expenseAmount || 0)
+          : stationReportsToday.reduce((sum, report) => sum + Number(report?.expenseAmount || 0), 0)
 
         const labels = expenseItems.length
           ? expenseItems.map((item) => item.label)
@@ -938,21 +990,25 @@ const SupervisorDashboardPage = () => {
           stationId: station.id,
           stationName: station.name,
           managerName: manager?.name || 'Unassigned',
-          expenseStatus: latestToday ? (totalExpense > 0 ? 'Submitted' : 'No Expense') : 'Pending',
+          expenseStatus: latestToday
+            ? pendingDaysInRange > 0 && !isSingleReportDate
+              ? 'Partial'
+              : totalExpense > 0 ? 'Submitted' : 'No Expense'
+            : 'Pending',
           totalExpense,
           expenseLines: expenseItems.length || (latestToday?.expenseDescription ? 1 : 0),
           expenseItems,
           expenseDescription: latestToday?.expenseDescription || '',
           topCategory,
-          reportDate: latestToday ? latestToday.date : 'Pending',
-          pendingSubmissionDays: pendingInfo.pendingDays,
+          reportDate: latestToday ? reportRangeLabel : 'Pending',
+          pendingSubmissionDays: isSingleReportDate ? pendingInfo.pendingDays : pendingDaysInRange,
           pendingSubmissionNoHistory: pendingInfo.noPriorSubmissions,
           pendingSubmissionSummaryExport: pendingFmt.exportText,
           pendingSubmissionTableTitle: pendingFmt.tableTitle,
           pendingSubmissionTableSubtitle: pendingFmt.tableSubtitle || '',
         }
       })
-  }, [reportDatesByStation, reportViewDate, reports, stations, users])
+  }, [isSingleReportDate, reportDatesByStation, reportRange.end, reportRange.start, reportRangeDates, reportRangeLabel, reports, stations, users])
 
   const filteredExpenseQueueRows = useMemo(
     () =>
@@ -1911,19 +1967,36 @@ const SupervisorDashboardPage = () => {
                 {label}
               </button>
             ))}
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-sm font-medium text-slate-400">Date</span>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-slate-400">Date range</span>
               <input
                 type="date"
-                value={reportViewDate}
+                value={reportRangeFrom}
                 max={today}
-                onChange={(event) => setReportViewDate(event.target.value || today)}
+                onChange={(event) => {
+                  const value = event.target.value || today
+                  setReportRangeFrom(value)
+                }}
                 className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white outline-none transition focus:border-[#a9cd39]/50"
               />
-              {reportViewDate !== today && (
+              <span className="text-xs text-slate-500">to</span>
+              <input
+                type="date"
+                value={reportRangeTo}
+                max={today}
+                onChange={(event) => {
+                  const value = event.target.value || today
+                  setReportRangeTo(value)
+                }}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white outline-none transition focus:border-[#a9cd39]/50"
+              />
+              {(reportRange.start !== today || reportRange.end !== today) && (
                 <button
                   type="button"
-                  onClick={() => setReportViewDate(today)}
+                  onClick={() => {
+                    setReportRangeFrom(today)
+                    setReportRangeTo(today)
+                  }}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
                 >
                   Today
@@ -2078,15 +2151,15 @@ const SupervisorDashboardPage = () => {
         <>
           {!filtersScreenOpen && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Total Retail Stations</p>
                 <p className="text-2xl font-bold">{dailyOpeningQueueRows.length}</p>
               </Card>
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Submitted Today</p>
                 <p className="text-2xl font-bold text-emerald-600">{submittedCount}</p>
               </Card>
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Pending Today</p>
                 <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
               </Card>
@@ -2125,7 +2198,7 @@ const SupervisorDashboardPage = () => {
               </div>
             </Card>
           ) : (
-            <Card className="space-y-4">
+            <Card className="supervisor-light-section space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <h3 className="text-lg font-semibold">Daily Opening Stock Queue</h3>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2161,15 +2234,18 @@ const SupervisorDashboardPage = () => {
                   {dailyFiltersSummary}
                   {' - '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
+                  {' - '}
+                  Range: {reportRangeLabel}
                 </p>
               </div>
               {dailyOpeningQueueRows.length ? (
                 filteredDailyOpeningQueueRows.length ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="supervisor-light-queue-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {filteredDailyOpeningQueueRows.map((row) => {
                       const submitted = row.reportStatus === 'Submitted'
+                      const partial = row.reportStatus === 'Partial'
                       const noSales = row.reportStatus === 'No Sales Declared'
-                      const pending = !submitted && !noSales
+                      const pending = !submitted && !partial && !noSales
                       const late = pending && !row.pendingSubmissionNoHistory && Number(row.pendingSubmissionDays || 0) >= 1
                       return (
                         <button
@@ -2182,8 +2258,8 @@ const SupervisorDashboardPage = () => {
                               navigate(`/stations/${row.stationId}/history`)
                             }
                           }}
-                          className={`rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${
-                            submitted ? 'border-[#a9cd39]/25 bg-[#a9cd39]/5'
+                          className={`supervisor-light-queue-card ${submitted || partial ? 'is-submitted' : noSales ? 'is-no-sales' : late ? 'is-late' : 'is-pending'} rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${
+                            submitted || partial ? 'border-[#a9cd39]/25 bg-[#a9cd39]/5'
                             : noSales ? 'border-white/10 bg-white/5'
                             : late ? 'border-rose-500/25 bg-rose-500/5'
                             : 'border-amber-500/25 bg-amber-500/5'
@@ -2196,12 +2272,13 @@ const SupervisorDashboardPage = () => {
                               <p className="text-xs text-slate-500 mt-0.5 truncate">{row.managerName}</p>
                             </div>
                             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${
-                              submitted ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
+                              submitted || partial ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
                               : noSales ? 'bg-white/10 text-slate-400'
                               : late ? 'bg-rose-500/15 text-rose-400'
                               : 'bg-amber-500/15 text-amber-400'
                             }`}>
                               {submitted ? 'Submitted'
+                               : partial ? `Partial (${row.pendingSubmissionDays} missing)`
                                : noSales ? 'No Sales'
                                : late ? `Late ${row.pendingSubmissionDays}d`
                                : 'Pending'}
@@ -2209,7 +2286,7 @@ const SupervisorDashboardPage = () => {
                           </div>
 
                           {/* Key figures */}
-                          {submitted && (
+                          {(submitted || partial) && (
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               {[
                                 { label: 'PMS Closing', value: row.closingStockPMS + ' L' },
@@ -2217,7 +2294,7 @@ const SupervisorDashboardPage = () => {
                                 { label: 'Sales', value: 'NGN ' + Math.round(Number(row.totalSalesAmount || 0)).toLocaleString() },
                                 { label: 'Variance', value: 'NGN ' + Math.round(Number(row.cashMovementVariance || 0)).toLocaleString() },
                               ].map(({ label, value }) => (
-                                <div key={label} className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                                <div key={label} className="supervisor-light-metric rounded-lg bg-black/20 px-2.5 py-1.5">
                                   <p className="text-slate-500 text-xs">{label}</p>
                                   <p className={`font-semibold mt-0.5 ${label === 'Variance' && Math.abs(Number(row.cashMovementVariance || 0)) > 0 ? 'text-amber-400' : 'text-white'}`}>{value}</p>
                                 </div>
@@ -2652,7 +2729,7 @@ const SupervisorDashboardPage = () => {
                     <div className="space-y-2">
                       {selectedDailyOpeningReport.pumpMeterRows.map((item, index) => (
                         <p key={`${item.label}-${index}`} className="break-words text-sm leading-6 text-slate-200">
-                          {item.label}:{' '}
+                          {item.label}{item.productType ? ` ${item.productType}` : ''}:{' '}
                           {item.noBaseline
                             ? 'No baseline'
                             : `${item.opening ?? '-'} to ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
@@ -2939,15 +3016,15 @@ const SupervisorDashboardPage = () => {
         <>
           {!filtersScreenOpen && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Stations in View</p>
                 <p className="text-2xl font-bold">{filteredDailyOpeningQueueRows.length}</p>
               </Card>
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Total Bank/Channel Deposits (NGN)</p>
                 <p className="text-2xl font-bold">{Math.round(totalBankDepositsToday).toLocaleString()}</p>
               </Card>
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Net Variance (NGN)</p>
                 <p className="text-2xl font-bold">{Math.round(totalCashVarianceToday).toLocaleString()}</p>
               </Card>
@@ -2985,7 +3062,7 @@ const SupervisorDashboardPage = () => {
               </div>
             </Card>
           ) : (
-            <Card className="space-y-4">
+            <Card className="supervisor-light-section space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <h3 className="text-lg font-semibold">Cash Flow Queue</h3>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3021,37 +3098,40 @@ const SupervisorDashboardPage = () => {
                   {dailyFiltersSummary}
                   {' - '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
+                  {' - '}
+                  Range: {reportRangeLabel}
                 </p>
               </div>
               {dailyOpeningQueueRows.length ? (
                 filteredDailyOpeningQueueRows.length ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="supervisor-light-queue-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {filteredDailyOpeningQueueRows.map((row) => {
                       const submitted = row.reportStatus === 'Submitted'
+                      const partial = row.reportStatus === 'Partial'
                       const variance = Math.round(Number(row.cashMovementVariance || 0))
                       return (
                         <button
                           key={row.stationId}
                           type="button"
                           onClick={() => {
-                            if (submitted) {
+                            if (submitted || partial) {
                               setSelectedDailyOpeningReport(row)
                             } else {
                               navigate(`/stations/${row.stationId}/history`)
                             }
                           }}
-                          className={`rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${submitted ? 'border-white/10 bg-white/5' : 'border-amber-500/20 bg-amber-500/5'}`}
+                          className={`supervisor-light-queue-card ${submitted || partial ? 'is-submitted' : 'is-pending'} rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${submitted || partial ? 'border-white/10 bg-white/5' : 'border-amber-500/20 bg-amber-500/5'}`}
                         >
                           <div className="flex items-start justify-between gap-2 mb-3">
                             <div className="min-w-0">
                               <p className="font-bold text-white truncate">{row.stationName}</p>
                               <p className="text-xs text-slate-500 mt-0.5">{row.managerName}</p>
                             </div>
-                            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${submitted ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-amber-500/15 text-amber-400'}`}>
-                              {submitted ? 'Submitted' : 'Pending'}
+                            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${submitted || partial ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-amber-500/15 text-amber-400'}`}>
+                              {submitted ? 'Submitted' : partial ? `Partial (${row.pendingSubmissionDays} missing)` : 'Pending'}
                             </span>
                           </div>
-                          {submitted && (
+                          {(submitted || partial) && (
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               {[
                                 { label: 'Cash B/F', value: 'NGN ' + Math.round(Number(row.cashBf || 0)).toLocaleString() },
@@ -3061,7 +3141,7 @@ const SupervisorDashboardPage = () => {
                                 { label: 'POS', value: 'NGN ' + Math.round(Number(row.posValue || 0)).toLocaleString() },
                                 { label: 'Variance', value: 'NGN ' + variance.toLocaleString() },
                               ].map(({ label, value }) => (
-                                <div key={label} className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                                <div key={label} className="supervisor-light-metric rounded-lg bg-black/20 px-2.5 py-1.5">
                                   <p className="text-slate-500 text-xs">{label}</p>
                                   <p className={`font-semibold mt-0.5 ${label === 'Variance' && Math.abs(variance) > 0 ? 'text-amber-400' : 'text-white'}`}>{value}</p>
                                 </div>
@@ -3093,15 +3173,15 @@ const SupervisorDashboardPage = () => {
         <>
           {!filtersScreenOpen && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Expense Reports Submitted</p>
                 <p className="text-2xl font-bold text-emerald-600">{expenseSubmittedCount}</p>
               </Card>
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Total Expense Today (NGN)</p>
                 <p className="text-2xl font-bold">{Math.round(totalExpenseToday).toLocaleString()}</p>
               </Card>
-              <Card>
+              <Card className="supervisor-light-stat">
                 <p className="text-sm text-slate-500">Top Spending Station</p>
                 <p className="text-sm font-semibold">{topSpendingStation?.stationName || '-'}</p>
                 <p className="text-base font-bold">
@@ -3142,7 +3222,7 @@ const SupervisorDashboardPage = () => {
               </div>
             </Card>
           ) : (
-            <Card className="space-y-4">
+            <Card className="supervisor-light-section space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <h3 className="text-lg font-semibold">Daily Expense Queue</h3>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3178,16 +3258,21 @@ const SupervisorDashboardPage = () => {
                   {expenseFiltersSummary}
                   {' - '}
                   Showing {filteredExpenseQueueRows.length} of {expenseQueueRows.length} stations
+                  {' - '}
+                  Range: {reportRangeLabel}
                 </p>
               </div>
               {expenseQueueRows.length ? (
                 filteredExpenseQueueRows.length ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="supervisor-light-queue-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {filteredExpenseQueueRows.map((row) => {
                       const submitted = row.expenseStatus === 'Submitted'
+                      const partial = row.expenseStatus === 'Partial'
                       const pending = row.expenseStatus === 'Pending'
                       const statusClass = submitted
                         ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
+                        : partial
+                          ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
                         : pending
                           ? 'bg-amber-500/15 text-amber-400'
                           : 'bg-slate-500/15 text-slate-300'
@@ -3201,8 +3286,8 @@ const SupervisorDashboardPage = () => {
                           key={row.stationId}
                           type="button"
                           onClick={() => navigate(`/stations/${row.stationId}`)}
-                          className={`rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${
-                            submitted
+                          className={`supervisor-light-queue-card ${submitted || partial ? 'is-submitted' : pending ? 'is-pending' : 'is-no-sales'} rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${
+                            submitted || partial
                               ? 'border-white/10 bg-white/5'
                               : pending
                                 ? 'border-amber-500/20 bg-amber-500/5'
@@ -3215,30 +3300,30 @@ const SupervisorDashboardPage = () => {
                               <p className="mt-0.5 text-xs text-slate-500">{row.managerName}</p>
                             </div>
                             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${statusClass}`}>
-                              {submitted ? 'Submitted' : row.expenseStatus}
+                              {submitted ? 'Submitted' : partial ? `Partial (${row.pendingSubmissionDays} missing)` : row.expenseStatus}
                             </span>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                            <div className="supervisor-light-metric rounded-lg bg-black/20 px-2.5 py-1.5">
                               <p className="text-xs text-slate-500">Total Expense</p>
                               <p className="mt-0.5 font-semibold text-white">NGN {Math.round(Number(row.totalExpense || 0)).toLocaleString()}</p>
                             </div>
-                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                            <div className="supervisor-light-metric rounded-lg bg-black/20 px-2.5 py-1.5">
                               <p className="text-xs text-slate-500">Lines</p>
                               <p className="mt-0.5 font-semibold text-white">{row.expenseLines}</p>
                             </div>
-                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                            <div className="supervisor-light-metric rounded-lg bg-black/20 px-2.5 py-1.5">
                               <p className="text-xs text-slate-500">Top Type</p>
                               <p className="mt-0.5 truncate font-semibold text-white">{row.topCategory}</p>
                             </div>
-                            <div className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                            <div className="supervisor-light-metric rounded-lg bg-black/20 px-2.5 py-1.5">
                               <p className="text-xs text-slate-500">Date</p>
                               <p className="mt-0.5 font-semibold text-white">{row.reportDate}</p>
                             </div>
                           </div>
 
-                          {submitted && expenseLines.length > 0 && (
+                          {(submitted || partial) && expenseLines.length > 0 && (
                             <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-black/15 p-3">
                               {expenseLines.slice(0, 4).map((item, index) => (
                                 <div key={`${item.label}-${index}`} className="flex justify-between gap-3 text-xs">

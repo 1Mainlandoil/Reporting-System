@@ -7,7 +7,7 @@ import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
 import { ROLES } from '../constants/roles'
 import { exportStationHistoryToExcel } from '../utils/exportExcel'
-import { getClosingForProduct } from '../utils/reportFields'
+import { getClosingForProduct, getPumpHistoryKey, normalizePumpProductType } from '../utils/reportFields'
 import { addCalendarDaysIso, formatStaffCalendarDay, getOldestMissingReportDateUpTo } from '../utils/reportPending'
 
 const REVIEW_STATUS_OPTIONS = ['Reviewed', 'Needs Attention', 'Escalated']
@@ -20,6 +20,20 @@ const formatNumber = (value, digits = 0) =>
 
 const formatMoney = (value) => `NGN ${formatNumber(Math.round(Number(value || 0)))}`
 const formatLiters = (value, digits = 0) => `${formatNumber(Number(value || 0), digits)} L`
+
+const normalizeDateRange = (from, to) => {
+  const start = from && to && from > to ? to : from
+  const end = from && to && from > to ? from : to
+  return { start, end }
+}
+
+const formatDateRangeLabel = (from, to) => {
+  const { start, end } = normalizeDateRange(from, to)
+  if (!start && !end) return 'All dates'
+  if (start && !end) return `${start} onward`
+  if (!start && end) return `Up to ${end}`
+  return start === end ? start : `${start} to ${end}`
+}
 
 const getReceivedProductType = (row) => {
   if (row?.noSalesDay) {
@@ -64,31 +78,41 @@ const getReadingValue = (item) => {
 const buildPumpMeterRows = (priorMap, todayList = []) => {
   const todayMap = new Map()
   const todayOpeningMap = new Map()
+  const todayMetaMap = new Map()
   for (const item of todayList) {
     const label = String(item?.label || '').trim()
-    if (!label) continue
+    const productType = normalizePumpProductType(item?.productType)
+    const key = getPumpHistoryKey(label, productType)
+    if (!key) continue
     const reading = getReadingValue(item)
     if (reading == null || Number.isNaN(reading)) continue
-    todayMap.set(label, reading)
+    todayMap.set(key, reading)
+    todayMetaMap.set(key, { label, productType })
     const opening = item.opening != null && item.opening !== '' ? Number(item.opening) : null
     if (opening != null && !Number.isNaN(opening)) {
-      todayOpeningMap.set(label, opening)
+      todayOpeningMap.set(key, opening)
     }
   }
 
-  const labels = new Set([...priorMap.keys(), ...todayMap.keys()])
-  return [...labels]
-    .sort((a, b) => a.localeCompare(b))
-    .map((label) => {
-      const opening = todayOpeningMap.has(label)
-        ? todayOpeningMap.get(label)
-        : priorMap.has(label)
-          ? priorMap.get(label)
+  const keys = new Set([...priorMap.keys(), ...todayMap.keys()])
+  return [...keys]
+    .sort((a, b) => {
+      const aMeta = todayMetaMap.get(a) || priorMap.get(a) || {}
+      const bMeta = todayMetaMap.get(b) || priorMap.get(b) || {}
+      return `${aMeta.label || ''} ${aMeta.productType || ''}`.localeCompare(`${bMeta.label || ''} ${bMeta.productType || ''}`)
+    })
+    .map((key) => {
+      const meta = todayMetaMap.get(key) || priorMap.get(key) || {}
+      const opening = todayOpeningMap.has(key)
+        ? todayOpeningMap.get(key)
+        : priorMap.has(key)
+          ? priorMap.get(key).closing
           : null
-      const todayClosing = todayMap.has(label) ? todayMap.get(label) : null
+      const todayClosing = todayMap.has(key) ? todayMap.get(key) : null
       if (todayClosing != null) {
         return {
-          label,
+          label: meta.label || '',
+          productType: meta.productType || 'PMS',
           opening,
           closing: todayClosing,
           used: true,
@@ -96,9 +120,9 @@ const buildPumpMeterRows = (priorMap, todayList = []) => {
         }
       }
       if (opening != null) {
-        return { label, opening, closing: opening, used: false, delta: 0 }
+        return { label: meta.label || '', productType: meta.productType || 'PMS', opening, closing: opening, used: false, delta: 0 }
       }
-      return { label, opening: null, closing: null, used: false, delta: null, noBaseline: true }
+      return { label: meta.label || '', productType: meta.productType || 'PMS', opening: null, closing: null, used: false, delta: null, noBaseline: true }
     })
 }
 
@@ -117,6 +141,8 @@ const StationReportHistoryPage = () => {
   const [selectedHistoryReportId, setSelectedHistoryReportId] = useState('')
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [historyFilterDate, setHistoryFilterDate] = useState('')
+  const [historyRangeFrom, setHistoryRangeFrom] = useState('')
+  const [historyRangeTo, setHistoryRangeTo] = useState('')
   const [exportNotice, setExportNotice] = useState('')
 
   const station = stations.find((item) => item.id === stationId)
@@ -210,13 +236,23 @@ const StationReportHistoryPage = () => {
     }
   }, [isStaffOwnStation, historyFilterDate, reportDatesSet, nextAllowedSubmitDate])
 
+  const isSupervisor = role === ROLES.SUPERVISOR
+  const historyRange = useMemo(() => normalizeDateRange(historyRangeFrom, historyRangeTo), [historyRangeFrom, historyRangeTo])
+  const activeHistoryRangeLabel = useMemo(
+    () => isStaffOwnStation ? (historyFilterDate || 'All dates') : formatDateRangeLabel(historyRange.start, historyRange.end),
+    [historyFilterDate, historyRange.end, historyRange.start, isStaffOwnStation],
+  )
   const filteredReports = reports.filter((report) => {
-    if (historyFilterDate && report.date !== historyFilterDate) {
-      return false
+    if (isStaffOwnStation) {
+      if (historyFilterDate && report.date !== historyFilterDate) {
+        return false
+      }
+      return true
     }
+    if (historyRange.start && report.date < historyRange.start) return false
+    if (historyRange.end && report.date > historyRange.end) return false
     return true
   })
-  const isSupervisor = role === ROLES.SUPERVISOR
 
   if (!station) {
     return <EmptyState title="Station not found" message="The selected retail station does not exist." />
@@ -265,13 +301,14 @@ const StationReportHistoryPage = () => {
     if (Array.isArray(row.pumpMeterRows) && row.pumpMeterRows.length) {
       return row.pumpMeterRows
         .map((item) => {
+          const pumpLabel = `${item.label}${item.productType ? ` ${item.productType}` : ''}`
           if (item.noBaseline) {
-            return `${item.label}: no baseline`
+            return `${pumpLabel}: no baseline`
           }
           const opening = item.opening == null ? '-' : item.opening
           const closing = item.closing == null ? '-' : item.closing
           const tag = item.used ? 'used' : 'unused'
-          return `${item.label}: ${opening}-${closing} (${tag})`
+          return `${pumpLabel}: ${opening}-${closing} (${tag})`
         })
         .join(', ')
     }
@@ -305,7 +342,8 @@ const StationReportHistoryPage = () => {
       const pumpRows = buildPumpMeterRows(priorClosings, report.pumpReadings)
       for (const row of pumpRows) {
         if (row.closing != null) {
-          priorClosings.set(row.label, row.closing)
+          const key = getPumpHistoryKey(row.label, row.productType)
+          if (key) priorClosings.set(key, { label: row.label, productType: row.productType, closing: row.closing })
         }
       }
       enrichedById.set(report.id, {
@@ -333,7 +371,7 @@ const StationReportHistoryPage = () => {
     null
 
   const historyInsights = (() => {
-    const source = chronAsc
+    const source = [...filteredReports].sort((a, b) => a.date.localeCompare(b.date))
     const totalReports = source.length
     const totalPms = source.reduce((sum, row) => sum + getSalesPms(row), 0)
     const totalAgo = source.reduce((sum, row) => sum + getSalesAgo(row), 0)
@@ -560,7 +598,7 @@ const StationReportHistoryPage = () => {
               type="button"
               onClick={async () => {
                 setExportNotice('')
-                if (!filteredReports.length) { setExportNotice(historyFilterDate ? 'No report for this date.' : 'No reports to export.'); return }
+                if (!filteredReports.length) { setExportNotice(activeHistoryRangeLabel === 'All dates' ? 'No reports to export.' : 'No report in this date range.'); return }
                 exportStationHistoryToExcel(station.name, filteredReports)
                 await refreshFromSupabase()
               }}
@@ -577,10 +615,10 @@ const StationReportHistoryPage = () => {
           <div className="rounded-2xl border border-white/5 bg-white/5 p-4 space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-white">
-                Filter by date
+                Filter by date range
               </p>
               <span className="text-xs text-slate-500">
-                {filteredReports.length} of {reports.length} report{reports.length !== 1 ? 's' : ''}
+                {filteredReports.length} of {reports.length} report{reports.length !== 1 ? 's' : ''} - {activeHistoryRangeLabel}
               </span>
             </div>
 
@@ -636,22 +674,35 @@ const StationReportHistoryPage = () => {
                 </div>
               </div>
             ) : (
-              /* Admin/supervisor date picker */
+              /* Admin/supervisor date range picker */
               <div className="flex flex-wrap items-end gap-3">
                 <label className="block space-y-1.5">
-                  <span className="text-xs text-slate-400">Pick a date</span>
+                  <span className="text-xs text-slate-400">From</span>
                   <input
                     type="date"
-                    value={historyFilterDate}
+                    value={historyRangeFrom}
                     max={todayIso}
-                    onChange={(event) => setHistoryFilterDate(event.target.value)}
+                    onChange={(event) => setHistoryRangeFrom(event.target.value)}
                     className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-[#a9cd39]/40 focus:outline-none"
                   />
                 </label>
-                {historyFilterDate && (
+                <label className="block space-y-1.5">
+                  <span className="text-xs text-slate-400">To</span>
+                  <input
+                    type="date"
+                    value={historyRangeTo}
+                    max={todayIso}
+                    onChange={(event) => setHistoryRangeTo(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-[#a9cd39]/40 focus:outline-none"
+                  />
+                </label>
+                {(historyRangeFrom || historyRangeTo) && (
                   <button
                     type="button"
-                    onClick={() => setHistoryFilterDate('')}
+                    onClick={() => {
+                      setHistoryRangeFrom('')
+                      setHistoryRangeTo('')
+                    }}
                     className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-300 hover:bg-white/10 transition"
                   >
                     Clear filter

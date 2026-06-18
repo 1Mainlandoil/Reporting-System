@@ -10,14 +10,30 @@ const AppLayout = () => {
   const hydrateFromSupabase = useAppStore((state) => state.hydrateFromSupabase)
   const showSidebar = role !== 'staff'
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [supervisorTheme, setSupervisorTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'light'
+    return window.localStorage.getItem('supervisor-theme') || 'light'
+  })
 
   useEffect(() => {
     hydrateFromSupabase()
   }, [hydrateFromSupabase])
 
+  useEffect(() => {
+    if (role === 'supervisor') {
+      window.localStorage.setItem('supervisor-theme', supervisorTheme)
+    }
+  }, [role, supervisorTheme])
+
+  const isSupervisorLight = role === 'supervisor' && supervisorTheme === 'light'
+
   return (
-    <div className="min-h-screen bg-[#0a0e1a] text-slate-100">
-      <Navbar onToggleSidebar={showSidebar ? () => setSidebarOpen((p) => !p) : undefined} />
+    <div className={`min-h-screen bg-[#0a0e1a] text-slate-100 ${isSupervisorLight ? 'supervisor-light-mode' : ''}`}>
+      <Navbar
+        onToggleSidebar={showSidebar ? () => setSidebarOpen((p) => !p) : undefined}
+        supervisorTheme={role === 'supervisor' ? supervisorTheme : undefined}
+        onToggleSupervisorTheme={role === 'supervisor' ? () => setSupervisorTheme((current) => current === 'light' ? 'dark' : 'light') : undefined}
+      />
 
       {showSidebar && (
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />

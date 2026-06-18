@@ -12,3 +12,270 @@ body {
 html.dark body {
   background: #0a0e1a;
 }
+
+.supervisor-light-mode {
+  background: #f4f6f1 !important;
+  color: #172016 !important;
+}
+
+.supervisor-light-mode header,
+.supervisor-light-mode aside {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(31, 41, 55, 0.1) !important;
+  color: #172016 !important;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+.supervisor-light-mode main {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(169, 205, 57, 0.12), transparent 24rem),
+    linear-gradient(180deg, #fbfcf8 0%, #f3f6ed 100%);
+}
+
+.supervisor-light-mode .bg-\[\#0d1220\],
+.supervisor-light-mode .bg-\[\#111827\],
+.supervisor-light-mode .bg-\[\#131929\] {
+  background-color: #ffffff !important;
+}
+
+.supervisor-light-mode .bg-white\/5,
+.supervisor-light-mode .bg-white\/\[0\.04\],
+.supervisor-light-mode .bg-white\/3,
+.supervisor-light-mode .bg-black\/20 {
+  background-color: rgba(248, 250, 252, 0.88) !important;
+}
+
+.supervisor-light-mode .border-white\/5,
+.supervisor-light-mode .border-white\/8,
+.supervisor-light-mode .border-white\/10 {
+  border-color: rgba(31, 41, 55, 0.1) !important;
+}
+
+.supervisor-light-mode .text-white,
+.supervisor-light-mode .text-slate-100,
+.supervisor-light-mode .text-slate-200,
+.supervisor-light-mode .text-slate-300 {
+  color: #111827 !important;
+}
+
+.supervisor-light-mode .text-slate-400,
+.supervisor-light-mode .text-slate-500,
+.supervisor-light-mode .text-slate-600 {
+  color: #64748b !important;
+}
+
+.supervisor-light-mode .shadow-\[0_4px_24px_rgba\(0\,0\,0\,0\.4\)\] {
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08) !important;
+}
+
+.supervisor-light-mode .rounded-2xl.border,
+.supervisor-light-mode .rounded-3xl.border,
+.supervisor-light-mode .rounded-xl.border {
+  border-color: rgba(31, 41, 55, 0.1) !important;
+}
+
+.supervisor-light-mode .bg-\[\#c4151d\],
+.supervisor-light-mode .bg-rose-600,
+.supervisor-light-mode .bg-emerald-600,
+.supervisor-light-mode .bg-\[\#a9cd39\] {
+  color: #ffffff !important;
+}
+
+.supervisor-light-mode .text-\[\#a9cd39\] {
+  color: #4f7d13 !important;
+}
+
+.supervisor-light-mode .bg-\[\#a9cd39\] {
+  background-color: #5f8f1f !important;
+}
+
+.supervisor-light-mode .bg-\[\#a9cd39\]\/5,
+.supervisor-light-mode .bg-\[\#a9cd39\]\/10,
+.supervisor-light-mode .bg-\[\#a9cd39\]\/15 {
+  background-color: rgba(95, 143, 31, 0.1) !important;
+}
+
+.supervisor-light-mode .border-\[\#a9cd39\]\/15,
+.supervisor-light-mode .border-\[\#a9cd39\]\/20,
+.supervisor-light-mode .border-\[\#a9cd39\]\/25,
+.supervisor-light-mode .border-\[\#a9cd39\]\/30 {
+  border-color: rgba(95, 143, 31, 0.24) !important;
+}
+
+.supervisor-light-mode input,
+.supervisor-light-mode select,
+.supervisor-light-mode textarea {
+  background-color: #ffffff !important;
+  border-color: rgba(31, 41, 55, 0.14) !important;
+  color: #111827 !important;
+}
+
+.supervisor-light-mode option {
+  color: #111827;
+  background: #ffffff;
+}
+
+.supervisor-light-mode .supervisor-light-stat {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0.75rem 1.25rem !important;
+}
+
+.supervisor-light-mode .supervisor-light-stat p:first-child {
+  color: #111827 !important;
+  font-size: 0.78rem;
+}
+
+.supervisor-light-mode .supervisor-light-stat p:last-child {
+  font-size: 1.9rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.supervisor-light-mode .supervisor-light-section {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.supervisor-light-mode .supervisor-light-section > div:first-child {
+  margin-bottom: 0.35rem;
+  padding: 0 0.25rem;
+}
+
+.supervisor-light-mode .supervisor-light-section h3 {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #111827 !important;
+}
+
+.supervisor-light-mode .supervisor-light-section button[class*="bg-[#0d1220]"],
+.supervisor-light-mode .supervisor-light-section button[class*="bg-emerald-600"] {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #111827 !important;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+
+.supervisor-light-mode .supervisor-light-section button[class*="bg-[#0d1220]"]:hover,
+.supervisor-light-mode .supervisor-light-section button[class*="bg-emerald-600"]:hover {
+  color: #e84e1b !important;
+  background: rgba(232, 78, 27, 0.06) !important;
+}
+
+.supervisor-light-mode .supervisor-light-section > .rounded-xl.border {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 0.25rem !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-grid {
+  gap: 0.75rem 1.5rem !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card {
+  position: relative;
+  min-height: 10.5rem;
+  overflow: visible;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0.95rem 1.05rem 1.05rem 1.35rem !important;
+  transform: none !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  width: 3px;
+  border-radius: 999px;
+  background: #7aa62a;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card.is-submitted::before {
+  background: #4f8f1f;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card.is-pending::before {
+  background: #ba7517;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card.is-late::before {
+  background: #e24b4a;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card.is-no-sales::before {
+  background: #94a3b8;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card:hover {
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card .font-bold {
+  font-weight: 600 !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card > div:first-child {
+  margin-bottom: 1rem !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card span.rounded-full {
+  background: #edf4e4 !important;
+  color: #3b6d11 !important;
+  font-size: 0.62rem !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card.is-pending span.rounded-full {
+  background: #faeeda !important;
+  color: #854f0b !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card.is-late span.rounded-full {
+  background: #fcebeb !important;
+  color: #a32d2d !important;
+}
+
+.supervisor-light-mode .supervisor-light-metric {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+.supervisor-light-mode .supervisor-light-metric p:first-child {
+  color: #111827 !important;
+  font-size: 0.66rem !important;
+  line-height: 1.2;
+}
+
+.supervisor-light-mode .supervisor-light-metric p:last-child {
+  color: #111827 !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+}
+
+.supervisor-light-mode .supervisor-light-queue-card .border-t {
+  border-color: transparent !important;
+}
+
+@media (max-width: 640px) {
+  .supervisor-light-mode .supervisor-light-stat {
+    padding: 0.5rem 0.25rem !important;
+  }
+
+  .supervisor-light-mode .supervisor-light-queue-card {
+    min-height: auto;
+  }
+}

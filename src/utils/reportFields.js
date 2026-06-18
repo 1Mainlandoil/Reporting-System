@@ -102,7 +102,16 @@ export const getPumpReadingOpening = (item) => {
   return null
 }
 
-/** Last recorded closing per pump label across prior reports (any gap in use). */
+export const normalizePumpProductType = (productType) =>
+  String(productType || '').toUpperCase() === 'AGO' ? 'AGO' : 'PMS'
+
+export const getPumpHistoryKey = (label, productType = 'PMS') => {
+  const normalizedLabel = String(label || '').trim()
+  if (!normalizedLabel) return ''
+  return `${normalizedLabel}::${normalizePumpProductType(productType)}`
+}
+
+/** Last recorded closing per pump label + product type across prior reports (any gap in use). */
 export const buildLastPumpClosingMap = (reports = []) => {
   const map = new Map()
   const sorted = [...reports].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
@@ -110,15 +119,17 @@ export const buildLastPumpClosingMap = (reports = []) => {
     const readings = Array.isArray(report.pumpReadings) ? report.pumpReadings : []
     for (const item of readings) {
       const label = String(item?.label || '').trim()
+      const productType = normalizePumpProductType(item?.productType)
+      const key = getPumpHistoryKey(label, productType)
       const closing = getPumpReadingClosing(item)
       if (!label || closing == null || Number.isNaN(closing)) {
         continue
       }
-      map.set(label, closing)
+      map.set(key, { label, productType, closing })
     }
   }
   return map
 }
 
 export const priorPumpReadingsFromMap = (closingMap) =>
-  [...closingMap.entries()].map(([label, closing]) => ({ label, closing }))
+  [...closingMap.values()].map(({ label, productType, closing }) => ({ label, productType, closing }))
