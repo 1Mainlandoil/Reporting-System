@@ -468,6 +468,8 @@ const SupervisorDashboardPage = () => {
         const pumpReadings = Array.isArray(latestToday?.pumpReadings) ? latestToday.pumpReadings : []
         const priorPumpReadings = Array.isArray(previousReport?.pumpReadings) ? previousReport.pumpReadings : []
         const pumpMeterRows = buildPumpRowsWithCarry(priorPumpReadings, pumpReadings)
+        const totalRttPMS = stationReportsToday.reduce((sum, report) => sum + Number(report?.rttPMS || 0), 0)
+        const totalRttAGO = stationReportsToday.reduce((sum, report) => sum + Number(report?.rttAGO || 0), 0)
 
         return {
           stationId: station.id,
@@ -536,8 +538,8 @@ const SupervisorDashboardPage = () => {
             : null,
           pumpSalesLitersPMS: latestToday ? stationReportsToday.reduce((sum, report) => sum + Number(report?.pumpSalesLitersPMS || 0), 0) : null,
           pumpSalesLitersAGO: latestToday ? stationReportsToday.reduce((sum, report) => sum + Number(report?.pumpSalesLitersAGO || 0), 0) : null,
-          rttPMS: latestToday ? latestToday.rttPMS ?? 'Not Submitted' : 'Not Submitted',
-          rttAGO: latestToday ? latestToday.rttAGO ?? 'Not Submitted' : 'Not Submitted',
+          rttPMS: latestToday ? totalRttPMS : 'Not Submitted',
+          rttAGO: latestToday ? totalRttAGO : 'Not Submitted',
           managerRemark: latestToday ? latestToday.remark ?? latestToday.remarks ?? '-' : 'Not Submitted',
           reportDate: latestToday ? reportRangeLabel : 'Pending',
           expenseAmount: latestToday ? stationReportsToday.reduce((sum, report) => sum + Number(report?.expenseAmount || 0), 0) : 0,
