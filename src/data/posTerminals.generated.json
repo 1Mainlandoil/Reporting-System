@@ -1,0 +1,1348 @@
+{
+  "source": "POS TERMINAL IDS.xlsx",
+  "generatedAt": "2026-06-16T12:52:06.088Z",
+  "aliases": {
+    "ABAKILIKI 1": "ABAKALIKI 1",
+    "NNEATOR": "NNEATO",
+    "ONITSHA 3": "ONITSHA 33"
+  },
+  "summary": {
+    "excelRows": 220,
+    "appStations": 38,
+    "matchedStations": 37,
+    "matchedTerminals": 219,
+    "unmatchedRows": 1
+  },
+  "stations": {
+    "stn-1": {
+      "stationId": "stn-1",
+      "stationName": "ABA 1",
+      "terminals": [
+        {
+          "tid": "2LUX03EB",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX03EB"
+        },
+        {
+          "tid": "2082FO96",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082FO96"
+        },
+        {
+          "tid": "2TPTG8PA",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTG8PA"
+        }
+      ]
+    },
+    "stn-2": {
+      "stationId": "stn-2",
+      "stationName": "ABA 2",
+      "terminals": [
+        {
+          "tid": "2214CG6K",
+          "bank": "FCMB",
+          "label": "FCMB - 2214CG6K"
+        },
+        {
+          "tid": "2TPTG4PI",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTG4PI"
+        },
+        {
+          "tid": "2TPTI5HC",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTI5HC"
+        },
+        {
+          "tid": "2TPTKIJG",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTKIJG"
+        },
+        {
+          "tid": "21060582",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060582"
+        },
+        {
+          "tid": "2033Z3M4",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M4"
+        }
+      ]
+    },
+    "stn-3": {
+      "stationId": "stn-3",
+      "stationName": "ABA 3",
+      "terminals": [
+        {
+          "tid": "2MP1S11N",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1S11N"
+        },
+        {
+          "tid": "2TPTC2KZ",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTC2KZ"
+        }
+      ]
+    },
+    "stn-4": {
+      "stationId": "stn-4",
+      "stationName": "ABAKALIKI 1",
+      "terminals": [
+        {
+          "tid": "2LUX01P6",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX01P6"
+        },
+        {
+          "tid": "2LUX04U0",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX04U0"
+        },
+        {
+          "tid": "2082FH57",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082FH57"
+        },
+        {
+          "tid": "2MP1T4J6",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1T4J6"
+        },
+        {
+          "tid": "2TPT9T7X",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT9T7X"
+        },
+        {
+          "tid": "21060563",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060563"
+        },
+        {
+          "tid": "2PQ35157",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35157"
+        }
+      ]
+    },
+    "stn-5": {
+      "stationId": "stn-5",
+      "stationName": "ABAKILIKI 2",
+      "terminals": []
+    },
+    "stn-6": {
+      "stationId": "stn-6",
+      "stationName": "ABUJA 1",
+      "terminals": [
+        {
+          "tid": "221438UM",
+          "bank": "FCMB",
+          "label": "FCMB - 221438UM"
+        },
+        {
+          "tid": "2LUX03EA",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX03EA"
+        },
+        {
+          "tid": "2082IE85",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082IE85"
+        },
+        {
+          "tid": "2MP1PO1G",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1PO1G"
+        },
+        {
+          "tid": "2TPT2L34",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2L34"
+        },
+        {
+          "tid": "2TPTK5IE",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTK5IE"
+        },
+        {
+          "tid": "21060271",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060271"
+        },
+        {
+          "tid": "21060573",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060573"
+        },
+        {
+          "tid": "2PQ35162",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35162"
+        }
+      ]
+    },
+    "stn-7": {
+      "stationId": "stn-7",
+      "stationName": "ABUJA 2",
+      "terminals": [
+        {
+          "tid": "2LUX03ED",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX03ED"
+        },
+        {
+          "tid": "2MP14L9S",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP14L9S"
+        },
+        {
+          "tid": "2MP1QUCE",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1QUCE"
+        },
+        {
+          "tid": "2TPT2N71",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2N71"
+        },
+        {
+          "tid": "2TPT2NR1",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2NR1"
+        },
+        {
+          "tid": "2TPT6ACR",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT6ACR"
+        },
+        {
+          "tid": "21060272",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060272"
+        },
+        {
+          "tid": "21060589",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060589"
+        },
+        {
+          "tid": "2PQ35181",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35181"
+        }
+      ]
+    },
+    "stn-8": {
+      "stationId": "stn-8",
+      "stationName": "AMUDA",
+      "terminals": [
+        {
+          "tid": "2214KDA8",
+          "bank": "FCMB",
+          "label": "FCMB - 2214KDA8"
+        },
+        {
+          "tid": "20826952",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 20826952"
+        },
+        {
+          "tid": "2MP19GTR",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP19GTR"
+        },
+        {
+          "tid": "2TPT2B90",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2B90"
+        },
+        {
+          "tid": "21060575",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060575"
+        }
+      ]
+    },
+    "stn-9": {
+      "stationId": "stn-9",
+      "stationName": "ASABA",
+      "terminals": [
+        {
+          "tid": "2214A6QG",
+          "bank": "FCMB",
+          "label": "FCMB - 2214A6QG"
+        },
+        {
+          "tid": "2214NIIY",
+          "bank": "FCMB",
+          "label": "FCMB - 2214NIIY"
+        },
+        {
+          "tid": "2082YC47",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082YC47"
+        },
+        {
+          "tid": "2MP1EUY4",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1EUY4"
+        },
+        {
+          "tid": "2TPT2NLE",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2NLE"
+        }
+      ]
+    },
+    "stn-10": {
+      "stationId": "stn-10",
+      "stationName": "AWKA ROAD",
+      "terminals": [
+        {
+          "tid": "2214WTJW",
+          "bank": "FCMB",
+          "label": "FCMB - 2214WTJW"
+        },
+        {
+          "tid": "2MP18ALK",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP18ALK"
+        },
+        {
+          "tid": "2MP1INBY",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1INBY"
+        },
+        {
+          "tid": "2TPT2KGD",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2KGD"
+        },
+        {
+          "tid": "21060585",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060585"
+        },
+        {
+          "tid": "2033V3KO",
+          "bank": "UBA",
+          "label": "UBA - 2033V3KO"
+        },
+        {
+          "tid": "2033Z3M3",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M3"
+        }
+      ]
+    },
+    "stn-11": {
+      "stationId": "stn-11",
+      "stationName": "CALABAR 1",
+      "terminals": [
+        {
+          "tid": "2LUX03EE",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX03EE"
+        },
+        {
+          "tid": "2082FJ17",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082FJ17"
+        },
+        {
+          "tid": "2082YB5B",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082YB5B"
+        },
+        {
+          "tid": "2MP16CYY",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP16CYY"
+        },
+        {
+          "tid": "2TPT2NYB",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2NYB"
+        },
+        {
+          "tid": "2TPTJUWL",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTJUWL"
+        },
+        {
+          "tid": "21060268",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060268"
+        },
+        {
+          "tid": "21060562",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060562"
+        },
+        {
+          "tid": "2PQ35158",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35158"
+        }
+      ]
+    },
+    "stn-12": {
+      "stationId": "stn-12",
+      "stationName": "CALABAR 2",
+      "terminals": [
+        {
+          "tid": "2044ZSNR",
+          "bank": "ACCESS",
+          "label": "ACCESS - 2044ZSNR"
+        },
+        {
+          "tid": "2LUX03EC",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX03EC"
+        },
+        {
+          "tid": "2082HZ44",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082HZ44"
+        },
+        {
+          "tid": "2082VP63",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082VP63"
+        },
+        {
+          "tid": "2MP1G7ES",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1G7ES"
+        },
+        {
+          "tid": "2TPT1ZWL",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT1ZWL"
+        },
+        {
+          "tid": "2TPTDLK0",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTDLK0"
+        },
+        {
+          "tid": "21060576",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060576"
+        },
+        {
+          "tid": "2PQ35159",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35159"
+        }
+      ]
+    },
+    "stn-13": {
+      "stationId": "stn-13",
+      "stationName": "CALABAR 3",
+      "terminals": [
+        {
+          "tid": "2MP1K3I0",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1K3I0"
+        },
+        {
+          "tid": "2TPT2KCK",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2KCK"
+        },
+        {
+          "tid": "21060569",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060569"
+        }
+      ]
+    },
+    "stn-14": {
+      "stationId": "stn-14",
+      "stationName": "CALABAR 4",
+      "terminals": [
+        {
+          "tid": "2MP1E8RO",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1E8RO"
+        },
+        {
+          "tid": "2MP1HRED",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1HRED"
+        },
+        {
+          "tid": "2TPT2BRU",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2BRU"
+        },
+        {
+          "tid": "2TPT2DPA",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2DPA"
+        },
+        {
+          "tid": "2TPTI355",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTI355"
+        }
+      ]
+    },
+    "stn-15": {
+      "stationId": "stn-15",
+      "stationName": "ENUGU 1",
+      "terminals": [
+        {
+          "tid": "2TPTIJ6Q",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTIJ6Q"
+        },
+        {
+          "tid": "21060257",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060257"
+        },
+        {
+          "tid": "21060570",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060570"
+        }
+      ]
+    },
+    "stn-16": {
+      "stationId": "stn-16",
+      "stationName": "ENUGU 2",
+      "terminals": [
+        {
+          "tid": "2LUX03EF",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX03EF"
+        },
+        {
+          "tid": "2MP1RI88",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1RI88"
+        },
+        {
+          "tid": "2TPT2NUD",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2NUD"
+        },
+        {
+          "tid": "2TPT6T8Y",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT6T8Y"
+        },
+        {
+          "tid": "21060267",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060267"
+        },
+        {
+          "tid": "21060572",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060572"
+        },
+        {
+          "tid": "2PQ35161",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35161"
+        },
+        {
+          "tid": "2PQ35164",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35164"
+        }
+      ]
+    },
+    "stn-17": {
+      "stationId": "stn-17",
+      "stationName": "ENUGU 3",
+      "terminals": [
+        {
+          "tid": "20826951",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 20826951"
+        },
+        {
+          "tid": "20826956",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 20826956"
+        },
+        {
+          "tid": "2MP1L979",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1L979"
+        },
+        {
+          "tid": "2TPTGJFM",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTGJFM"
+        },
+        {
+          "tid": "21060574",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060574"
+        }
+      ]
+    },
+    "stn-18": {
+      "stationId": "stn-18",
+      "stationName": "GBOKO",
+      "terminals": [
+        {
+          "tid": "2MP1FS3O",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1FS3O"
+        },
+        {
+          "tid": "2MP1S2D7",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1S2D7"
+        }
+      ]
+    },
+    "stn-19": {
+      "stationId": "stn-19",
+      "stationName": "IKORODU",
+      "terminals": [
+        {
+          "tid": "2214L1EM",
+          "bank": "FCMB",
+          "label": "FCMB - 2214L1EM"
+        },
+        {
+          "tid": "2214RCH1",
+          "bank": "FCMB",
+          "label": "FCMB - 2214RCH1"
+        },
+        {
+          "tid": "2MP1CXI3",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1CXI3"
+        },
+        {
+          "tid": "2TPT2R2F",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2R2F"
+        },
+        {
+          "tid": "2TPTC8VI",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTC8VI"
+        },
+        {
+          "tid": "2TPTKEZS",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTKEZS"
+        },
+        {
+          "tid": "2TPTKXVF",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTKXVF"
+        },
+        {
+          "tid": "21060578",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060578"
+        },
+        {
+          "tid": "2033V3KX",
+          "bank": "UBA",
+          "label": "UBA - 2033V3KX"
+        }
+      ]
+    },
+    "stn-20": {
+      "stationId": "stn-20",
+      "stationName": "JOS",
+      "terminals": [
+        {
+          "tid": "20826621",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 20826621"
+        },
+        {
+          "tid": "2MP1PXI6",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1PXI6"
+        },
+        {
+          "tid": "2TPT2NZ5",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2NZ5"
+        },
+        {
+          "tid": "2TPTKG9Q",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTKG9Q"
+        },
+        {
+          "tid": "21060565",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060565"
+        }
+      ]
+    },
+    "stn-21": {
+      "stationId": "stn-21",
+      "stationName": "KANO",
+      "terminals": [
+        {
+          "tid": "22141CXC",
+          "bank": "FCMB",
+          "label": "FCMB - 22141CXC"
+        },
+        {
+          "tid": "22141KQR",
+          "bank": "FCMB",
+          "label": "FCMB - 22141KQR"
+        },
+        {
+          "tid": "22142HRJ",
+          "bank": "FCMB",
+          "label": "FCMB - 22142HRJ"
+        },
+        {
+          "tid": "22149B4P",
+          "bank": "FCMB",
+          "label": "FCMB - 22149B4P"
+        },
+        {
+          "tid": "2214NH3N",
+          "bank": "FCMB",
+          "label": "FCMB - 2214NH3N"
+        },
+        {
+          "tid": "2214XML9",
+          "bank": "FCMB",
+          "label": "FCMB - 2214XML9"
+        },
+        {
+          "tid": "2TPTB0RD",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTB0RD"
+        }
+      ]
+    },
+    "stn-22": {
+      "stationId": "stn-22",
+      "stationName": "LIMCA",
+      "terminals": [
+        {
+          "tid": "22143WE1",
+          "bank": "FCMB",
+          "label": "FCMB - 22143WE1"
+        },
+        {
+          "tid": "2214TPRX",
+          "bank": "FCMB",
+          "label": "FCMB - 2214TPRX"
+        },
+        {
+          "tid": "2082ZS39",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082ZS39"
+        },
+        {
+          "tid": "2MP1L6WC",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1L6WC"
+        },
+        {
+          "tid": "2TPT2MKY",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2MKY"
+        },
+        {
+          "tid": "2TPT4ACH",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT4ACH"
+        },
+        {
+          "tid": "2TPT9LH5",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT9LH5"
+        },
+        {
+          "tid": "21060587",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060587"
+        }
+      ]
+    },
+    "stn-23": {
+      "stationId": "stn-23",
+      "stationName": "LOKPA",
+      "terminals": [
+        {
+          "tid": "2214CRLT",
+          "bank": "FCMB",
+          "label": "FCMB - 2214CRLT"
+        },
+        {
+          "tid": "2LUX04U1",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX04U1"
+        },
+        {
+          "tid": "2MP1Q8XW",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1Q8XW"
+        },
+        {
+          "tid": "21060577",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060577"
+        },
+        {
+          "tid": "2033S2Q2",
+          "bank": "UBA",
+          "label": "UBA - 2033S2Q2"
+        }
+      ]
+    },
+    "stn-24": {
+      "stationId": "stn-24",
+      "stationName": "NGODO",
+      "terminals": [
+        {
+          "tid": "22144WT7",
+          "bank": "FCMB",
+          "label": "FCMB - 22144WT7"
+        },
+        {
+          "tid": "2082EK87",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082EK87"
+        },
+        {
+          "tid": "2MP1BYI7",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1BYI7"
+        },
+        {
+          "tid": "2TPTP5VT",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTP5VT"
+        },
+        {
+          "tid": "21060568",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060568"
+        },
+        {
+          "tid": "2033S2Q3",
+          "bank": "UBA",
+          "label": "UBA - 2033S2Q3"
+        }
+      ]
+    },
+    "stn-25": {
+      "stationId": "stn-25",
+      "stationName": "NNEATO",
+      "terminals": [
+        {
+          "tid": "2082ZN25",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082ZN25"
+        },
+        {
+          "tid": "2MP16JJ9",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP16JJ9"
+        },
+        {
+          "tid": "2TPT2MNK",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2MNK"
+        },
+        {
+          "tid": "21060579",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060579"
+        }
+      ]
+    },
+    "stn-26": {
+      "stationId": "stn-26",
+      "stationName": "NSUKKA",
+      "terminals": [
+        {
+          "tid": "221436MA",
+          "bank": "FCMB",
+          "label": "FCMB - 221436MA"
+        },
+        {
+          "tid": "2TPTIHKN",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTIHKN"
+        },
+        {
+          "tid": "21060580",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060580"
+        }
+      ]
+    },
+    "stn-27": {
+      "stationId": "stn-27",
+      "stationName": "OGUTA",
+      "terminals": [
+        {
+          "tid": "2044ZTCY",
+          "bank": "ACCESS",
+          "label": "ACCESS - 2044ZTCY"
+        },
+        {
+          "tid": "2214NAXU",
+          "bank": "FCMB",
+          "label": "FCMB - 2214NAXU"
+        },
+        {
+          "tid": "2MP1EZFZ",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1EZFZ"
+        },
+        {
+          "tid": "2TPT2GH8",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2GH8"
+        },
+        {
+          "tid": "21060263",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060263"
+        },
+        {
+          "tid": "21060566",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060566"
+        },
+        {
+          "tid": "2PQ35156",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35156"
+        }
+      ]
+    },
+    "stn-28": {
+      "stationId": "stn-28",
+      "stationName": "OKIGWE",
+      "terminals": [
+        {
+          "tid": "2TPTHP96",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTHP96"
+        },
+        {
+          "tid": "21060584",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060584"
+        },
+        {
+          "tid": "203323M8",
+          "bank": "UBA",
+          "label": "UBA - 203323M8"
+        },
+        {
+          "tid": "2033Z3M8",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M8"
+        }
+      ]
+    },
+    "stn-29": {
+      "stationId": "stn-29",
+      "stationName": "ONITSHA 33",
+      "terminals": [
+        {
+          "tid": "2LUX03E9",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX03E9"
+        },
+        {
+          "tid": "2082VQ40",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082VQ40"
+        },
+        {
+          "tid": "2MP1DJDP",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1DJDP"
+        },
+        {
+          "tid": "2TPT2N94",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2N94"
+        },
+        {
+          "tid": "21060588",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060588"
+        }
+      ]
+    },
+    "stn-30": {
+      "stationId": "stn-30",
+      "stationName": "ORON 1",
+      "terminals": [
+        {
+          "tid": "2TPTIAD2",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTIAD2"
+        },
+        {
+          "tid": "21060591",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060591"
+        },
+        {
+          "tid": "20330P1V",
+          "bank": "UBA",
+          "label": "UBA - 20330P1V"
+        },
+        {
+          "tid": "2033Z3M9",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M9"
+        }
+      ]
+    },
+    "stn-31": {
+      "stationId": "stn-31",
+      "stationName": "ORON 2",
+      "terminals": [
+        {
+          "tid": "2MP1KE4N",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1KE4N"
+        },
+        {
+          "tid": "21060592",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060592"
+        },
+        {
+          "tid": "20330P1W",
+          "bank": "UBA",
+          "label": "UBA - 20330P1W"
+        },
+        {
+          "tid": "2033Z3M7",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M7"
+        }
+      ]
+    },
+    "stn-32": {
+      "stationId": "stn-32",
+      "stationName": "UMUAHIA 1",
+      "terminals": [
+        {
+          "tid": "2044BXLU",
+          "bank": "ACCESS",
+          "label": "ACCESS - 2044BXLU"
+        },
+        {
+          "tid": "22143Q54",
+          "bank": "FCMB",
+          "label": "FCMB - 22143Q54"
+        },
+        {
+          "tid": "2MP1JAPC",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1JAPC"
+        },
+        {
+          "tid": "2TPT2NYM",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2NYM"
+        },
+        {
+          "tid": "2TPTADVX",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTADVX"
+        },
+        {
+          "tid": "21060258",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060258"
+        },
+        {
+          "tid": "21060567",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060567"
+        },
+        {
+          "tid": "2PQ35179",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35179"
+        },
+        {
+          "tid": "2PQ35180",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35180"
+        }
+      ]
+    },
+    "stn-33": {
+      "stationId": "stn-33",
+      "stationName": "UMUAHIA 2",
+      "terminals": [
+        {
+          "tid": "2LUX04TZ",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX04TZ"
+        },
+        {
+          "tid": "2TPTATYG",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTATYG"
+        },
+        {
+          "tid": "2TPTF103",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTF103"
+        },
+        {
+          "tid": "21060583",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060583"
+        },
+        {
+          "tid": "2033Z3M1",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M1"
+        }
+      ]
+    },
+    "stn-34": {
+      "stationId": "stn-34",
+      "stationName": "UMUAHIA 3",
+      "terminals": [
+        {
+          "tid": "22142FD1",
+          "bank": "FCMB",
+          "label": "FCMB - 22142FD1"
+        },
+        {
+          "tid": "2214MF1U",
+          "bank": "FCMB",
+          "label": "FCMB - 2214MF1U"
+        },
+        {
+          "tid": "2LUX05DF",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX05DF"
+        },
+        {
+          "tid": "2TPT9FE6",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT9FE6"
+        },
+        {
+          "tid": "2TPTAP9A",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTAP9A"
+        },
+        {
+          "tid": "2TPTCW14",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTCW14"
+        },
+        {
+          "tid": "2TPTDEIB",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTDEIB"
+        },
+        {
+          "tid": "2TPTF635",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTF635"
+        },
+        {
+          "tid": "2TPTFKAJ",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTFKAJ"
+        },
+        {
+          "tid": "2TPTHCQM",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTHCQM"
+        },
+        {
+          "tid": "2TPTKVHA",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTKVHA"
+        },
+        {
+          "tid": "21060586",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060586"
+        },
+        {
+          "tid": "2033Z3M2",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M2"
+        },
+        {
+          "tid": "2033Z3M5",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M5"
+        }
+      ]
+    },
+    "stn-35": {
+      "stationId": "stn-35",
+      "stationName": "UMUEHIHIE",
+      "terminals": [
+        {
+          "tid": "2LUX048E",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX048E"
+        },
+        {
+          "tid": "20826950",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 20826950"
+        },
+        {
+          "tid": "2MP1OOQF",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1OOQF"
+        }
+      ]
+    },
+    "stn-36": {
+      "stationId": "stn-36",
+      "stationName": "UMUOJI",
+      "terminals": [
+        {
+          "tid": "2LUX05G7",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUX05G7"
+        },
+        {
+          "tid": "2MP1L6GM",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1L6GM"
+        },
+        {
+          "tid": "21060564",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060564"
+        }
+      ]
+    },
+    "stn-37": {
+      "stationId": "stn-37",
+      "stationName": "UYO",
+      "terminals": [
+        {
+          "tid": "2044BXLQ",
+          "bank": "ACCESS",
+          "label": "ACCESS - 2044BXLQ"
+        },
+        {
+          "tid": "2044BXLS",
+          "bank": "ACCESS",
+          "label": "ACCESS - 2044BXLS"
+        },
+        {
+          "tid": "2LUXZZ06",
+          "bank": "FCMB",
+          "label": "FCMB - 2LUXZZ06"
+        },
+        {
+          "tid": "2082ZI86",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082ZI86"
+        },
+        {
+          "tid": "2MP1MPZM",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1MPZM"
+        },
+        {
+          "tid": "2TPT1BO8",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT1BO8"
+        },
+        {
+          "tid": "2TPT1KCF",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT1KCF"
+        },
+        {
+          "tid": "2TPTBJFU",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPTBJFU"
+        },
+        {
+          "tid": "21060571",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060571"
+        },
+        {
+          "tid": "2033Z3M6",
+          "bank": "UBA",
+          "label": "UBA - 2033Z3M6"
+        },
+        {
+          "tid": "2PQ35166",
+          "bank": "WEMA",
+          "label": "WEMA - 2PQ35166"
+        }
+      ]
+    },
+    "stn-38": {
+      "stationId": "stn-38",
+      "stationName": "UYO 2",
+      "terminals": [
+        {
+          "tid": "22144QWG",
+          "bank": "FCMB",
+          "label": "FCMB - 22144QWG"
+        },
+        {
+          "tid": "2082EK88",
+          "bank": "KEYSTONE",
+          "label": "KEYSTONE - 2082EK88"
+        },
+        {
+          "tid": "2MP1DNG7",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1DNG7"
+        },
+        {
+          "tid": "2TPT2GOR",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TPT2GOR"
+        },
+        {
+          "tid": "21060581",
+          "bank": "SIGNATURE",
+          "label": "SIGNATURE - 21060581"
+        },
+        {
+          "tid": "2033S2Q4",
+          "bank": "UBA",
+          "label": "UBA - 2033S2Q4"
+        }
+      ]
+    }
+  },
+  "unmatchedRows": [
+    {
+      "rowNumber": 217,
+      "tid": "2PQ35160",
+      "stationName": "",
+      "bank": "WEMA"
+    }
+  ]
+}

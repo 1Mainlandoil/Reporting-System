@@ -20,6 +20,70 @@ import {
 } from '../utils/exportExcel'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
 
+const IconShell = ({ children, className = '' }) => (
+  <svg
+    className={`h-5 w-5 ${className}`}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    {children}
+  </svg>
+)
+
+const StationIcon = ({ className = '' }) => (
+  <IconShell className={className}>
+    <path d="M3 10.5 12 4l9 6.5" />
+    <path d="M5 10v9h14v-9" />
+    <path d="M9 19v-5h6v5" />
+  </IconShell>
+)
+
+const SafeIcon = ({ className = '' }) => (
+  <IconShell className={className}>
+    <path d="M20 6 9 17l-5-5" />
+  </IconShell>
+)
+
+const WarningIcon = ({ className = '' }) => (
+  <IconShell className={className}>
+    <path d="M12 3 2.5 20h19L12 3z" />
+    <path d="M12 9v5" />
+    <path d="M12 17h.01" />
+  </IconShell>
+)
+
+const CriticalIcon = ({ className = '' }) => (
+  <IconShell className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 8l8 8" />
+    <path d="M16 8l-8 8" />
+  </IconShell>
+)
+
+const TrophyIcon = ({ className = '' }) => (
+  <IconShell className={className}>
+    <path d="M8 21h8" />
+    <path d="M12 17v4" />
+    <path d="M7 4h10v5a5 5 0 0 1-10 0V4z" />
+    <path d="M7 6H4a3 3 0 0 0 3 3" />
+    <path d="M17 6h3a3 3 0 0 1-3 3" />
+  </IconShell>
+)
+
+const RankIcon = ({ rank, className = '' }) => {
+  const colors = ['text-yellow-300', 'text-slate-300', 'text-amber-600']
+  return (
+    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-current/25 bg-current/10 ${colors[rank] || 'text-slate-500'} ${className}`}>
+      <TrophyIcon className="h-4 w-4" />
+    </span>
+  )
+}
+
 const resolveReceivedProductType = (report) => {
   if (report?.noSalesDay) {
     return 'No Sales Day'
@@ -345,6 +409,9 @@ const SupervisorDashboardPage = () => {
         const paymentBreakdown = Array.isArray(latestToday?.paymentBreakdown)
           ? latestToday.paymentBreakdown
           : []
+        const posTerminalBreakdown = Array.isArray(latestToday?.posTerminalBreakdown)
+          ? latestToday.posTerminalBreakdown
+          : []
         const totalPaymentDeposits = paymentBreakdown.length
           ? paymentBreakdown.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
           : Number(latestToday?.totalPaymentDeposits || 0)
@@ -432,6 +499,7 @@ const SupervisorDashboardPage = () => {
           paymentBreakdown,
           totalPaymentDeposits,
           posValue,
+          posTerminalBreakdown,
           eodAttachments: Array.isArray(latestToday?.eodAttachments) ? latestToday.eodAttachments : [],
           cashBf,
           cashSales,
@@ -1184,11 +1252,11 @@ const SupervisorDashboardPage = () => {
             Number(row.totalAmount || 0),
           )}|bank:${Math.round(Number(row.totalPaymentDeposits || 0))}|pos:${Math.round(Number(row.posValue || 0))}|closing:${Math.round(Number(row.closingBalance || 0))}`,
         render: (row) =>
-          `B/F ${Math.round(Number(row.cashBf || 0)).toLocaleString()} Â· Sales ${Math.round(
+          `B/F ${Math.round(Number(row.cashBf || 0)).toLocaleString()} - Sales ${Math.round(
             Number(row.cashSales || 0),
-          ).toLocaleString()} Â· Total ${Math.round(Number(row.totalAmount || 0)).toLocaleString()} Â· Bank ${Math.round(
+          ).toLocaleString()} - Total ${Math.round(Number(row.totalAmount || 0)).toLocaleString()} - Bank ${Math.round(
             Number(row.totalPaymentDeposits || 0),
-          ).toLocaleString()} Â· POS ${Math.round(Number(row.posValue || 0)).toLocaleString()} Â· Closing ${Math.round(
+          ).toLocaleString()} - POS ${Math.round(Number(row.posValue || 0)).toLocaleString()} - Closing ${Math.round(
             Number(row.closingBalance || 0),
           ).toLocaleString()}`,
       },
@@ -1786,6 +1854,16 @@ const SupervisorDashboardPage = () => {
       paymentBreakdown: Array.isArray(report.paymentBreakdown)
         ? report.paymentBreakdown.map((item) => ({ channel: item.channel || '', amount: item.amount || 0 }))
         : [],
+      posTerminalBreakdown: Array.isArray(report.posTerminalBreakdown)
+        ? report.posTerminalBreakdown.map((item) => ({
+            terminalId: item.terminalId || '',
+            bank: item.bank || '',
+            label: item.label || item.channel || 'POS',
+            channel: item.channel || 'POS',
+            category: 'POS',
+            amount: item.amount || 0,
+          }))
+        : [],
       expenseItems: Array.isArray(report.expenseItems)
         ? report.expenseItems.map((item) => ({ label: item.label || '', amount: item.amount || 0 }))
         : [],
@@ -1858,13 +1936,13 @@ const SupervisorDashboardPage = () => {
 
       {activeDashboard === 'dashboard' && (
         <>
-        {/* â”€â”€ Stat bar â”€â”€ */}
+        {/* Stat bar */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
-            { label: 'Stations', value: portfolio.length, color: 'text-white', accent: 'border-white/10', icon: 'âŒ‚' },
-            { label: 'Safe', value: portfolio.filter(p => p.status === 'safe').length, color: 'text-[#a9cd39]', accent: 'border-[#a9cd39]/20', icon: 'âœ“' },
-            { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: 'âš ' },
-            { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: 'â›”' },
+            { label: 'Stations', value: portfolio.length, color: 'text-white', accent: 'border-white/10', icon: <StationIcon /> },
+            { label: 'Safe', value: portfolio.filter(p => p.status === 'safe').length, color: 'text-[#a9cd39]', accent: 'border-[#a9cd39]/20', icon: <SafeIcon /> },
+            { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: <WarningIcon /> },
+            { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: <CriticalIcon /> },
           ].map(({ label, value, color, accent, icon }) => (
             <button
               key={label}
@@ -1874,14 +1952,14 @@ const SupervisorDashboardPage = () => {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
-                <span className={`text-lg ${color}`}>{icon}</span>
+                <span className={`flex items-center justify-center ${color}`}>{icon}</span>
               </div>
               <p className={`text-3xl font-bold ${color}`}>{value}</p>
             </button>
           ))}
         </div>
 
-        {/* â”€â”€ Portfolio â”€â”€ */}
+        {/* Portfolio */}
         <Card className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -1936,10 +2014,13 @@ const SupervisorDashboardPage = () => {
           )}
         </Card>
 
-        {/* â”€â”€ Bottom two panels â”€â”€ */}
+        {/* Bottom two panels */}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Card className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-rose-400">âš  Top Risk</p>
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-rose-400">
+              <WarningIcon className="h-4 w-4" />
+              Top Risk
+            </p>
             <h3 className="text-base font-bold text-white -mt-1">Stations Needing Attention</h3>
             {!topRisk.length && <p className="text-sm text-slate-500">All stations are in good shape.</p>}
             {topRisk.map((station, i) => (
@@ -1952,7 +2033,7 @@ const SupervisorDashboardPage = () => {
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-xs font-bold text-rose-400">{i + 1}</span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-white truncate">{station.stationName}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{station.daysRemaining.toFixed(0)}d remaining Â· {Math.round(station.stockRemaining).toLocaleString()} L</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{station.daysRemaining.toFixed(0)}d remaining - {Math.round(station.stockRemaining).toLocaleString()} L</p>
                 </div>
                 <StatusBadge status={station.status} />
               </button>
@@ -1960,7 +2041,10 @@ const SupervisorDashboardPage = () => {
           </Card>
 
           <Card className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">ðŸš© Interventions</p>
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-400">
+              <WarningIcon className="h-4 w-4" />
+              Interventions
+            </p>
             <h3 className="text-base font-bold text-white -mt-1">Active Flags</h3>
             {!interventions.length && <p className="text-sm text-slate-500">No interventions logged yet.</p>}
             {interventions.slice(0, 5).map((item) => (
@@ -1974,7 +2058,7 @@ const SupervisorDashboardPage = () => {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <button type="button" onClick={() => navigate(`/stations/${item.stationId}/history`)} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-300 hover:bg-white/10 transition">History</button>
                   <button type="button" onClick={() => escalateStationIntervention({ stationId: item.stationId })} disabled={item.stage === 'escalated'} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-40">
-                    {item.stage === 'escalated' ? 'âœ“ Escalated' : 'Escalate'}
+                    {item.stage === 'escalated' ? 'Escalated' : 'Escalate'}
                   </button>
                   {item.stage === 'escalated' && (
                     <button type="button" onClick={() => { if(window.confirm('Revert escalation?')) revertEscalationIntervention({ stationId: item.stationId }) }} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-400 hover:text-white transition">Revert</button>
@@ -2017,14 +2101,14 @@ const SupervisorDashboardPage = () => {
                   onClick={closeFiltersScreen}
                   className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
-                  â† Back to queue
+                  Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
-                    Daily opening Â· Filters
+                    Daily opening - Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Order: table columns, stations, then submission statusâ€”everything drives the queue table and Excel
+                    Order: table columns, stations, then submission status - everything drives the queue table and Excel
                     export.
                   </p>
                 </div>
@@ -2157,7 +2241,7 @@ const SupervisorDashboardPage = () => {
                                 <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">Discrepancy</span>
                               )}
                               {row.eodAttachments?.length > 0 && (
-                                <span className="rounded-full bg-[#a9cd39]/10 px-2 py-0.5 text-xs text-[#a9cd39]">ðŸ“Ž {row.eodAttachments.length} EOD</span>
+                                <span className="rounded-full bg-[#a9cd39]/10 px-2 py-0.5 text-xs text-[#a9cd39]">{row.eodAttachments.length} EOD</span>
                               )}
                             </div>
                           )}
@@ -2345,14 +2429,14 @@ const SupervisorDashboardPage = () => {
                     <p className="font-medium text-white">
                       {selectedDailyOpeningReport.multiPricing &&
                       (selectedDailyOpeningReport.priceBandsPMS || []).length > 1
-                        ? `Avg â‚¦${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
+                        ? `Avg NGN ${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
                         : selectedDailyOpeningReport.pmsPrice}
                     </p>
                     {(selectedDailyOpeningReport.priceBandsPMS || []).length > 0 && (
                       <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
                         {selectedDailyOpeningReport.priceBandsPMS.map((band, index) => (
                           <li key={`pms-band-${index}`}>
-                            â‚¦{Number(band.price || 0).toLocaleString()}/L Ã— {Number(band.liters || 0).toLocaleString()} L
+                            NGN {Number(band.price || 0).toLocaleString()}/L x {Number(band.liters || 0).toLocaleString()} L
                           </li>
                         ))}
                       </ul>
@@ -2363,14 +2447,14 @@ const SupervisorDashboardPage = () => {
                     <p className="font-medium text-white">
                       {selectedDailyOpeningReport.multiPricing &&
                       (selectedDailyOpeningReport.priceBandsAGO || []).length > 1
-                        ? `Avg â‚¦${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
+                        ? `Avg NGN ${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
                         : selectedDailyOpeningReport.agoPrice}
                     </p>
                     {(selectedDailyOpeningReport.priceBandsAGO || []).length > 0 && (
                       <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
                         {selectedDailyOpeningReport.priceBandsAGO.map((band, index) => (
                           <li key={`ago-band-${index}`}>
-                            â‚¦{Number(band.price || 0).toLocaleString()}/L Ã— {Number(band.liters || 0).toLocaleString()} L
+                            NGN {Number(band.price || 0).toLocaleString()}/L x {Number(band.liters || 0).toLocaleString()} L
                           </li>
                         ))}
                       </ul>
@@ -2380,14 +2464,14 @@ const SupervisorDashboardPage = () => {
                     <p className="text-xs uppercase text-slate-500">Input Quantity Received (L)</p>
                     <p className="font-medium text-white">{selectedDailyOpeningReport.quantityReceived}</p>
                   </div>
-                  {/* PMS Sales â€” side by side */}
+                  {/* PMS Sales - side by side */}
                   <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
                     <p className="text-xs uppercase text-slate-500 mb-2">Sales PMS (L)</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-lg bg-black/20 px-3 py-2">
                         <p className="text-xs text-slate-500">Pump meters</p>
                         <p className={`font-bold text-base ${selectedDailyOpeningReport.pumpSalesLitersPMS != null ? 'text-[#a9cd39]' : 'text-slate-500'}`}>
-                          {selectedDailyOpeningReport.pumpSalesLitersPMS != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersPMS).toLocaleString() + ' L' : 'â€”'}
+                          {selectedDailyOpeningReport.pumpSalesLitersPMS != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersPMS).toLocaleString() + ' L' : '-'}
                         </p>
                       </div>
                       <div className="rounded-lg bg-black/20 px-3 py-2">
@@ -2398,18 +2482,18 @@ const SupervisorDashboardPage = () => {
                     {selectedDailyOpeningReport.pumpSalesLitersPMS != null && (() => {
                       const gap = Math.abs(selectedDailyOpeningReport.pumpSalesLitersPMS - Number(String(selectedDailyOpeningReport.totalSalesLitersPMS).replace(/,/g, '') || 0))
                       return gap > 10 ? (
-                        <p className="mt-2 text-xs text-amber-400">âš  Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
+                        <p className="mt-2 flex items-center gap-1 text-xs text-amber-400"><WarningIcon className="h-3.5 w-3.5" /> Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
                       ) : null
                     })()}
                   </div>
-                  {/* AGO Sales â€” side by side */}
+                  {/* AGO Sales - side by side */}
                   <div className="rounded-xl border border-white/5 bg-white/5 p-3 md:col-span-2">
                     <p className="text-xs uppercase text-slate-500 mb-2">Sales AGO (L)</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-lg bg-black/20 px-3 py-2">
                         <p className="text-xs text-slate-500">Pump meters</p>
                         <p className={`font-bold text-base ${selectedDailyOpeningReport.pumpSalesLitersAGO != null ? 'text-blue-400' : 'text-slate-500'}`}>
-                          {selectedDailyOpeningReport.pumpSalesLitersAGO != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersAGO).toLocaleString() + ' L' : 'â€”'}
+                          {selectedDailyOpeningReport.pumpSalesLitersAGO != null ? Math.round(selectedDailyOpeningReport.pumpSalesLitersAGO).toLocaleString() + ' L' : '-'}
                         </p>
                       </div>
                       <div className="rounded-lg bg-black/20 px-3 py-2">
@@ -2420,7 +2504,7 @@ const SupervisorDashboardPage = () => {
                     {selectedDailyOpeningReport.pumpSalesLitersAGO != null && (() => {
                       const gap = Math.abs(selectedDailyOpeningReport.pumpSalesLitersAGO - Number(String(selectedDailyOpeningReport.totalSalesLitersAGO).replace(/,/g, '') || 0))
                       return gap > 10 ? (
-                        <p className="mt-2 text-xs text-amber-400">âš  Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
+                        <p className="mt-2 flex items-center gap-1 text-xs text-amber-400"><WarningIcon className="h-3.5 w-3.5" /> Gap of ~{Math.round(gap).toLocaleString()} L between pump and dip figures</p>
                       ) : null
                     })()}
                   </div>
@@ -2508,6 +2592,23 @@ const SupervisorDashboardPage = () => {
                     </div>
                   </div>
                 )}
+                {selectedDailyOpeningReport.posTerminalBreakdown?.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">POS Terminal Breakdown</p>
+                      <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">
+                        NGN {Math.round(Number(selectedDailyOpeningReport.posValue || 0)).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {selectedDailyOpeningReport.posTerminalBreakdown.map((item, index) => (
+                        <p key={`${item.terminalId || item.label}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
+                          {item.label || `${item.bank || 'POS'} ${item.terminalId || ''}`}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {selectedDailyOpeningReport.eodAttachments?.length > 0 && (
                   <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
                     <div className="mb-3 flex items-center justify-between gap-3">
@@ -2561,7 +2662,7 @@ const SupervisorDashboardPage = () => {
                   </div>
                 )}
 
-                {/* â”€â”€ Supervisor Review Button â”€â”€ */}
+                {/* Supervisor Review Button */}
                 {(!selectedDailyOpeningReport.pumpMeterRows || selectedDailyOpeningReport.pumpMeterRows.length === 0) &&
                   (selectedDailyOpeningReport.pumpSalesLitersPMS != null || selectedDailyOpeningReport.pumpSalesLitersAGO != null) && (
                     <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
@@ -2627,11 +2728,11 @@ const SupervisorDashboardPage = () => {
                       )}
                       {alreadyReviewed ? (
                         <div className="flex items-center gap-3 rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/5 px-4 py-3">
-                          <span className="text-[#a9cd39] text-xl">âœ“</span>
+                          <SafeIcon className="h-5 w-5 text-[#a9cd39]" />
                           <div>
                             <p className="text-sm font-semibold text-[#a9cd39]">Reviewed</p>
                             <p className="text-xs text-slate-400 mt-0.5">
-                              by {report.supervisorReview.reviewedBy || currentUser?.name} Â· {report.supervisorReview.remark || ''}
+                              by {report.supervisorReview.reviewedBy || currentUser?.name} - {report.supervisorReview.remark || ''}
                             </p>
                           </div>
                           <button type="button"
@@ -2861,11 +2962,11 @@ const SupervisorDashboardPage = () => {
                   onClick={closeFiltersScreen}
                   className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
-                  â† Back to queue
+                  Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
-                    Cash flow Â· Filters
+                    Cash flow - Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
                     Reuse station/status filters from stock flow while reviewing cash and deposit movement.
@@ -2918,7 +3019,7 @@ const SupervisorDashboardPage = () => {
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {dailyFiltersSummary}
-                  {' Â· '}
+                  {' - '}
                   Showing {filteredDailyOpeningQueueRows.length} of {dailyOpeningQueueRows.length} stations
                 </p>
               </div>
@@ -2947,7 +3048,7 @@ const SupervisorDashboardPage = () => {
                               <p className="text-xs text-slate-500 mt-0.5">{row.managerName}</p>
                             </div>
                             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${submitted ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-amber-500/15 text-amber-400'}`}>
-                              {submitted ? 'âœ“' : 'Pending'}
+                              {submitted ? 'Submitted' : 'Pending'}
                             </span>
                           </div>
                           {submitted && (
@@ -3018,14 +3119,14 @@ const SupervisorDashboardPage = () => {
                   onClick={closeFiltersScreen}
                   className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 dark:border-slate-600 dark:text-slate-200"
                 >
-                  â† Back to queue
+                  Back to queue
                 </button>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold tracking-tight text-white dark:text-white">
-                    Expense queue Â· Filters
+                    Expense queue - Filters
                   </h2>
                   <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Columns, stations, then expense statusâ€”applied to the table and Excel export.
+                    Columns, stations, then expense status - applied to the table and Excel export.
                   </p>
                 </div>
               </div>
@@ -3075,7 +3176,7 @@ const SupervisorDashboardPage = () => {
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   <span className="font-medium text-slate-100 dark:text-slate-100">Active filters:</span>{' '}
                   {expenseFiltersSummary}
-                  {' Â· '}
+                  {' - '}
                   Showing {filteredExpenseQueueRows.length} of {expenseQueueRows.length} stations
                 </p>
               </div>
@@ -3211,7 +3312,6 @@ const SupervisorDashboardPage = () => {
               }))
               .sort((a, b) => b.score - a.score)
 
-            const medals = ['ðŸ¥‡', 'ðŸ¥ˆ', 'ðŸ¥‰']
             const podiumColors = [
               'border-yellow-400/30 bg-yellow-400/5',
               'border-slate-400/30 bg-slate-400/5',
@@ -3220,15 +3320,18 @@ const SupervisorDashboardPage = () => {
 
             return (
               <>
-                {/* Podium â€” top 3 */}
+                {/* Podium - top 3 */}
                 {ranked.length >= 1 && (
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">ðŸ† Top Performers</p>
+                    <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
+                      <TrophyIcon className="h-4 w-4 text-[#a9cd39]" />
+                      Top Performers
+                    </p>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       {ranked.slice(0, 3).map((row, i) => (
                         <div key={row.stationId} className={`rounded-2xl border p-5 ${podiumColors[i] || 'border-white/10 bg-white/5'}`}>
                           <div className="flex items-center gap-2 mb-3">
-                            <span className="text-2xl">{medals[i]}</span>
+                            <RankIcon rank={i} />
                             <div>
                               <p className="font-bold text-white">{row.stationName}</p>
                               <p className="text-xs text-slate-500">{row.managerName}</p>
@@ -3270,7 +3373,7 @@ const SupervisorDashboardPage = () => {
                   <div className="space-y-2">
                     {ranked.map((row, i) => (
                       <div key={row.stationId} className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3">
-                        <span className="w-6 shrink-0 text-center text-sm font-bold text-slate-500">{i < 3 ? medals[i] : `#${i + 1}`}</span>
+                        {i < 3 ? <RankIcon rank={i} className="h-6 w-6" /> : <span className="w-6 shrink-0 text-center text-sm font-bold text-slate-500">#{i + 1}</span>}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2 mb-1">
                             <p className="font-semibold text-white truncate">{row.stationName}</p>
@@ -3355,7 +3458,7 @@ const SupervisorDashboardPage = () => {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/5 px-5 py-4">
                   <p className="text-sm text-slate-400">
                     {selectedMonthFinalization
-                      ? `âœ“ Finalized by ${selectedMonthFinalization.finalizedBy} on ${selectedMonthFinalization.finalizedAt?.split('T')[0]}`
+                      ? `Finalized by ${selectedMonthFinalization.finalizedBy} on ${selectedMonthFinalization.finalizedAt?.split('T')[0]}`
                       : `Ready to finalize ${selectedMonthLabel} for admin.`}
                   </p>
                   <button type="button"
@@ -3377,7 +3480,7 @@ const SupervisorDashboardPage = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">â¬’ Pending Action</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Pending Action</p>
                 <h3 className="text-xl font-bold text-white">Product Requests</h3>
               </div>
               <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm font-bold text-amber-400">{supervisorQueueRows.length} pending</span>
@@ -3389,7 +3492,7 @@ const SupervisorDashboardPage = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-bold text-white">{row.stationName}</p>
-                        <p className="text-sm text-slate-400 mt-0.5">{row.managerName || 'â€”'} Â· {row.createdDate}</p>
+                        <p className="text-sm text-slate-400 mt-0.5">{row.managerName || '-'} - {row.createdDate}</p>
                       </div>
                       <span className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-bold text-amber-400">Pending</span>
                     </div>
@@ -3410,12 +3513,12 @@ const SupervisorDashboardPage = () => {
                       <button type="button"
                         onClick={() => reviewProductRequestBySupervisor({ requestId: row.id, decision: 'approve', remark: `Escalated by ${currentUser?.name || 'Supervisor'}` })}
                         className="flex-1 rounded-xl border border-[#a9cd39]/30 bg-[#a9cd39]/10 py-2.5 text-sm font-semibold text-[#a9cd39] hover:bg-[#a9cd39]/20 transition">
-                        âœ“ Approve & Escalate
+                        Approve & Escalate
                       </button>
                       <button type="button"
                         onClick={() => reviewProductRequestBySupervisor({ requestId: row.id, decision: 'decline', remark: 'Declined by supervisor' })}
                         className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-sm font-semibold text-rose-400 hover:bg-rose-500/10 transition">
-                        âœ—
+                        x
                       </button>
                     </div>
                   </div>
@@ -3430,7 +3533,7 @@ const SupervisorDashboardPage = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">ðŸ•˜ History</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">History</p>
                 <h3 className="text-xl font-bold text-white">Reviewed Requests</h3>
               </div>
               {selectedRequestStationId && (
@@ -3456,7 +3559,7 @@ const SupervisorDashboardPage = () => {
                           {approved ? 'Escalated' : 'Declined'}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-300">{row.requestedProductType} Â· {Math.round(row.requestedLiters).toLocaleString()} L</p>
+                      <p className="text-sm text-slate-300">{row.requestedProductType} - {Math.round(row.requestedLiters).toLocaleString()} L</p>
                       {row.reason && row.reason !== '-' && <p className="text-sm text-slate-500 italic">"{row.reason}"</p>}
                     </div>
                   )
@@ -3472,7 +3575,7 @@ const SupervisorDashboardPage = () => {
       {activeDashboard === 'history' && (
         <div>
           <div className="mb-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">ðŸ•˜ Archive</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Archive</p>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Trusted archive</p>
             <h3 className="text-xl font-bold text-white">Finalised Reports</h3>
             <p className="mt-1 text-sm text-slate-400">Confirmed reports stay here as the clean source for future P/L.</p>
@@ -3483,12 +3586,12 @@ const SupervisorDashboardPage = () => {
                 <div key={row.id} className="rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4 space-y-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-bold text-white">{row.date || row.monthKey || 'â€”'}</p>
-                      <p className="text-sm text-slate-400 mt-0.5">by {row.finalizedBy || 'â€”'}</p>
+                      <p className="font-bold text-white">{row.date || row.monthKey || '-'}</p>
+                      <p className="text-sm text-slate-400 mt-0.5">by {row.finalizedBy || '-'}</p>
                     </div>
                     <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">Finalised</span>
                   </div>
-                  <p className="text-sm font-semibold text-white">{row.stationName} Â· {row.managerName}</p>
+                  <p className="text-sm font-semibold text-white">{row.stationName} - {row.managerName}</p>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">PMS sold</p><p className="font-bold text-white">{formatLiters(row.totalSalesLitersPMS)}</p></div>
                     <div className="rounded-lg bg-black/20 px-2.5 py-2"><p className="text-slate-500">AGO sold</p><p className="font-bold text-white">{formatLiters(row.totalSalesLitersAGO)}</p></div>

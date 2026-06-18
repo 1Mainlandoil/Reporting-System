@@ -546,6 +546,11 @@ export const useAppStore = create(
           const cashBf = Number(patch.cashBf ?? target.cashBf ?? 0)
           const cashSales = Number(patch.cashSales ?? target.cashSales ?? 0)
           const posValue = Number(patch.posValue ?? target.posValue ?? 0)
+          const posTerminalBreakdown = Array.isArray(patch.posTerminalBreakdown)
+            ? patch.posTerminalBreakdown
+            : Array.isArray(target.posTerminalBreakdown)
+              ? target.posTerminalBreakdown
+              : []
           const paymentBreakdown = Array.isArray(patch.paymentBreakdown)
             ? patch.paymentBreakdown
             : Array.isArray(target.paymentBreakdown)
@@ -590,6 +595,7 @@ export const useAppStore = create(
             cashBf,
             cashSales,
             posValue,
+            posTerminalBreakdown,
             paymentBreakdown,
             totalPaymentDeposits,
             totalAmount,

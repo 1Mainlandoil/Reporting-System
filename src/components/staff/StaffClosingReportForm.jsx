@@ -3,6 +3,7 @@ import { supabase, hasSupabaseEnv } from '../../lib/supabaseClient'
 import FormInput from '../ui/FormInput'
 import CustomSelect from '../ui/CustomSelect'
 import ProductPriceSection from './ProductPriceSection'
+import posTerminalCatalog from '../../data/posTerminals.generated.json'
 import { computeSalesFromMovement } from '../../utils/reportFields'
 import {
   computeSalesAmountFromBands,
@@ -35,13 +36,12 @@ const defaultForm = {
   managerSalesPMS: '',
   managerSalesAGO: '',
   cashSales: '',
-  posValue: '',
   remark: '',
   cashBfOverride: '',
   closingBalanceOverride: '',
 }
 
-const STEPS_NORMAL = ['Sales Check', 'Stock', 'Sales Quantity', 'Pricing', 'Received', 'Expenses', 'Cash', 'Payments', 'Bank EOD', 'Pump Readings', 'Review & Submit']
+const STEPS_NORMAL = ['Sales Check', 'Stock', 'Sales Quantity', 'Pricing', 'Received', 'Expenses', 'Cash', 'POS Terminals', 'Payments', 'Bank EOD', 'Pump Readings', 'Review & Submit']
 const STEPS_NO_SALES = ['Sales Check', 'Submit']
 
 const StepHeader = ({ label, current, total }) => (
@@ -107,6 +107,7 @@ const StaffClosingReportForm = ({
   const [expenseItems, setExpenseItems] = useState([])
   const [paymentDraft, setPaymentDraft] = useState({ channel: PAYMENT_CHANNEL_OPTIONS[0], otherChannel: '', amount: '' })
   const [paymentBreakdown, setPaymentBreakdown] = useState([])
+  const [posTerminalAmounts, setPosTerminalAmounts] = useState({})
   const [pumpDraft, setPumpDraft] = useState(DEFAULT_PUMP_READING)
   const [pumpReadings, setPumpReadings] = useState([])
   const [pmsMultiPrice, setPmsMultiPrice] = useState('no')
@@ -135,6 +136,26 @@ const StaffClosingReportForm = ({
   const [eodUploads, setEodUploads] = useState([])
   const [eodInputKeys, setEodInputKeys] = useState({}) // force-reset file inputs after selection
   const [extraSlotIds, setExtraSlotIds] = useState([]) // track manually-added extra slots
+
+  const assignedPosTerminals = useMemo(
+    () => posTerminalCatalog?.stations?.[stationId]?.terminals || [],
+    [stationId],
+  )
+  const posTerminalBreakdown = useMemo(
+    () =>
+      assignedPosTerminals
+        .map((terminal) => ({
+          terminalId: terminal.tid,
+          bank: terminal.bank,
+          label: terminal.label,
+          amount: Number(posTerminalAmounts[terminal.tid] || 0),
+          category: 'POS',
+          channel: `POS - ${terminal.bank} - ${terminal.tid}`,
+        }))
+        .filter((item) => item.amount > 0),
+    [assignedPosTerminals, posTerminalAmounts],
+  )
+  const posValue = posTerminalBreakdown.reduce((sum, item) => sum + item.amount, 0)
 
   const isNoSalesDay = formData.noSalesDay === 'yes'
   const hasCarriedOpening = !isFirstReport && (Number(carriedOpening.pms) > 0 || Number(carriedOpening.ago) > 0)
@@ -408,11 +429,11 @@ const StaffClosingReportForm = ({
     const normalizedPaymentBreakdown = (isNoSalesDay ? [] : paymentBreakdown).map((item) => ({ channel: String(item.channel || '').trim(), amount: Number(item.amount || 0) })).filter((item) => item.channel && item.amount > 0 && item.channel.toUpperCase() !== 'POS')
     const totalPaymentDeposits = normalizedPaymentBreakdown.reduce((sum, item) => sum + item.amount, 0)
     const cashSales = isNoSalesDay ? 0 : Number(formData.cashSales || 0)
-    const posValue = isNoSalesDay ? 0 : Number(formData.posValue || 0)
+    const resolvedPosValue = isNoSalesDay ? 0 : posValue
     const totalAmount = effectiveCashBf + cashSales
     const closingBalance = isFirstReport && formData.closingBalanceOverride != null && formData.closingBalanceOverride !== ''
       ? Number(formData.closingBalanceOverride)
-      : totalAmount - totalPaymentDeposits - posValue
+      : totalAmount - totalPaymentDeposits - resolvedPosValue
     const receivedQuantity = receivedPMS + receivedAGO
     const receivedProductType = receivedPMS > 0 && receivedAGO > 0 ? 'BOTH' : receivedAGO > 0 ? 'AGO' : receivedPMS > 0 ? 'PMS' : null
     const resolvedPriceBandsPMS = isNoSalesDay ? [] : pmsMultiPrice === 'yes' ? normalizePriceBands(priceBandsPMS) : totalSalesLitersPMS > 0 ? [{ price: Number(formData.pmsPrice), liters: totalSalesLitersPMS }] : []
@@ -443,7 +464,7 @@ const StaffClosingReportForm = ({
       openingPMS: openingStockPMS, openingAGO: openingStockAGO,
       receivedPMS, receivedAGO, salesPMS: totalSalesLitersPMS, salesAGO: totalSalesLitersAGO,
       remarks: isNoSalesDay ? `No Sales Day - ${formData.noSalesReason}${formData.noSalesNote ? `: ${formData.noSalesNote}` : ''}` : formData.remark,
-      paymentBreakdown: normalizedPaymentBreakdown, totalPaymentDeposits, posValue,
+      paymentBreakdown: normalizedPaymentBreakdown, totalPaymentDeposits, posValue: resolvedPosValue, posTerminalBreakdown: isNoSalesDay ? [] : posTerminalBreakdown,
       cashSales, cashBf: effectiveCashBf, totalAmount, closingBalance, pumpReadings: normalizedPumpReadings,
       discrepancies,
       hasDiscrepancy: discrepancies.length > 0,
@@ -468,6 +489,7 @@ const StaffClosingReportForm = ({
       setFormData(defaultForm)
       setExpenseDraft({ category: 'Gas', otherLabel: '', amount: '' }); setExpenseItems([])
       setPaymentDraft({ channel: PAYMENT_CHANNEL_OPTIONS[0], otherChannel: '', amount: '' }); setPaymentBreakdown([])
+      setPosTerminalAmounts({})
       setPumpDraft(DEFAULT_PUMP_READING); setPumpReadings([])
       setPmsMultiPrice('no'); setAgoMultiPrice('no')
       setPriceBandDraftPMS(DEFAULT_PRICE_BAND_DRAFT); setPriceBandDraftAGO(DEFAULT_PRICE_BAND_DRAFT)
@@ -907,7 +929,7 @@ const StaffClosingReportForm = ({
       <StepHeader label={steps[6]} current={7} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Cash Movement</p>
       <p className="text-sm text-slate-500 mb-4">
-        {isFirstReport ? 'Enter your baseline cash figures' : "Enter today's cash and POS figures"}
+        {isFirstReport ? 'Enter your baseline cash figures' : "Enter today's cash figures"}
       </p>
       <div className="flex-1 space-y-4">
         {isFirstReport ? (
@@ -917,7 +939,6 @@ const StaffClosingReportForm = ({
             </div>
             <FormInput type="number" min="0" label="Cash Brought Forward (NGN)" value={formData.cashBfOverride ?? ''} onChange={(e) => setFormData((prev) => ({ ...prev, cashBfOverride: e.target.value }))} />
             <FormInput type="number" min="0" label="Cash Sales (NGN)" value={formData.cashSales} onChange={(e) => setFormData((prev) => ({ ...prev, cashSales: e.target.value }))} />
-            <FormInput type="number" min="0" label="POS Value (NGN)" value={formData.posValue} onChange={(e) => setFormData((prev) => ({ ...prev, posValue: e.target.value }))} />
             <FormInput type="number" min="0" label="Closing Balance (NGN)" value={formData.closingBalanceOverride ?? ''} onChange={(e) => setFormData((prev) => ({ ...prev, closingBalanceOverride: e.target.value }))} />
           </>
         ) : (
@@ -978,7 +999,6 @@ const StaffClosingReportForm = ({
             {(cashBfConfirmed !== null || !hasPriorCashBf) && (
               <>
                 <FormInput type="number" min="0" label="Cash Sales (NGN)" value={formData.cashSales} onChange={(e) => setFormData((prev) => ({ ...prev, cashSales: e.target.value }))} />
-                <FormInput type="number" min="0" label="POS Value (NGN)" value={formData.posValue} onChange={(e) => setFormData((prev) => ({ ...prev, posValue: e.target.value }))} />
                 {formData.cashSales && (
                   <div className="rounded-xl border border-[#a9cd39]/15 bg-[#a9cd39]/5 px-4 py-3">
                     <p className="text-xs text-slate-400">Total Cash (B/F + Sales)</p>
@@ -999,9 +1019,49 @@ const StaffClosingReportForm = ({
   )
 
   // Step 6 — Payment Breakdown
-  const renderPaymentsStep = () => (
+  const renderPosTerminalStep = () => (
     <div className="flex min-h-[70vh] flex-col">
       <StepHeader label={steps[7]} current={8} total={totalSteps} />
+      <p className="text-2xl font-bold text-white mb-1">POS Terminals</p>
+      <p className="text-sm text-slate-500 mb-6">Enter POS collections per terminal assigned to this station.</p>
+      <div className="flex-1 space-y-3">
+        {!assignedPosTerminals.length ? (
+          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4">
+            <p className="text-sm font-bold text-amber-300">No POS terminal assigned to this station.</p>
+            <p className="mt-1 text-xs text-slate-400">Continue if the station had no POS collections today.</p>
+          </div>
+        ) : (
+          assignedPosTerminals.map((terminal) => (
+            <div key={terminal.tid} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">{terminal.bank}</p>
+                  <p className="mt-1 text-base font-bold text-white">{terminal.tid}</p>
+                </div>
+                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-slate-300">Assigned</span>
+              </div>
+              <FormInput
+                type="number"
+                min="0"
+                label="POS Amount (NGN)"
+                value={posTerminalAmounts[terminal.tid] || ''}
+                onChange={(e) => setPosTerminalAmounts((prev) => ({ ...prev, [terminal.tid]: e.target.value }))}
+              />
+            </div>
+          ))
+        )}
+      </div>
+      <div className="mt-4 rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">POS Total</p>
+        <p className="mt-1 text-2xl font-black text-[#a9cd39]">NGN {posValue.toLocaleString()}</p>
+      </div>
+      <NavButtons onBack={() => setStep(6)} onNext={() => setStep(8)} />
+    </div>
+  )
+
+  const renderPaymentsStep = () => (
+    <div className="flex min-h-[70vh] flex-col">
+      <StepHeader label={steps[8]} current={9} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Bank Deposits</p>
       <p className="text-sm text-slate-500 mb-6">Record payments made to bank channels</p>
       <div className="flex-1 space-y-3">
@@ -1020,14 +1080,14 @@ const StaffClosingReportForm = ({
           {!paymentBreakdown.length && <p className="text-sm text-slate-600">No entries yet.</p>}
           {paymentBreakdown.map((item) => (
             <div key={item.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2.5 text-sm">
-              <span className="text-slate-200">{item.channel} — NGN {item.amount.toLocaleString()}</span>
-              <button type="button" onClick={() => setPaymentBreakdown((prev) => prev.filter((x) => x.id !== item.id))} className="text-rose-400 font-semibold">✕</button>
+              <span className="text-slate-200">{item.channel} - NGN {item.amount.toLocaleString()}</span>
+              <button type="button" onClick={() => setPaymentBreakdown((prev) => prev.filter((x) => x.id !== item.id))} className="text-rose-400 font-semibold">x</button>
             </div>
           ))}
           {paymentBreakdown.length > 0 && <p className="text-sm font-bold text-[#a9cd39]">Total: NGN {paymentBreakdown.reduce((s, i) => s + i.amount, 0).toLocaleString()}</p>}
         </div>
       </div>
-      <NavButtons onBack={() => setStep(6)} onNext={() => setStep(8)} />
+      <NavButtons onBack={() => setStep(7)} onNext={() => setStep(9)} />
     </div>
   )
 
@@ -1037,7 +1097,7 @@ const StaffClosingReportForm = ({
     // Define all slots (banks + expenses + any extra added manually)
     const fixedSlots = [
       ...paymentBreakdown.map((item) => ({ slotId: `bank-${item.id}`, slotLabel: item.channel, category: 'Bank' })),
-      ...(Number(formData.posValue || 0) > 0 ? [{ slotId: 'pos-eod', slotLabel: 'POS', category: 'POS' }] : []),
+      ...posTerminalBreakdown.map((item) => ({ slotId: `pos-${item.terminalId}`, slotLabel: item.label, category: 'POS' })),
       ...expenseItems.map((item) => ({ slotId: `exp-${item.id}`, slotLabel: item.label, category: 'Expense' })),
     ]
     const extraSlots = extraSlotIds.map((sid) => ({ slotId: sid, slotLabel: 'Extra Document', category: 'Extra' }))
@@ -1112,7 +1172,7 @@ const StaffClosingReportForm = ({
 
     return (
       <div className="flex min-h-[70vh] flex-col">
-        <StepHeader label={steps[8]} current={9} total={totalSteps} />
+        <StepHeader label={steps[9]} current={10} total={totalSteps} />
         <p className="text-2xl font-bold text-white mb-1">EOD Documents</p>
         <p className="text-sm text-slate-500 mb-5">Upload as many files as needed per bank or expense entry</p>
 
@@ -1138,10 +1198,10 @@ const StaffClosingReportForm = ({
         </div>
 
         <NavButtons
-          onBack={() => setStep(7)}
+          onBack={() => setStep(8)}
           onNext={() => {
             if (eodUploads.some((u) => u.status === 'uploading')) { window.alert('Please wait — files are still uploading.'); return }
-            setStep(9)
+            setStep(10)
           }}
           nextLabel="Next →"
         />
@@ -1152,7 +1212,7 @@ const StaffClosingReportForm = ({
   // Step 8 — Pump Readings
   const renderPumpStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[9]} current={10} total={totalSteps} />
+      <StepHeader label={steps[10]} current={11} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Pump Readings</p>
       <p className="text-sm text-slate-500 mb-3">
         {isFirstReport ? 'Enter opening & closing meter readings for each pump' : 'Log the closing meter reading for each pump'}
@@ -1294,14 +1354,14 @@ const StaffClosingReportForm = ({
           )}
         </div>
       </div>
-      <NavButtons onBack={() => setStep(8)} onNext={() => setStep(10)} nextLabel="Next →" />
+      <NavButtons onBack={() => setStep(9)} onNext={() => setStep(11)} nextLabel="Next →" />
     </div>
   )
 
   // Step 9 — Review & Submit
   const renderSubmitStep = () => (
     <div className="flex min-h-[70vh] flex-col">
-      <StepHeader label={steps[10]} current={11} total={totalSteps} />
+      <StepHeader label={steps[11]} current={12} total={totalSteps} />
       <p className="text-2xl font-bold text-white mb-1">Review & Submit</p>
       <p className="text-sm text-slate-500 mb-6">Add a final remark and submit your report</p>
       <div className="flex-1 space-y-4">
@@ -1315,6 +1375,7 @@ const StaffClosingReportForm = ({
             { label: 'Sales AGO (tank dip ref)', value: `${Math.round(dipSales.ago).toLocaleString()} L` },
             { label: 'Cash B/F', value: `NGN ${effectiveCashBf.toLocaleString()}` },
             { label: 'Cash Sales', value: `NGN ${Number(formData.cashSales || 0).toLocaleString()}` },
+            { label: 'POS Terminals', value: `NGN ${posValue.toLocaleString()}` },
             { label: 'Bank Deposits', value: `NGN ${paymentBreakdown.reduce((s, i) => s + i.amount, 0).toLocaleString()}` },
             { label: 'Expenses', value: `NGN ${expenseItems.reduce((s, i) => s + i.amount, 0).toLocaleString()}` },
             { label: 'Bank EOD', value: `${eodUploads.filter((u) => u.slotId?.startsWith('bank-') && u.status === 'done').length} file(s) uploaded` },
@@ -1346,7 +1407,7 @@ const StaffClosingReportForm = ({
         )}
         {submitError && <p className="text-sm text-rose-400">{submitError}</p>}
       </div>
-      <NavButtons onBack={() => setStep(9)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
+      <NavButtons onBack={() => setStep(10)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
     </div>
   )
 
@@ -1356,7 +1417,6 @@ const StaffClosingReportForm = ({
     const totalExpenses = expenseItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
     const totalBankPayments = paymentBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0)
     const cashSales = Number(formData.cashSales || 0)
-    const posValue = Number(formData.posValue || 0)
     const totalCash = effectiveCashBf + cashSales
     const closingCash = isFirstReport && formData.closingBalanceOverride !== ''
       ? Number(formData.closingBalanceOverride || 0)
@@ -1366,7 +1426,7 @@ const StaffClosingReportForm = ({
     const agoPumpSold = pumpSales.ago != null ? Number(pumpSales.ago || 0) : null
     const discrepancies = buildDiscrepancies()
     const bankUploads = eodUploads.filter((u) => u.slotId?.startsWith('bank-') && u.status === 'done')
-    const posUploads = eodUploads.filter((u) => u.slotId === 'pos-eod' && u.status === 'done')
+    const posUploads = eodUploads.filter((u) => u.slotId?.startsWith('pos-') && u.status === 'done')
     const expenseUploads = eodUploads.filter((u) => u.slotId?.startsWith('exp-') && u.status === 'done')
     const eodName = (upload) => upload.file?.name || upload.fileName || 'Uploaded file'
 
@@ -1385,7 +1445,7 @@ const StaffClosingReportForm = ({
 
     return (
       <div className="flex min-h-[70vh] flex-col">
-        <StepHeader label={steps[10]} current={11} total={totalSteps} />
+        <StepHeader label={steps[11]} current={12} total={totalSteps} />
         <p className="mb-1 text-2xl font-bold text-white">Review your report</p>
         <p className="mb-6 text-sm text-slate-500">Check every entry before sending it to your supervisor.</p>
         <div className="flex-1 space-y-4">
@@ -1463,6 +1523,11 @@ const StaffClosingReportForm = ({
           </ReviewSection>
 
           <ReviewSection title="Bank and evidence">
+            {posTerminalBreakdown.length ? posTerminalBreakdown.map((item) => (
+              <ReviewRow key={item.terminalId} label={item.label} value={money(item.amount)} />
+            )) : (
+              <ReviewRow label="POS terminal entries" value="No POS terminal amount entered" />
+            )}
             {paymentBreakdown.length ? paymentBreakdown.map((item) => (
               <ReviewRow key={item.id} label={item.channel} value={money(item.amount)} />
             )) : (
@@ -1498,7 +1563,7 @@ const StaffClosingReportForm = ({
 
           {submitError && <p className="text-sm text-rose-400">{submitError}</p>}
         </div>
-        <NavButtons onBack={() => setStep(9)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
+        <NavButtons onBack={() => setStep(10)} onNext={() => setConfirmOpen(true)} nextLabel={submitButtonLabel} submitting={submitting} />
       </div>
     )
   }
@@ -1515,10 +1580,11 @@ const StaffClosingReportForm = ({
       case 4: return renderReceivedStep()
       case 5: return renderExpensesStep()
       case 6: return renderCashStep()
-      case 7: return renderPaymentsStep()
-      case 8: return renderEodStep()
-      case 9: return renderPumpStep()
-      case 10: return renderReceiptReviewStep()
+      case 7: return renderPosTerminalStep()
+      case 8: return renderPaymentsStep()
+      case 9: return renderEodStep()
+      case 10: return renderPumpStep()
+      case 11: return renderReceiptReviewStep()
       default: return renderStep0()
     }
   }

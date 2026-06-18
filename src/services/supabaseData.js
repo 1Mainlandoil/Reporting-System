@@ -20,6 +20,11 @@ export const mapUserRow = (row) => ({
 
 const mapUser = mapUserRow
 
+const isPosPaymentLine = (item) => {
+  const channel = String(item?.channel || '').trim().toUpperCase()
+  return channel === 'POS' || channel.startsWith('POS -') || String(item?.category || '').toUpperCase() === 'POS' || Boolean(item?.terminalId)
+}
+
 export const mapReportRow = (row) => {
   const receivedQuantity = Number(row.quantity_received ?? 0) || 0
   const receivedProductType = row.received_product_type || null
@@ -40,13 +45,21 @@ export const mapReportRow = (row) => {
       ? 'BOTH'
       : receivedProductType || (receivedAGO > 0 ? 'AGO' : row.received_product ? 'PMS' : null)
   const rawPaymentBreakdown = Array.isArray(row.payment_breakdown) ? row.payment_breakdown : []
-  const posRows = rawPaymentBreakdown.filter(
-    (item) => String(item?.channel || '').trim().toUpperCase() === 'POS',
-  )
+  const posRows = rawPaymentBreakdown.filter(isPosPaymentLine)
   const posValue = posRows.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)
   const posEodPhotoUrl = posRows.find((item) => item?.eodPhotoUrl)?.eodPhotoUrl || ''
+  const posTerminalBreakdown = posRows.map((item) => ({
+    terminalId: item.terminalId || '',
+    bank: item.bank || '',
+    label: item.label || item.channel || 'POS',
+    channel: item.channel || 'POS',
+    category: 'POS',
+    amount: Number(item.amount || 0),
+    eodPhotoUrl: item.eodPhotoUrl || '',
+    eodPhotoUrls: Array.isArray(item.eodPhotoUrls) ? item.eodPhotoUrls : item.eodPhotoUrl ? [item.eodPhotoUrl] : [],
+  }))
   const paymentBreakdown = rawPaymentBreakdown
-    .filter((item) => String(item?.channel || '').trim().toUpperCase() !== 'POS')
+    .filter((item) => !isPosPaymentLine(item))
     .map((item) => {
       const eodPhotoUrls = [
         ...(Array.isArray(item.eodPhotoUrls) ? item.eodPhotoUrls : []),
@@ -107,6 +120,7 @@ export const mapReportRow = (row) => {
   paymentBreakdown,
   totalPaymentDeposits,
   posValue,
+  posTerminalBreakdown,
   posEodPhotoUrl,
   pumpReadings: Array.isArray(row.pump_readings) ? row.pump_readings : [],
   cashBf: Number(row.cash_bf ?? 0) || 0,
@@ -415,15 +429,25 @@ export const insertReport = async (report) => {
     no_sales_note: report.noSalesNote || '',
     payment_breakdown: [
       ...(report.paymentBreakdown || []),
-      ...(Number(report.posValue || 0) > 0
-        ? [
-            {
-              channel: 'POS',
-              amount: Number(report.posValue || 0),
-              ...(report.posEodPhotoUrl ? { eodPhotoUrl: report.posEodPhotoUrl } : {}),
-            },
-          ]
-        : []),
+      ...(Array.isArray(report.posTerminalBreakdown) && report.posTerminalBreakdown.length
+        ? report.posTerminalBreakdown.map((item) => ({
+            channel: item.channel || `POS - ${item.bank || 'Terminal'} - ${item.terminalId || ''}`.trim(),
+            amount: Number(item.amount || 0),
+            category: 'POS',
+            terminalId: item.terminalId || '',
+            bank: item.bank || '',
+            label: item.label || '',
+          }))
+        : Number(report.posValue || 0) > 0
+          ? [
+              {
+                channel: 'POS',
+                amount: Number(report.posValue || 0),
+                category: 'POS',
+                ...(report.posEodPhotoUrl ? { eodPhotoUrl: report.posEodPhotoUrl } : {}),
+              },
+            ]
+          : []),
     ],
     total_payment_deposits: Number(report.totalPaymentDeposits || 0),
     pump_readings: report.pumpReadings || [],
