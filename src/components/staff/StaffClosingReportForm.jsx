@@ -132,6 +132,7 @@ const StaffClosingReportForm = ({
   const [priceConfirmed, setPriceConfirmed] = useState(null)
   // Pump opening confirmation per pump/product: { [label::productType]: { confirmed: null|true|false, overrideValue: '', reason: '' } }
   const [pumpOpeningStates, setPumpOpeningStates] = useState({})
+  const [pumpOpeningDrafts, setPumpOpeningDrafts] = useState({})
   // EOD uploads: flat array of individual files
   // { fileId, slotId, slotLabel, category, file, url, status:'idle'|'uploading'|'done'|'error', error }
   const [eodUploads, setEodUploads] = useState([])
@@ -500,7 +501,7 @@ const StaffClosingReportForm = ({
       setPriceBandsPMS([]); setPriceBandsAGO([])
       setOpeningConfirmed(null); setManualOpening({ pms: '', ago: '' }); setOpeningOverrideReason('')
       setCashBfConfirmed(null); setCashBfOverrideReason('')
-      setPriceConfirmed(null); setPumpOpeningStates({})
+      setPriceConfirmed(null); setPumpOpeningStates({}); setPumpOpeningDrafts({})
       setEodUploads([]); setEodInputKeys({}); setExtraSlotIds([])
       setStep(0); setSuccess(true)
       setTimeout(() => setSuccess(false), 2500)
@@ -1247,6 +1248,24 @@ const StaffClosingReportForm = ({
             const historyKey = getPumpHistoryKey(effectiveLabel, productType)
             const priorPump = historyKey ? pumpLastClosings[historyKey] : null
             const pumpState = pumpOpeningStates[historyKey] || { confirmed: null, overrideValue: '', reason: '' }
+            const draftOpeningValue = pumpOpeningDrafts[historyKey] ?? pumpState.overrideValue ?? ''
+            const commitOpeningOverride = () => {
+              const val = String(draftOpeningValue).trim()
+              if (val === '') {
+                window.alert(`Enter the actual opening reading for ${effectiveLabel}.`)
+                return
+              }
+              const numericValue = Number(val)
+              if (!Number.isFinite(numericValue)) {
+                window.alert(`Enter a valid opening reading for ${effectiveLabel}.`)
+                return
+              }
+              if (numericValue < Number(priorPump.closing)) {
+                window.alert(`Opening reading can't be lower than yesterday's closing of ${priorPump.closing}. Meters don't go backwards.`)
+                return
+              }
+              setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, overrideValue: val } }))
+            }
             if (!priorPump || !effectiveLabel) return null
             return (
               <div className="space-y-3">
@@ -1259,7 +1278,10 @@ const StaffClosingReportForm = ({
                     <div className="grid grid-cols-2 gap-2">
                       <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, confirmed: true } }))}
                         className="rounded-xl border border-[#a9cd39]/30 bg-[#a9cd39]/10 py-2 text-xs font-semibold text-[#a9cd39]">✓ Yes</button>
-                      <button type="button" onClick={() => setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, confirmed: false } }))}
+                      <button type="button" onClick={() => {
+                        setPumpOpeningDrafts((prev) => ({ ...prev, [historyKey]: pumpState.overrideValue || '' }))
+                        setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, confirmed: false } }))
+                      }}
                         className="rounded-xl border border-white/10 bg-white/5 py-2 text-xs font-semibold text-slate-300">✗ No</button>
                     </div>
                   </div>
@@ -1272,16 +1294,32 @@ const StaffClosingReportForm = ({
                 )}
                 {pumpState.confirmed === false && (
                   <div className="space-y-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
-                    <FormInput type="number" label="Actual Opening Reading" value={pumpState.overrideValue}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        if (Number(val) < priorPump.closing) {
-                          window.alert(`Opening reading can't be lower than yesterday's closing of ${priorPump.closing}. Meters don't go backwards.`)
-                          return
-                        }
-                        setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, overrideValue: val } }))
-                      }}
-                    />
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <FormInput type="number" label="Actual Opening Reading" value={draftOpeningValue}
+                          onChange={(e) => setPumpOpeningDrafts((prev) => ({ ...prev, [historyKey]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              commitOpeningOverride()
+                            }
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={commitOpeningOverride}
+                        className="mb-0.5 rounded-xl border border-[#a9cd39]/30 bg-[#a9cd39]/10 px-4 py-3 text-xs font-bold text-[#a9cd39] transition hover:bg-[#a9cd39]/15"
+                      >
+                        OK
+                      </button>
+                    </div>
+                    {pumpState.overrideValue && (
+                      <p className="text-xs text-[#a9cd39]">Opening saved: {Number(pumpState.overrideValue).toLocaleString()}</p>
+                    )}
+                    {draftOpeningValue !== (pumpState.overrideValue || '') && (
+                      <p className="text-xs text-amber-300">Press Enter or OK to use this opening reading.</p>
+                    )}
                     <div className="space-y-1">
                       <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Reason *</span>
                       <textarea value={pumpState.reason} rows={2}
