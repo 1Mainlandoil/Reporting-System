@@ -7,6 +7,7 @@ import DataTable from '../components/ui/DataTable'
 import EmptyState from '../components/ui/EmptyState'
 import FilterScreenSection from '../components/ui/FilterScreenSection'
 import StationMultiSelect from '../components/ui/StationMultiSelect'
+import DateRangePicker from '../components/ui/DateRangePicker'
 import { useAppStore } from '../store/useAppStore'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
@@ -19,6 +20,8 @@ import {
   exportSupervisorExpenseQueueToExcel,
 } from '../utils/exportExcel'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
+import { buildDailyReportViewRow } from '../utils/dailyReportViewRow'
+import { getReportingDateIso } from '../utils/dateFormat'
 
 const IconShell = ({ children, className = '' }) => (
   <svg
@@ -254,6 +257,7 @@ const SupervisorDashboardPage = () => {
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
+  const [rangeSummaryReport, setRangeSummaryReport] = useState(null)
   const [reviewRemark, setReviewRemark] = useState('')
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [correctionReason, setCorrectionReason] = useState('')
@@ -389,7 +393,7 @@ const SupervisorDashboardPage = () => {
     () => new Map(portfolio.map((item) => [item.stationId, item])),
     [portfolio],
   )
-  const today = new Date().toISOString().split('T')[0]
+  const today = getReportingDateIso()
   const todayMonthKey = today.slice(0, 7)
   const [reportRangeFrom, setReportRangeFrom] = useState(today)
   const [reportRangeTo, setReportRangeTo] = useState(today)
@@ -434,11 +438,20 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const rangeReportDates = new Set(reportRangeDates.filter((date) => stationReportDates.has(date)))
-        const pendingDaysInRange = Math.max(0, reportRangeDates.length - rangeReportDates.size)
+        const rangeSubmittedDates = reportRangeDates.filter((date) => stationReportDates.has(date))
+        const pendingDaysInRange = Math.max(0, reportRangeDates.length - rangeSubmittedDates.length)
         const pendingInfo = getDailyReportPendingInfo(reportRange.end, stationReportDates)
+        const firstMissingInRange = reportRangeDates.find((date) => !stationReportDates.has(date)) || null
         const pendingFmt = formatPendingSubmissionSummary(
-          { ...pendingInfo, pendingDays: isSingleReportDate ? pendingInfo.pendingDays : pendingDaysInRange },
+          isSingleReportDate
+            ? pendingInfo
+            : {
+                ...pendingInfo,
+                pendingDays: pendingDaysInRange,
+                firstMissingIso: firstMissingInRange,
+                lastSubmittedIso: rangeSubmittedDates.at(-1) || pendingInfo.lastSubmittedIso,
+                noPriorSubmissions: pendingInfo.noPriorSubmissions && rangeSubmittedDates.length === 0,
+              },
           reportRange.end,
         )
         const stationReportsToday = reports.filter(
@@ -760,7 +773,7 @@ const SupervisorDashboardPage = () => {
           }
           const late = !row.pendingSubmissionNoHistory && Number(row.pendingSubmissionDays || 0) >= 1
           const label = row.pendingSubmissionNoHistory
-            ? 'Pending (Today)'
+            ? 'Pending (Report day)'
             : `Pending (${row.pendingSubmissionDays} day${row.pendingSubmissionDays === 1 ? '' : 's'})`
           return (
             <span
@@ -958,11 +971,20 @@ const SupervisorDashboardPage = () => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((station) => {
         const stationReportDates = reportDatesByStation.get(station.id) ?? new Set()
-        const rangeReportDates = new Set(reportRangeDates.filter((date) => stationReportDates.has(date)))
-        const pendingDaysInRange = Math.max(0, reportRangeDates.length - rangeReportDates.size)
+        const rangeSubmittedDates = reportRangeDates.filter((date) => stationReportDates.has(date))
+        const pendingDaysInRange = Math.max(0, reportRangeDates.length - rangeSubmittedDates.length)
         const pendingInfo = getDailyReportPendingInfo(reportRange.end, stationReportDates)
+        const firstMissingInRange = reportRangeDates.find((date) => !stationReportDates.has(date)) || null
         const pendingFmt = formatPendingSubmissionSummary(
-          { ...pendingInfo, pendingDays: isSingleReportDate ? pendingInfo.pendingDays : pendingDaysInRange },
+          isSingleReportDate
+            ? pendingInfo
+            : {
+                ...pendingInfo,
+                pendingDays: pendingDaysInRange,
+                firstMissingIso: firstMissingInRange,
+                lastSubmittedIso: rangeSubmittedDates.at(-1) || pendingInfo.lastSubmittedIso,
+                noPriorSubmissions: pendingInfo.noPriorSubmissions && rangeSubmittedDates.length === 0,
+              },
           reportRange.end,
         )
         const stationReportsToday = reports.filter(
@@ -1106,7 +1128,7 @@ const SupervisorDashboardPage = () => {
         exportPick: (row) => {
           if (row.reportStatus === 'Pending') {
             return row.pendingSubmissionNoHistory
-              ? 'Pending (Today)'
+              ? 'Pending (Report day)'
               : `Pending (${row.pendingSubmissionDays} days)`
           }
           return row.reportStatus
@@ -1135,7 +1157,7 @@ const SupervisorDashboardPage = () => {
               }
             >
               {row.pendingSubmissionNoHistory
-                ? 'Pending (Today)'
+                ? 'Pending (Report day)'
                 : `Pending (${row.pendingSubmissionDays} day${row.pendingSubmissionDays === 1 ? '' : 's'})`}
             </span>
           )
@@ -1409,7 +1431,7 @@ const SupervisorDashboardPage = () => {
         exportPick: (row) => {
           if (row.expenseStatus === 'Pending') {
             return row.pendingSubmissionNoHistory
-              ? 'Pending (Today)'
+              ? 'Pending (Report day)'
               : `Pending (${row.pendingSubmissionDays} days)`
           }
           return row.expenseStatus
@@ -1432,7 +1454,7 @@ const SupervisorDashboardPage = () => {
               }
             >
               {row.pendingSubmissionNoHistory
-                ? 'Pending (Today)'
+                ? 'Pending (Report day)'
                 : `Pending (${row.pendingSubmissionDays} day${row.pendingSubmissionDays === 1 ? '' : 's'})`}
             </span>
           ),
@@ -1822,28 +1844,37 @@ const SupervisorDashboardPage = () => {
     const row = selectedDailyOpeningReport
     if (!row) return null
 
+    const sourcePumpRows = Array.isArray(row.pumpMeterRows) && row.pumpMeterRows.length
+      ? row.pumpMeterRows.filter((item) => item?.used !== false)
+      : row.pumpReadings || []
     const directPumpDelta = { PMS: 0, AGO: 0 }
-    for (const item of row.pumpReadings || []) {
+    const directPumpCount = { PMS: 0, AGO: 0 }
+    for (const item of sourcePumpRows) {
       const product = String(item?.productType || 'PMS').toUpperCase() === 'AGO' ? 'AGO' : 'PMS'
       const opening = toFiniteNumber(item?.opening ?? item?.start, Number.NaN)
       const closing = toFiniteNumber(item?.closing ?? item?.end, Number.NaN)
       if (Number.isFinite(opening) && Number.isFinite(closing)) {
         directPumpDelta[product] += closing - opening
+        directPumpCount[product] += 1
       }
     }
 
-    const hasPmsMeter = row.pumpSalesLitersPMS != null || (row.pumpReadings || []).some((item) => String(item?.productType || 'PMS').toUpperCase() !== 'AGO')
-    const hasAgoMeter = row.pumpSalesLitersAGO != null || (row.pumpReadings || []).some((item) => String(item?.productType || '').toUpperCase() === 'AGO')
-    const systemPms = row.pumpSalesLitersPMS != null
-      ? Math.max(0, toFiniteNumber(row.pumpSalesLitersPMS) - toFiniteNumber(row.rttPMS))
-      : hasPmsMeter
-        ? Math.max(0, directPumpDelta.PMS - toFiniteNumber(row.rttPMS))
-        : toFiniteNumber(row.totalSalesLitersPMS)
-    const systemAgo = row.pumpSalesLitersAGO != null
-      ? Math.max(0, toFiniteNumber(row.pumpSalesLitersAGO) - toFiniteNumber(row.rttAGO))
-      : hasAgoMeter
-        ? Math.max(0, directPumpDelta.AGO - toFiniteNumber(row.rttAGO))
-        : toFiniteNumber(row.totalSalesLitersAGO)
+    const hasPmsMeter = directPumpCount.PMS > 0
+    const hasAgoMeter = directPumpCount.AGO > 0
+    const systemPms = hasPmsMeter
+      ? Math.max(0, directPumpDelta.PMS - toFiniteNumber(row.rttPMS))
+      : row.calculatedSalesLitersPMS != null
+        ? toFiniteNumber(row.calculatedSalesLitersPMS)
+        : row.pumpSalesLitersPMS != null
+          ? toFiniteNumber(row.pumpSalesLitersPMS)
+          : toFiniteNumber(row.totalSalesLitersPMS)
+    const systemAgo = hasAgoMeter
+      ? Math.max(0, directPumpDelta.AGO - toFiniteNumber(row.rttAGO))
+      : row.calculatedSalesLitersAGO != null
+        ? toFiniteNumber(row.calculatedSalesLitersAGO)
+        : row.pumpSalesLitersAGO != null
+          ? toFiniteNumber(row.pumpSalesLitersAGO)
+          : toFiniteNumber(row.totalSalesLitersAGO)
     const managerPms = toFiniteNumber(row.managerEnteredSalesLitersPMS ?? row.dipSalesLitersPMS ?? row.totalSalesLitersPMS)
     const managerAgo = toFiniteNumber(row.managerEnteredSalesLitersAGO ?? row.dipSalesLitersAGO ?? row.totalSalesLitersAGO)
     const bookPms = toFiniteNumber(row.openingStockPMS) + toFiniteNumber(row.receivedPMS) - toFiniteNumber(row.rttPMS) - toFiniteNumber(systemPms)
@@ -1871,6 +1902,59 @@ const SupervisorDashboardPage = () => {
         report.date === selectedDailyOpeningReport.reportDate,
     ) || null
   }, [reports, selectedDailyOpeningReport])
+
+  const selectedRangeRawReports = useMemo(() => {
+    if (!selectedDailyOpeningReport || selectedRawReport) return []
+    return reports
+      .filter((report) =>
+        report.stationId === selectedDailyOpeningReport.stationId &&
+        report.date >= reportRange.start &&
+        report.date <= reportRange.end
+      )
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [reportRange.end, reportRange.start, reports, selectedDailyOpeningReport, selectedRawReport])
+
+  const buildSingleDayModalRow = (report) => {
+    if (!report) return null
+    const station = stations.find((item) => item.id === report.stationId)
+    const manager = users.find((user) => user.stationId === report.stationId)
+    const allPriorReports = reports
+      .filter((item) => item.stationId === report.stationId && item.date < report.date)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    const row = buildDailyReportViewRow({
+      stationId: report.stationId,
+      stationName: station?.name || report.stationId,
+      managerName: manager?.name || 'Unassigned',
+      latestToday: report,
+      previousReport: allPriorReports.at(-1) || null,
+      allPriorReports,
+    })
+    if (!row) return null
+    return {
+      ...row,
+      salesAmountPMS: Number(report.salesAmountPMS || 0),
+      salesAmountAGO: Number(report.salesAmountAGO || 0),
+      totalSalesAmount: Number(report.totalSalesAmount || 0),
+      pumpSalesLitersPMS: report.pumpSalesLitersPMS ?? row.calculatedSalesLitersPMS,
+      pumpSalesLitersAGO: report.pumpSalesLitersAGO ?? row.calculatedSalesLitersAGO,
+      dipSalesLitersPMS: report.dipSalesLitersPMS ?? null,
+      dipSalesLitersAGO: report.dipSalesLitersAGO ?? null,
+      posTerminalBreakdown: Array.isArray(report.posTerminalBreakdown) ? report.posTerminalBreakdown : [],
+      eodAttachments: Array.isArray(report.eodAttachments) ? report.eodAttachments : [],
+    }
+  }
+
+  const closeDailyOpeningModal = () => {
+    setSelectedDailyOpeningReport(null)
+    setRangeSummaryReport(null)
+  }
+
+  const returnToRangeSummary = () => {
+    if (!rangeSummaryReport) return
+    setReviewRemark('')
+    setSelectedDailyOpeningReport(rangeSummaryReport)
+    setRangeSummaryReport(null)
+  }
 
   const buildCorrectionDraft = (report) => {
     if (!report) return null
@@ -1969,41 +2053,21 @@ const SupervisorDashboardPage = () => {
                 {label}
               </button>
             ))}
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-slate-400">Date range</span>
-              <input
-                type="date"
-                value={reportRangeFrom}
-                max={today}
-                onChange={(event) => {
-                  const value = event.target.value || today
-                  setReportRangeFrom(value)
+            <div className="ml-auto">
+              <DateRangePicker
+                from={reportRangeFrom}
+                to={reportRangeTo}
+                maxDate={today}
+                label="Date range"
+                emptyLabel="Report day"
+                allowClear={false}
+                onChange={({ from, to }) => {
+                  const nextFrom = from || today
+                  const nextTo = to || nextFrom
+                  setReportRangeFrom(nextFrom)
+                  setReportRangeTo(nextTo)
                 }}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white outline-none transition focus:border-[#a9cd39]/50"
               />
-              <span className="text-xs text-slate-500">to</span>
-              <input
-                type="date"
-                value={reportRangeTo}
-                max={today}
-                onChange={(event) => {
-                  const value = event.target.value || today
-                  setReportRangeTo(value)
-                }}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white outline-none transition focus:border-[#a9cd39]/50"
-              />
-              {(reportRange.start !== today || reportRange.end !== today) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReportRangeFrom(today)
-                    setReportRangeTo(today)
-                  }}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
-                >
-                  Today
-                </button>
-              )}
             </div>
           </div>
         </Card>
@@ -2158,11 +2222,11 @@ const SupervisorDashboardPage = () => {
                 <p className="text-2xl font-bold">{dailyOpeningQueueRows.length}</p>
               </Card>
               <Card className="supervisor-light-stat">
-                <p className="text-sm text-slate-500">Submitted Today</p>
+                <p className="text-sm text-slate-500">Submitted Report Day</p>
                 <p className="text-2xl font-bold text-emerald-600">{submittedCount}</p>
               </Card>
               <Card className="supervisor-light-stat">
-                <p className="text-sm text-slate-500">Pending Today</p>
+                <p className="text-sm text-slate-500">Pending Report Day</p>
                 <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
               </Card>
             </div>
@@ -2308,7 +2372,7 @@ const SupervisorDashboardPage = () => {
                           )}
                           {pending && (
                             <p className="text-xs text-slate-500 mt-1">
-                              {row.pendingSubmissionNoHistory ? 'No report today yet' : `${row.pendingSubmissionDays} day(s) without submission`}
+                              {row.pendingSubmissionNoHistory ? 'No report for report day yet' : `${row.pendingSubmissionDays} day(s) without submission`}
                               <span className="ml-2 text-[#a9cd39]">View History</span>
                             </p>
                           )}
@@ -2358,12 +2422,22 @@ const SupervisorDashboardPage = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSelectedDailyOpeningReport(null)}
+                    onClick={closeDailyOpeningModal}
                     className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 hover:text-white transition shrink-0"
                   >x</button>
                 </div>
 
                 <div className="space-y-4 p-5 text-sm">
+                  {rangeSummaryReport && selectedRawReport && (
+                    <button
+                      type="button"
+                      onClick={returnToRangeSummary}
+                      className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-slate-300 transition hover:border-[#a9cd39]/40 hover:text-white"
+                    >
+                      Back to range
+                    </button>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {[
                       ['Status', selectedDailyOpeningReport.reportStatus, 'text-[#a9cd39]'],
@@ -2378,7 +2452,36 @@ const SupervisorDashboardPage = () => {
                     ))}
                   </div>
 
-                  {selectedReportDetail && (
+                  {!selectedRawReport && selectedRangeRawReports.length > 0 && (
+                    <div className="rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Range summary</p>
+                          <p className="mt-1 text-sm text-slate-300">
+                            This is a combined view for {selectedDailyOpeningReport.reportDate}. Open a specific day below for correction, finalisation, or review.
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-[#a9cd39]/15 px-3 py-1 text-xs font-bold text-[#a9cd39]">
+                          {selectedRangeRawReports.length} day{selectedRangeRawReports.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+                        {[
+                          ['PMS sold', formatLiters(selectedDailyOpeningReport.totalSalesLitersPMS)],
+                          ['AGO sold', formatLiters(selectedDailyOpeningReport.totalSalesLitersAGO)],
+                          ['Cash sales', formatMoney(selectedDailyOpeningReport.cashSales)],
+                          ['Expense', formatMoney(selectedDailyOpeningReport.expenseAmount)],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-xl bg-black/20 p-3">
+                            <p className="text-slate-500">{label}</p>
+                            <p className="mt-1 font-black text-white">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedReportDetail && selectedRawReport && (
                     <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
@@ -2419,7 +2522,7 @@ const SupervisorDashboardPage = () => {
                     </div>
                   )}
 
-                  {selectedReportDetail && (
+                  {selectedReportDetail && selectedRawReport && (
                     <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                       <p className="text-xs font-black uppercase tracking-widest text-slate-400">Stock check</p>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -2440,6 +2543,7 @@ const SupervisorDashboardPage = () => {
                     </div>
                   )}
 
+                  {selectedRawReport && (
                   <div className="grid gap-3 md:grid-cols-3">
                     <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                       <p className="text-xs font-black uppercase tracking-widest text-slate-400">Stock flow</p>
@@ -2471,11 +2575,39 @@ const SupervisorDashboardPage = () => {
                         <div className="flex justify-between gap-3"><span className="text-slate-500">AGO price</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.agoPrice)}/L</span></div>
                         <div className="flex justify-between gap-3"><span className="text-slate-500">Expense</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.expenseAmount)}</span></div>
                       </div>
+                      {((selectedDailyOpeningReport.priceBandsPMS || []).length > 0 || (selectedDailyOpeningReport.priceBandsAGO || []).length > 0) && (
+                        <div className="mt-3 space-y-2 rounded-xl bg-black/20 p-3">
+                          <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Price lines</p>
+                          {(selectedDailyOpeningReport.priceBandsPMS || []).length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold text-[#a9cd39]">PMS</p>
+                              {selectedDailyOpeningReport.priceBandsPMS.map((band, index) => (
+                                <div key={`visible-pms-band-${index}`} className="flex justify-between gap-3 text-xs text-slate-300">
+                                  <span>{formatMoney(band.price)}/L x {formatLiters(band.liters)}</span>
+                                  <span className="font-bold text-white">{formatMoney(Number(band.price || 0) * Number(band.liters || 0))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {(selectedDailyOpeningReport.priceBandsAGO || []).length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold text-blue-300">AGO</p>
+                              {selectedDailyOpeningReport.priceBandsAGO.map((band, index) => (
+                                <div key={`visible-ago-band-${index}`} className="flex justify-between gap-3 text-xs text-slate-300">
+                                  <span>{formatMoney(band.price)}/L x {formatLiters(band.liters)}</span>
+                                  <span className="font-bold text-white">{formatMoney(Number(band.price || 0) * Number(band.liters || 0))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {selectedDailyOpeningReport.managerRemark && selectedDailyOpeningReport.managerRemark !== '-' && (
                         <p className="mt-3 rounded-xl bg-black/20 p-3 text-sm text-slate-300">{selectedDailyOpeningReport.managerRemark}</p>
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
 
                 <div className="hidden">
@@ -2647,126 +2779,166 @@ const SupervisorDashboardPage = () => {
                   </div>
                 </div>
 
-                {selectedDailyOpeningReport.expenseItems.length > 0 && (
-                  <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
-                    <p className="mb-2 text-xs uppercase text-slate-500">Expense Lines</p>
-                    <div className="space-y-2">
-                      {selectedDailyOpeningReport.expenseItems.map((item, index) => (
-                        <p key={`${item.label}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
-                          {item.label}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedDailyOpeningReport.paymentBreakdown?.length > 0 && (
-                  <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
-                    <p className="mb-2 text-xs uppercase text-slate-500">Bank/Channel Breakdown</p>
-                    <div className="space-y-2">
-                      {selectedDailyOpeningReport.paymentBreakdown.map((item, index) => (
-                        <p key={`${item.channel}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
-                          {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedDailyOpeningReport.posTerminalBreakdown?.length > 0 && (
-                  <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">POS Terminal Breakdown</p>
-                      <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">
-                        NGN {Math.round(Number(selectedDailyOpeningReport.posValue || 0)).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedDailyOpeningReport.posTerminalBreakdown.map((item, index) => (
-                        <p key={`${item.terminalId || item.label}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
-                          {item.label || `${item.bank || 'POS'} ${item.terminalId || ''}`}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedDailyOpeningReport.eodAttachments?.length > 0 && (
-                  <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">EOD Attachments</p>
-                      <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">
-                        {selectedDailyOpeningReport.eodAttachments.length} file(s)
-                      </span>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {selectedDailyOpeningReport.eodAttachments.map((item, index) => (
-                        <a
-                          key={`${item.url || item.fileName || item.label}-${index}`}
-                          href={item.url || '#'}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(event) => {
-                            if (!item.url) event.preventDefault()
-                          }}
-                          className="rounded-xl border border-white/8 bg-black/20 p-3 transition hover:bg-black/30"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-bold text-white">{item.label || item.category || 'EOD file'}</p>
-                              <p className="mt-1 truncate text-xs text-slate-400">{item.fileName || 'Uploaded attachment'}</p>
-                            </div>
-                            <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-300">
-                              {item.category || 'EOD'}
-                            </span>
-                          </div>
-                          <p className={`mt-2 text-xs font-semibold ${item.url ? 'text-[#a9cd39]' : 'text-slate-500'}`}>
-                            {item.url ? 'Open file' : 'No file link'}
-                          </p>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedDailyOpeningReport.pumpMeterRows?.length > 0 && (
-                  <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
-                    <p className="mb-2 text-xs uppercase text-slate-500">Used Pump Readings</p>
-                    <div className="space-y-2">
-                      {selectedDailyOpeningReport.pumpMeterRows.map((item, index) => (
-                        <p key={`${item.label}-${index}`} className="break-words text-sm leading-6 text-slate-200">
-                          {item.label}{item.productType ? ` ${item.productType}` : ''}:{' '}
-                          {item.noBaseline
-                            ? 'No baseline'
-                            : `${item.opening ?? '-'} to ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Supervisor Review Button */}
-                {(!selectedDailyOpeningReport.pumpMeterRows || selectedDailyOpeningReport.pumpMeterRows.length === 0) &&
-                  (selectedDailyOpeningReport.pumpSalesLitersPMS != null || selectedDailyOpeningReport.pumpSalesLitersAGO != null) && (
-                    <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
-                      <p className="mb-2 text-xs font-bold uppercase tracking-widest text-amber-300">Pump detail unavailable</p>
-                      <p className="text-sm text-slate-300">
-                        This report has system pump totals, but no saved pump-line breakdown. Use Correct Report to add the exact pump label, product, opening and closing readings.
-                      </p>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                        <div className="rounded-xl bg-black/20 p-3">
-                          <p className="text-xs text-slate-500">PMS pump total</p>
-                          <p className="font-bold text-[#a9cd39]">{formatLiters(selectedDailyOpeningReport.pumpSalesLitersPMS || 0, 2)}</p>
-                        </div>
-                        <div className="rounded-xl bg-black/20 p-3">
-                          <p className="text-xs text-slate-500">AGO pump total</p>
-                          <p className="font-bold text-blue-300">{formatLiters(selectedDailyOpeningReport.pumpSalesLitersAGO || 0, 2)}</p>
+                {selectedRawReport && (
+                  <>
+                    {selectedDailyOpeningReport.expenseItems.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
+                        <p className="mb-2 text-xs uppercase text-slate-500">Expense Lines</p>
+                        <div className="space-y-2">
+                          {selectedDailyOpeningReport.expenseItems.map((item, index) => (
+                            <p key={`${item.label}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
+                              {item.label}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                            </p>
+                          ))}
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                    {selectedDailyOpeningReport.paymentBreakdown?.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
+                        <p className="mb-2 text-xs uppercase text-slate-500">Bank/Channel Breakdown</p>
+                        <div className="space-y-2">
+                          {selectedDailyOpeningReport.paymentBreakdown.map((item, index) => (
+                            <p key={`${item.channel}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
+                              {item.channel}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedDailyOpeningReport.posTerminalBreakdown?.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">POS Terminal Breakdown</p>
+                          <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">
+                            NGN {Math.round(Number(selectedDailyOpeningReport.posValue || 0)).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {selectedDailyOpeningReport.posTerminalBreakdown.map((item, index) => (
+                            <p key={`${item.terminalId || item.label}-${index}`} className="text-sm text-slate-200 dark:text-slate-200">
+                              {item.label || `${item.bank || 'POS'} ${item.terminalId || ''}`}: NGN {Math.round(Number(item.amount) || 0).toLocaleString()}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedDailyOpeningReport.eodAttachments?.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">EOD Attachments</p>
+                          <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">
+                            {selectedDailyOpeningReport.eodAttachments.length} file(s)
+                          </span>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {selectedDailyOpeningReport.eodAttachments.map((item, index) => (
+                            <a
+                              key={`${item.url || item.fileName || item.label}-${index}`}
+                              href={item.url || '#'}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => {
+                                if (!item.url) event.preventDefault()
+                              }}
+                              className="rounded-xl border border-white/8 bg-black/20 p-3 transition hover:bg-black/30"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-bold text-white">{item.label || item.category || 'EOD file'}</p>
+                                  <p className="mt-1 truncate text-xs text-slate-400">{item.fileName || 'Uploaded attachment'}</p>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-300">
+                                  {item.category || 'EOD'}
+                                </span>
+                              </div>
+                              <p className={`mt-2 text-xs font-semibold ${item.url ? 'text-[#a9cd39]' : 'text-slate-500'}`}>
+                                {item.url ? 'Open file' : 'No file link'}
+                              </p>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedDailyOpeningReport.pumpMeterRows?.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
+                        <p className="mb-2 text-xs uppercase text-slate-500">Used Pump Readings</p>
+                        <div className="space-y-2">
+                          {selectedDailyOpeningReport.pumpMeterRows.map((item, index) => (
+                            <p key={`${item.label}-${index}`} className="break-words text-sm leading-6 text-slate-200">
+                              {item.label}{item.productType ? ` ${item.productType}` : ''}:{' '}
+                              {item.noBaseline
+                                ? 'No baseline'
+                                : `${item.opening ?? '-'} to ${item.closing ?? '-'} ${item.used ? '(used)' : '(unused)'}`}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Supervisor Review Button */}
+                    {(!selectedDailyOpeningReport.pumpMeterRows || selectedDailyOpeningReport.pumpMeterRows.length === 0) &&
+                      (selectedDailyOpeningReport.pumpSalesLitersPMS != null || selectedDailyOpeningReport.pumpSalesLitersAGO != null) && (
+                        <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4">
+                          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-amber-300">Pump detail unavailable</p>
+                          <p className="text-sm text-slate-300">
+                            This report has system pump totals, but no saved pump-line breakdown. Use Correct Report to add the exact pump label, product, opening and closing readings.
+                          </p>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded-xl bg-black/20 p-3">
+                              <p className="text-xs text-slate-500">PMS pump total</p>
+                              <p className="font-bold text-[#a9cd39]">{formatLiters(selectedDailyOpeningReport.pumpSalesLitersPMS || 0, 2)}</p>
+                            </div>
+                            <div className="rounded-xl bg-black/20 p-3">
+                              <p className="text-xs text-slate-500">AGO pump total</p>
+                              <p className="font-bold text-blue-300">{formatLiters(selectedDailyOpeningReport.pumpSalesLitersAGO || 0, 2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                  </>
+                )}
                 {(() => {
                   const report = selectedRawReport
                   const alreadyReviewed = report?.supervisorReview?.status === 'Reviewed'
                   const alreadyFinalised = report?.finalizationStatus === 'finalized'
                   return (
                     <div className="mx-3 mt-5 border-t border-white/5 px-1 pb-4 pt-5 sm:mx-4 sm:px-2">
+                      {!report && selectedRangeRawReports.length > 0 && (
+                        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-bold text-white">Daily actions</p>
+                              <p className="text-xs text-slate-500">Open a specific day to correct, finalise, or review it.</p>
+                            </div>
+                            <span className="rounded-full bg-[#a9cd39]/10 px-3 py-1 text-xs font-bold text-[#a9cd39]">
+                              {selectedRangeRawReports.length} submitted day{selectedRangeRawReports.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {selectedRangeRawReports.map((dailyReport) => (
+                              <button
+                                key={dailyReport.id}
+                                type="button"
+                                onClick={() => {
+                                  const row = buildSingleDayModalRow(dailyReport)
+                                  if (row) {
+                                    setReviewRemark('')
+                                    setRangeSummaryReport(selectedDailyOpeningReport)
+                                    setSelectedDailyOpeningReport(row)
+                                  }
+                                }}
+                                className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-left text-sm transition hover:border-[#a9cd39]/30 hover:bg-[#a9cd39]/10"
+                              >
+                                <span>
+                                  <span className="block font-bold text-white">{dailyReport.date}</span>
+                                  <span className="block text-xs text-slate-500">Open action buttons</span>
+                                </span>
+                                <span className="text-[#a9cd39]">Open</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {report && (
                         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <button
@@ -2792,7 +2964,7 @@ const SupervisorDashboardPage = () => {
                               })
                               setFinalizeRemark('')
                               setReviewRemark('')
-                              setSelectedDailyOpeningReport(null)
+                              closeDailyOpeningModal()
                             }}
                             className="rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-4 py-3 text-sm font-bold text-[#a9cd39] transition hover:bg-[#a9cd39]/15 disabled:cursor-not-allowed disabled:opacity-40"
                           >
@@ -2815,7 +2987,7 @@ const SupervisorDashboardPage = () => {
                             </p>
                           </div>
                           <button type="button"
-                            onClick={() => setSelectedDailyOpeningReport(null)}
+                            onClick={closeDailyOpeningModal}
                             className="ml-auto text-xs text-slate-500 hover:text-white underline transition">
                             Close
                           </button>
@@ -2833,7 +3005,7 @@ const SupervisorDashboardPage = () => {
                           <div className="flex gap-3">
                             <button
                               type="button"
-                              onClick={() => setSelectedDailyOpeningReport(null)}
+                              onClick={closeDailyOpeningModal}
                               className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-semibold text-slate-400 hover:bg-white/5 transition"
                             >
                               Cancel
@@ -2849,7 +3021,7 @@ const SupervisorDashboardPage = () => {
                                   })
                                 }
                                 setReviewRemark('')
-                                setSelectedDailyOpeningReport(null)
+                                closeDailyOpeningModal()
                               }}
                               className="flex-1 rounded-xl bg-[#a9cd39] py-3 text-sm font-bold text-black hover:bg-[#bcd94a] transition"
                             >
@@ -3001,7 +3173,7 @@ const SupervisorDashboardPage = () => {
                       }
                       correctReportBySupervisor({ reportId: selectedRawReport.id, patch: correctionDraft, reason: correctionReason })
                       setCorrectionOpen(false)
-                      setSelectedDailyOpeningReport(null)
+                      closeDailyOpeningModal()
                     }}
                     className="flex-1 rounded-xl bg-amber-400 py-3 text-sm font-black text-black hover:bg-amber-300"
                   >
@@ -3180,7 +3352,7 @@ const SupervisorDashboardPage = () => {
                 <p className="text-2xl font-bold text-emerald-600">{expenseSubmittedCount}</p>
               </Card>
               <Card className="supervisor-light-stat">
-                <p className="text-sm text-slate-500">Total Expense Today (NGN)</p>
+                <p className="text-sm text-slate-500">Total Expense Report Day (NGN)</p>
                 <p className="text-2xl font-bold">{Math.round(totalExpenseToday).toLocaleString()}</p>
               </Card>
               <Card className="supervisor-light-stat">

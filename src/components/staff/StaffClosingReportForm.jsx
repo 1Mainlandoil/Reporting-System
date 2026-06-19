@@ -11,6 +11,7 @@ import {
   validatePriceBandsForProduct,
   weightedAveragePrice,
 } from '../../utils/priceBands'
+import { getReportingDateIso } from '../../utils/dateFormat'
 
 const EXPENSE_OPTIONS = ['Gas', 'Pms', 'Transport', 'Oil', 'Pos paper', 'Other']
 const PAYMENT_CHANNEL_OPTIONS = ['Signature Bank', 'Moniepoint', 'First Bank', 'FCMB', 'Zenith', 'Other']
@@ -296,7 +297,7 @@ const StaffClosingReportForm = ({
     }
     setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'uploading' } : u))
     const ext = file.name.split('.').pop()
-    const path = `eod/${stationId || 'unknown'}/${reportDate || new Date().toISOString().split('T')[0]}/${fileId}.${ext}`
+    const path = `eod/${stationId || 'unknown'}/${reportDate || getReportingDateIso()}/${fileId}.${ext}`
     const { error } = await supabase.storage.from('eod-uploads').upload(path, file, { upsert: true })
     if (error) {
       setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'error', error: error.message } : u))
@@ -1456,7 +1457,7 @@ const StaffClosingReportForm = ({
         <p className="mb-6 text-sm text-slate-500">Check every entry before sending it to your supervisor.</p>
         <div className="flex-1 space-y-4">
           <ReviewSection title="Report details">
-            <ReviewRow label="Report date" value={reportDate || new Date().toISOString().slice(0, 10)} />
+            <ReviewRow label="Report date" value={reportDate || getReportingDateIso()} />
             <ReviewRow label="Station ID" value={stationId || '-'} />
             <ReviewRow label="Sales today" value={isNoSalesDay ? 'No' : 'Yes'} tone={isNoSalesDay ? 'text-amber-300' : 'text-[#a9cd39]'} strong />
           </ReviewSection>

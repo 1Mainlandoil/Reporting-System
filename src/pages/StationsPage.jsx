@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import EmptyState from '../components/ui/EmptyState'
 import { useAppStore } from '../store/useAppStore'
+import { getReportingDateIso } from '../utils/dateFormat'
 
 const StationsPage = () => {
   const navigate = useNavigate()
@@ -10,7 +11,7 @@ const StationsPage = () => {
   const users = useAppStore((state) => state.users)
   const reports = useAppStore((state) => state.reports)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getReportingDateIso()
 
   const managerByStation = useMemo(
     () => new Map(users.filter((u) => u.role === 'staff' && u.stationId).map((u) => [u.stationId, u])),

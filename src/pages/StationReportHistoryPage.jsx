@@ -4,11 +4,13 @@ import Card from '../components/ui/Card'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorNotice from '../components/ui/ErrorNotice'
 import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
+import DateRangePicker from '../components/ui/DateRangePicker'
 import { useAppStore } from '../store/useAppStore'
 import { ROLES } from '../constants/roles'
 import { exportStationHistoryToExcel } from '../utils/exportExcel'
 import { getClosingForProduct, getPumpHistoryKey, normalizePumpProductType } from '../utils/reportFields'
 import { addCalendarDaysIso, formatStaffCalendarDay, getOldestMissingReportDateUpTo } from '../utils/reportPending'
+import { getReportingDateIso } from '../utils/dateFormat'
 
 const REVIEW_STATUS_OPTIONS = ['Reviewed', 'Needs Attention', 'Escalated']
 
@@ -156,7 +158,7 @@ const StationReportHistoryPage = () => {
   )
   const reports = useMemo(() => [...chronAsc].reverse(), [chronAsc])
 
-  const todayIso = new Date().toISOString().split('T')[0]
+  const todayIso = getReportingDateIso()
   const reportDatesSet = useMemo(() => new Set(chronAsc.map((r) => r.date)), [chronAsc])
 
   const reportSubmitOpening = useMemo(() => {
@@ -323,10 +325,47 @@ const StationReportHistoryPage = () => {
       .join(', ')
   }
 
-  const getSalesPms = (row) => Number(row.totalSalesLitersPMS ?? row.salesPMS ?? 0)
-  const getSalesAgo = (row) => Number(row.totalSalesLitersAGO ?? row.salesAGO ?? 0)
+const getSalesPms = (row) => Number(row.totalSalesLitersPMS ?? row.salesPMS ?? 0)
+const getSalesAgo = (row) => Number(row.totalSalesLitersAGO ?? row.salesAGO ?? 0)
 
-  const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
+const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
+
+  const getSystemSalesFromPumpRows = (row, productType) => {
+    const product = String(productType || 'PMS').toUpperCase() === 'AGO' ? 'AGO' : 'PMS'
+    const sourceRows = Array.isArray(row?.pumpMeterRows) && row.pumpMeterRows.length
+      ? row.pumpMeterRows.filter((item) => item?.used !== false)
+      : Array.isArray(row?.pumpReadings)
+        ? row.pumpReadings
+        : []
+    let total = 0
+    let count = 0
+    for (const item of sourceRows) {
+      const itemProduct = String(item?.productType || 'PMS').toUpperCase() === 'AGO' ? 'AGO' : 'PMS'
+      if (itemProduct !== product) continue
+      const opening = item?.opening ?? item?.start
+      const closing = item?.closing ?? item?.end ?? getReadingValue(item)
+      const openingNumber = Number(opening)
+      const closingNumber = Number(closing)
+      if (!Number.isFinite(openingNumber) || !Number.isFinite(closingNumber)) continue
+      total += closingNumber - openingNumber
+      count += 1
+    }
+    if (!count) {
+      const stored = product === 'AGO'
+        ? row?.calculatedSalesLitersAGO ?? row?.pumpSalesLitersAGO ?? row?.totalSalesLitersAGO ?? row?.salesAGO
+        : row?.calculatedSalesLitersPMS ?? row?.pumpSalesLitersPMS ?? row?.totalSalesLitersPMS ?? row?.salesPMS
+      return Number(stored ?? 0)
+    }
+    const rtt = product === 'AGO' ? Number(row?.rttAGO || 0) : Number(row?.rttPMS || 0)
+    return Math.max(0, total - rtt)
+  }
+
+  const getManagerEnteredSales = (row, productType) => {
+    const product = String(productType || 'PMS').toUpperCase() === 'AGO' ? 'AGO' : 'PMS'
+    return product === 'AGO'
+      ? Number(row?.managerEnteredSalesLitersAGO ?? row?.totalSalesLitersAGO ?? row?.salesAGO ?? 0)
+      : Number(row?.managerEnteredSalesLitersPMS ?? row?.totalSalesLitersPMS ?? row?.salesPMS ?? 0)
+  }
 
   const getReviewClass = (status) => {
     if (status === 'Reviewed') return 'border-[#a9cd39]/25 bg-[#a9cd39]/10 text-[#a9cd39]'
@@ -676,38 +715,18 @@ const StationReportHistoryPage = () => {
             ) : (
               /* Admin/supervisor date range picker */
               <div className="flex flex-wrap items-end gap-3">
-                <label className="block space-y-1.5">
-                  <span className="text-xs text-slate-400">From</span>
-                  <input
-                    type="date"
-                    value={historyRangeFrom}
-                    max={todayIso}
-                    onChange={(event) => setHistoryRangeFrom(event.target.value)}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-[#a9cd39]/40 focus:outline-none"
-                  />
-                </label>
-                <label className="block space-y-1.5">
-                  <span className="text-xs text-slate-400">To</span>
-                  <input
-                    type="date"
-                    value={historyRangeTo}
-                    max={todayIso}
-                    onChange={(event) => setHistoryRangeTo(event.target.value)}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-[#a9cd39]/40 focus:outline-none"
-                  />
-                </label>
-                {(historyRangeFrom || historyRangeTo) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHistoryRangeFrom('')
-                      setHistoryRangeTo('')
-                    }}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-300 hover:bg-white/10 transition"
-                  >
-                    Clear filter
-                  </button>
-                )}
+                <DateRangePicker
+                  from={historyRangeFrom}
+                  to={historyRangeTo}
+                  maxDate={todayIso}
+                  label="Date range"
+                  emptyLabel="All dates"
+                  align="left"
+                  onChange={({ from, to }) => {
+                    setHistoryRangeFrom(from)
+                    setHistoryRangeTo(to)
+                  }}
+                />
               </div>
             )}
           </div>
@@ -915,6 +934,71 @@ const StationReportHistoryPage = () => {
                     </div>
                   ))}
                 </div>
+                <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-amber-300">Quantity sold check</p>
+                      <p className="mt-1 text-sm text-slate-300">System calculated vs manager entered.</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {[
+                      ['PMS', getSystemSalesFromPumpRows(selectedHistoryReport, 'PMS'), getManagerEnteredSales(selectedHistoryReport, 'PMS'), 'text-[#a9cd39]'],
+                      ['AGO', getSystemSalesFromPumpRows(selectedHistoryReport, 'AGO'), getManagerEnteredSales(selectedHistoryReport, 'AGO'), 'text-blue-300'],
+                    ].map(([product, system, manager, accent]) => {
+                      const diff = Number(system || 0) - Number(manager || 0)
+                      return (
+                        <div key={`history-quantity-${product}`} className="rounded-2xl border border-white/8 bg-black/20 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{product}</p>
+                            <p className={`text-xs font-black ${Math.abs(diff) <= 1 ? 'text-[#a9cd39]' : 'text-amber-300'}`}>
+                              Diff {formatLiters(diff, 2)}
+                            </p>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="rounded-xl bg-white/[0.04] p-3">
+                              <p className="text-[11px] text-slate-500">System</p>
+                              <p className={`text-sm font-black ${accent}`}>{formatLiters(system, 2)}</p>
+                            </div>
+                            <div className="rounded-xl bg-white/[0.04] p-3">
+                              <p className="text-[11px] text-slate-500">Manager</p>
+                              <p className="text-sm font-black text-white">{formatLiters(manager, 2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+                {((selectedHistoryReport.priceBandsPMS || []).length > 0 || (selectedHistoryReport.priceBandsAGO || []).length > 0) && (
+                  <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Price lines</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {(selectedHistoryReport.priceBandsPMS || []).length > 0 && (
+                        <div className="space-y-2 rounded-xl bg-white/[0.04] p-3">
+                          <p className="text-xs font-bold text-[#a9cd39]">PMS</p>
+                          {selectedHistoryReport.priceBandsPMS.map((band, index) => (
+                            <div key={`history-pms-band-${index}`} className="flex justify-between gap-3 text-xs text-slate-300">
+                              <span>{formatMoney(band.price)}/L x {formatLiters(band.liters)}</span>
+                              <span className="font-bold text-white">{formatMoney(Number(band.price || 0) * Number(band.liters || 0))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(selectedHistoryReport.priceBandsAGO || []).length > 0 && (
+                        <div className="space-y-2 rounded-xl bg-white/[0.04] p-3">
+                          <p className="text-xs font-bold text-blue-300">AGO</p>
+                          {selectedHistoryReport.priceBandsAGO.map((band, index) => (
+                            <div key={`history-ago-band-${index}`} className="flex justify-between gap-3 text-xs text-slate-300">
+                              <span>{formatMoney(band.price)}/L x {formatLiters(band.liters)}</span>
+                              <span className="font-bold text-white">{formatMoney(Number(band.price || 0) * Number(band.liters || 0))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </section>
 
               <section className="rounded-3xl border border-white/10 bg-[#101722] p-5">

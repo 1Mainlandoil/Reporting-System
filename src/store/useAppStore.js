@@ -33,6 +33,7 @@ import {
 } from '../services/supabaseData'
 import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
 import { mergeChatMessages } from '../utils/chatMessages'
+import { getReportingDateIso } from '../utils/dateFormat'
 
 const initialFilters = {
   stationIds: [],
@@ -400,7 +401,7 @@ export const useAppStore = create(
           return { ok: false, error: 'no_station' }
         }
 
-        const todayIso = new Date().toISOString().split('T')[0]
+        const reportingDateIso = getReportingDateIso()
         const { reportDate: explicitReportDate, ...restPayload } = payload
 
         const staffOwnStation =
@@ -408,14 +409,14 @@ export const useAppStore = create(
           state.currentUser?.stationId &&
           stationId === state.currentUser.stationId
 
-        let resolvedDate = todayIso
+        let resolvedDate = reportingDateIso
         if (
           explicitReportDate &&
           typeof explicitReportDate === 'string' &&
           staffOwnStation
         ) {
           const d = explicitReportDate.slice(0, 10)
-          if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d <= todayIso) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d <= reportingDateIso) {
             resolvedDate = d
           }
         }

@@ -12,6 +12,7 @@ import { buildStationMetrics } from '../utils/stock'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
+import { getReportingDateIso } from '../utils/dateFormat'
 
 const AdminDashboardPage = () => {
   const navigate = useNavigate()
@@ -71,7 +72,7 @@ const AdminDashboardPage = () => {
     }),
     [metrics],
   )
-  const today = new Date().toISOString().split('T')[0]
+  const today = getReportingDateIso()
 
   const stationManagerById = useMemo(
     () =>

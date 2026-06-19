@@ -5,6 +5,7 @@ import StatusBadge from '../components/ui/StatusBadge'
 import EmptyState from '../components/ui/EmptyState'
 import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics } from '../utils/stock'
+import { getReportingDateIso } from '../utils/dateFormat'
 
 const AlertsPage = () => {
   const stations = useAppStore((state) => state.stations)
@@ -24,7 +25,7 @@ const AlertsPage = () => {
     }
   }, [reports, stations, stockThresholds])
   const lowStockAlerts = [...critical, ...warning]
-  const today = new Date().toISOString().split('T')[0]
+  const today = getReportingDateIso()
 
   const pendingDailyReportAlerts = useMemo(
     () =>

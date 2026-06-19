@@ -4,6 +4,7 @@ import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
 import { useAppStore } from '../store/useAppStore'
 import { getClosingForProduct, getPumpHistoryKey, normalizePumpProductType } from '../utils/reportFields'
 import { formatStaffCalendarDay, getDailyReportPendingInfo, getOldestMissingReportDateUpTo, listMissedReportDatesInclusive } from '../utils/reportPending'
+import { getReportingDateIso } from '../utils/dateFormat'
 
 const StaffDashboardPage = () => {
   const currentUser = useAppStore((state) => state.currentUser)
@@ -12,7 +13,7 @@ const StaffDashboardPage = () => {
   const reports = useAppStore((state) => state.reports)
   const reportingConfiguration = useAppStore((state) => state.appSettings.reportingConfiguration)
 
-  const todayIso = new Date().toISOString().split('T')[0]
+  const todayIso = getReportingDateIso()
 
   const stationReportDates = useMemo(() => {
     const sid = currentUser?.stationId
@@ -255,8 +256,8 @@ const StaffDashboardPage = () => {
             <div className="mt-4 grid grid-cols-3 gap-2">
               {[
                 ['Completed', `${recentSevenStats.completed}/${recentSevenStats.total} days`, 'text-white'],
-                ['Due', backlogDates.length ? `${backlogDates.length} missing` : stationReportDates.has(todayIso) ? '0 missing' : 'Today', backlogDates.length ? 'text-amber-300' : 'text-[#a9cd39]'],
-                ['Action', backlogDates.length ? 'Oldest first' : stationReportDates.has(todayIso) ? 'Up to date' : 'Today', 'text-[#a9cd39]'],
+                ['Due', backlogDates.length ? `${backlogDates.length} missing` : stationReportDates.has(todayIso) ? '0 missing' : 'Report day', backlogDates.length ? 'text-amber-300' : 'text-[#a9cd39]'],
+                ['Action', backlogDates.length ? 'Oldest first' : stationReportDates.has(todayIso) ? 'Up to date' : 'Submit prior day', 'text-[#a9cd39]'],
               ].map(([label, value, color]) => (
                 <div key={label} className="min-w-0 rounded-xl border border-white/5 bg-black/20 p-2.5 shadow-inner shadow-white/5">
                   <p className="truncate text-[11px] text-slate-400">{label}</p>
