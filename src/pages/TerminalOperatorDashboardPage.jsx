@@ -10,10 +10,14 @@ import { getOpeningForProduct, getReceivedForProduct, getSalesForProduct } from 
 
 const emptyApproveDraft = {
   approvedLiters: '',
+  costPricePerLiter: '',
+  transportCostPerLiter: '',
   truckNumber: '',
   truckDriver: '',
   remark: '',
 }
+
+const formatNaira = (value) => `NGN ${Number(value || 0).toLocaleString()}`
 
 const DetailField = ({ label, value, className = '' }) => (
   <div className={className}>
@@ -69,6 +73,11 @@ const TerminalOperatorDashboardPage = () => {
   )
 
   const activeRows = activeView === 'history' ? historyRows : pendingRows
+  const approveLiters = Number(approveDraft.approvedLiters || 0)
+  const approveCostPerLiter = Number(approveDraft.costPricePerLiter || 0)
+  const approveTransportPerLiter = Number(approveDraft.transportCostPerLiter || 0)
+  const approveLandingPerLiter = approveCostPerLiter + approveTransportPerLiter
+  const approveTotalLandingCost = approveLiters * approveLandingPerLiter
 
   const stationStockById = useMemo(() => {
     const map = new Map()
@@ -128,6 +137,8 @@ const TerminalOperatorDashboardPage = () => {
     setApproveTarget(request)
     setApproveDraft({
       approvedLiters: String(request.requestedLiters || ''),
+      costPricePerLiter: request.costPricePerLiter ? String(request.costPricePerLiter) : '',
+      transportCostPerLiter: request.transportCostPerLiter ? String(request.transportCostPerLiter) : '',
       truckNumber: '',
       truckDriver: '',
       remark: '',
@@ -148,6 +159,16 @@ const TerminalOperatorDashboardPage = () => {
       window.alert('Enter how many liters you are sending.')
       return
     }
+    const costPricePerLiter = Number(approveDraft.costPricePerLiter || 0)
+    if (costPricePerLiter <= 0) {
+      window.alert('Enter the product cost price per liter.')
+      return
+    }
+    const transportCostPerLiter = Number(approveDraft.transportCostPerLiter || 0)
+    if (transportCostPerLiter < 0) {
+      window.alert('Transport cost per liter cannot be negative.')
+      return
+    }
     if (!String(approveDraft.truckNumber || '').trim()) {
       window.alert('Enter the truck number.')
       return
@@ -160,6 +181,8 @@ const TerminalOperatorDashboardPage = () => {
       requestId: approveTarget.id,
       decision: 'approve',
       approvedLiters: liters,
+      costPricePerLiter,
+      transportCostPerLiter,
       truckNumber: approveDraft.truckNumber,
       truckDriver: approveDraft.truckDriver,
       remark: approveDraft.remark,
@@ -323,6 +346,10 @@ const TerminalOperatorDashboardPage = () => {
               label="Sent liters"
               value={request.approvedLiters ? `${Math.round(request.approvedLiters).toLocaleString()} L` : '—'}
             />
+            <DetailField label="Cost/liter" value={formatNaira(request.costPricePerLiter)} />
+            <DetailField label="Transport/liter" value={formatNaira(request.transportCostPerLiter)} />
+            <DetailField label="Landing/liter" value={formatNaira(request.landingCostPerLiter)} />
+            <DetailField label="Total landed cost" value={formatNaira(request.totalLandingCost)} />
             <DetailField label="Truck number" value={request.truckNumber} />
             <DetailField label="Truck driver" value={request.truckDriver} />
             <DetailField label="Remark" value={request.reasonOrRemark} className="sm:col-span-2" />
@@ -484,6 +511,45 @@ const TerminalOperatorDashboardPage = () => {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
                 />
               </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Cost price/liter
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={approveDraft.costPricePerLiter}
+                    onChange={(event) =>
+                      setApproveDraft((prev) => ({ ...prev, costPricePerLiter: event.target.value }))
+                    }
+                    placeholder="e.g. 850"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Transport/liter
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={approveDraft.transportCostPerLiter}
+                    onChange={(event) =>
+                      setApproveDraft((prev) => ({ ...prev, transportCostPerLiter: event.target.value }))
+                    }
+                    placeholder="e.g. 25"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </label>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+                Landing/liter: <span className="font-semibold">{formatNaira(approveLandingPerLiter)}</span>
+                {' | '}
+                Total landed cost: <span className="font-semibold">{formatNaira(approveTotalLandingCost)}</span>
+              </div>
               <label className="block space-y-1">
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Truck number</span>
                 <input

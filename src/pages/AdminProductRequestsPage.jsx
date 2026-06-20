@@ -14,6 +14,8 @@ const emptyApproveDraft = {
   remark: '',
 }
 
+const formatNaira = (value) => `NGN ${Number(value || 0).toLocaleString()}`
+
 const DetailField = ({ label, value, className = '' }) => (
   <div className={className}>
     <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
@@ -341,6 +343,10 @@ const AdminProductRequestsPage = () => {
               value={request.approvedLiters ? `${Math.round(request.approvedLiters).toLocaleString()} L` : '—'}
             />
             <DetailField label="Approved product" value={request.approvedProductType || request.requestedProductType} />
+            {request.costPricePerLiter ? <DetailField label="Cost/liter" value={formatNaira(request.costPricePerLiter)} /> : null}
+            {request.transportCostPerLiter ? <DetailField label="Transport/liter" value={formatNaira(request.transportCostPerLiter)} /> : null}
+            {request.landingCostPerLiter ? <DetailField label="Landing/liter" value={formatNaira(request.landingCostPerLiter)} /> : null}
+            {request.totalLandingCost ? <DetailField label="Total landed cost" value={formatNaira(request.totalLandingCost)} /> : null}
             {request.truckNumber ? <DetailField label="Truck number" value={request.truckNumber} /> : null}
             {request.truckDriver ? <DetailField label="Truck driver" value={request.truckDriver} /> : null}
             <DetailField label="Remark" value={request.reasonOrRemark} className="sm:col-span-2" />

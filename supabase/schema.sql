@@ -59,6 +59,12 @@ create table if not exists public.product_requests (
   admin_reviewed_at timestamptz,
   approved_product_type text,
   approved_liters numeric,
+  cost_price_per_liter numeric not null default 0,
+  transport_cost_per_liter numeric not null default 0,
+  landing_cost_per_liter numeric not null default 0,
+  total_product_cost numeric not null default 0,
+  total_transport_cost numeric not null default 0,
+  total_landing_cost numeric not null default 0,
   dispatch_note text not null default '',
   terminal_decision text,
   terminal_remark text not null default '',
@@ -289,6 +295,12 @@ alter table public.product_requests
   add column if not exists terminal_reviewed_at timestamptz,
   add column if not exists truck_number text not null default '',
   add column if not exists truck_driver text not null default '',
+  add column if not exists cost_price_per_liter numeric not null default 0,
+  add column if not exists transport_cost_per_liter numeric not null default 0,
+  add column if not exists landing_cost_per_liter numeric not null default 0,
+  add column if not exists total_product_cost numeric not null default 0,
+  add column if not exists total_transport_cost numeric not null default 0,
+  add column if not exists total_landing_cost numeric not null default 0,
   add column if not exists low_stock_photo_urls jsonb not null default '[]'::jsonb;
 
 -- Report evidence photos (EOD bank/POS proofs, low-stock tank dip images)

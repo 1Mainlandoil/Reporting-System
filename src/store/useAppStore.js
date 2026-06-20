@@ -952,6 +952,8 @@ export const useAppStore = create(
         requestId,
         decision,
         approvedLiters,
+        costPricePerLiter,
+        transportCostPerLiter,
         truckNumber,
         truckDriver,
         remark,
@@ -961,6 +963,12 @@ export const useAppStore = create(
         const reviewedAt = new Date().toISOString()
         const normalizedDecision = decision === 'decline' ? 'decline' : 'approve'
         const normalizedLiters = Number(approvedLiters || 0)
+        const normalizedCostPricePerLiter = Number(costPricePerLiter || 0)
+        const normalizedTransportCostPerLiter = Number(transportCostPerLiter || 0)
+        const landingCostPerLiter = normalizedCostPricePerLiter + normalizedTransportCostPerLiter
+        const totalProductCost = normalizedLiters * normalizedCostPricePerLiter
+        const totalTransportCost = normalizedLiters * normalizedTransportCostPerLiter
+        const totalLandingCost = normalizedLiters * landingCostPerLiter
         const trimmedRemark = String(remark || '').trim()
         const trimmedTruckNumber = String(truckNumber || '').trim()
         const trimmedTruckDriver = String(truckDriver || '').trim()
@@ -1003,6 +1011,12 @@ export const useAppStore = create(
               terminalReviewedAt: reviewedAt,
               approvedProductType: request.requestedProductType,
               approvedLiters: normalizedLiters > 0 ? normalizedLiters : request.requestedLiters,
+              costPricePerLiter: normalizedCostPricePerLiter,
+              transportCostPerLiter: normalizedTransportCostPerLiter,
+              landingCostPerLiter,
+              totalProductCost,
+              totalTransportCost,
+              totalLandingCost,
               truckNumber: trimmedTruckNumber,
               truckDriver: trimmedTruckDriver,
               dispatchNote: trimmedRemark,
