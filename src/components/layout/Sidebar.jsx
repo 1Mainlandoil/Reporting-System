@@ -22,20 +22,33 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const links = linksByRole[role] || []
   const linkMap = Object.fromEntries(links.map((item) => [item.label.toLowerCase(), item.path]))
   const currentView = new URLSearchParams(location.search).get('view')
+  const currentPathWithSearch = `${location.pathname}${location.search}`
+  const terminalIconByLabel = {
+    Dashboard: 'dashboard',
+    'Station Requests': 'product',
+    'Direct Dispatch': 'order',
+    'Dispatch History': 'history',
+    Costing: 'analytics',
+    'Terminal Stock': 'stations',
+    Reports: 'reports',
+    Settings: 'settings',
+  }
 
-  const menuItems = [
-    { label: 'Dashboard', icon: 'dashboard', path: role === 'staff' ? '/staff' : linkMap.dashboard },
-    { label: 'Reports', icon: 'reports', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
-    ...(role === 'supervisor' ? [{ label: 'Month-End Summary', icon: 'summary', path: '/supervisor?view=month-end-summary' }] : []),
-    { label: 'Reconciliation', icon: 'reconciliation', path: linkMap.reconciliation },
-    { label: 'Product Requests', icon: 'product', path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
-    { label: 'History', icon: 'history', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
-    { label: 'Alerts', icon: 'alerts', path: linkMap.alerts },
-    { label: 'Analytics', icon: 'analytics', path: linkMap.analytics },
-    { label: 'Stations', icon: 'stations', path: linkMap.stations },
-    { label: 'Users', icon: 'users', path: linkMap.users },
-    { label: 'Settings', icon: 'settings', path: linkMap.settings },
-  ]
+  const menuItems = role === 'terminal_operator'
+    ? links.map((item) => ({ ...item, icon: terminalIconByLabel[item.label] || 'dashboard' }))
+    : [
+        { label: 'Dashboard', icon: 'dashboard', path: role === 'staff' ? '/staff' : linkMap.dashboard },
+        { label: 'Reports', icon: 'reports', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
+        ...(role === 'supervisor' ? [{ label: 'Month-End Summary', icon: 'summary', path: '/supervisor?view=month-end-summary' }] : []),
+        { label: 'Reconciliation', icon: 'reconciliation', path: linkMap.reconciliation },
+        { label: 'Product Requests', icon: 'product', path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
+        { label: 'History', icon: 'history', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
+        { label: 'Alerts', icon: 'alerts', path: linkMap.alerts },
+        { label: 'Analytics', icon: 'analytics', path: linkMap.analytics },
+        { label: 'Stations', icon: 'stations', path: linkMap.stations },
+        { label: 'Users', icon: 'users', path: linkMap.users },
+        { label: 'Settings', icon: 'settings', path: linkMap.settings },
+      ]
 
   const handleNav = () => onClose()
 
@@ -89,9 +102,12 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 const isSupervisorMonthEnd = role === 'supervisor' && item.label === 'Month-End Summary' && location.pathname === '/supervisor' && currentView === 'month-end-summary'
                 const isSupervisorProductRequests = role === 'supervisor' && item.label === 'Product Requests' && location.pathname === '/supervisor' && currentView === 'product-requests'
                 const isSupervisorHistory = role === 'supervisor' && item.label === 'History' && location.pathname === '/supervisor' && currentView === 'history'
-                const isCustomActive = role === 'supervisor' && ['Dashboard','Reports','Month-End Summary','Product Requests','History'].includes(item.label)
-                  ? isSupervisorDashboard || isSupervisorReports || isSupervisorMonthEnd || isSupervisorProductRequests || isSupervisorHistory
-                  : isActive
+                const isTerminalActive = role === 'terminal_operator' && item.path === currentPathWithSearch
+                const isCustomActive = role === 'terminal_operator'
+                  ? isTerminalActive
+                  : role === 'supervisor' && ['Dashboard','Reports','Month-End Summary','Product Requests','History'].includes(item.label)
+                    ? isSupervisorDashboard || isSupervisorReports || isSupervisorMonthEnd || isSupervisorProductRequests || isSupervisorHistory
+                    : isActive
                 return `flex items-center gap-3 rounded-xl border px-3 py-3 text-sm font-medium transition ${
                   isCustomActive
                     ? 'border-[#a9cd39]/25 bg-[#a9cd39]/15 text-[#a9cd39]'

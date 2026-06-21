@@ -330,6 +330,30 @@ const DailyOpeningReportModal = ({ report, onClose }) => {
             <EvidencePhotoList title="POS EOD proof" photos={[report.posEodPhotoUrl]} />
           </div>
         ) : null}
+        {report.productDispatchReceipts?.length > 0 && (
+          <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <p className="mb-2 text-xs uppercase text-slate-500">Received Dispatches</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {report.productDispatchReceipts.map((item, index) => {
+                const liters = Number(item.liters || 0)
+                const tankDip = Number(item.tankDipAfterDelivery || 0)
+                return (
+                  <div key={`${item.id || item.productType}-${index}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      {item.productType || 'Product'}: {liters.toLocaleString()} L
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Tank dip after delivery: {tankDip.toLocaleString()} L
+                    </p>
+                    {item.truckNumber ? (
+                      <p className="mt-1 text-xs text-slate-500">Truck: {item.truckNumber}</p>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
         {report.pumpMeterRows?.length > 0 && (
           <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <p className="mb-2 text-xs uppercase text-slate-500">Pump Readings</p>

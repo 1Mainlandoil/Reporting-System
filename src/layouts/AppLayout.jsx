@@ -14,6 +14,10 @@ const AppLayout = () => {
     if (typeof window === 'undefined') return 'light'
     return window.localStorage.getItem('supervisor-theme') || 'light'
   })
+  const [terminalTheme, setTerminalTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'light'
+    return window.localStorage.getItem('terminal-theme') || 'light'
+  })
 
   useEffect(() => {
     hydrateFromSupabase()
@@ -25,14 +29,27 @@ const AppLayout = () => {
     }
   }, [role, supervisorTheme])
 
+  useEffect(() => {
+    if (role === 'terminal_operator') {
+      window.localStorage.setItem('terminal-theme', terminalTheme)
+    }
+  }, [role, terminalTheme])
+
   const isSupervisorLight = role === 'supervisor' && supervisorTheme === 'light'
+  const isTerminalLight = role === 'terminal_operator' && terminalTheme === 'light'
+  const activeTheme = role === 'supervisor' ? supervisorTheme : role === 'terminal_operator' ? terminalTheme : undefined
+  const toggleTheme = role === 'supervisor'
+    ? () => setSupervisorTheme((current) => current === 'light' ? 'dark' : 'light')
+    : role === 'terminal_operator'
+      ? () => setTerminalTheme((current) => current === 'light' ? 'dark' : 'light')
+      : undefined
 
   return (
-    <div className={`min-h-screen bg-[#0a0e1a] text-slate-100 ${isSupervisorLight ? 'supervisor-light-mode' : ''}`}>
+    <div className={`min-h-screen bg-[#0a0e1a] text-slate-100 ${isSupervisorLight || isTerminalLight ? 'supervisor-light-mode' : ''} ${isTerminalLight ? 'terminal-light-mode' : ''}`}>
       <Navbar
         onToggleSidebar={showSidebar ? () => setSidebarOpen((p) => !p) : undefined}
-        supervisorTheme={role === 'supervisor' ? supervisorTheme : undefined}
-        onToggleSupervisorTheme={role === 'supervisor' ? () => setSupervisorTheme((current) => current === 'light' ? 'dark' : 'light') : undefined}
+        supervisorTheme={activeTheme}
+        onToggleSupervisorTheme={toggleTheme}
       />
 
       {showSidebar && (

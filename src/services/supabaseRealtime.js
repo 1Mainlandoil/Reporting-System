@@ -1,5 +1,5 @@
 import { hasSupabaseEnv, supabase } from '../lib/supabaseClient'
-import { mapChatMessageRow, mapReportRow, mapUserRow } from './supabaseData'
+import { mapChatMessageRow, mapProductRequest, mapReportRow, mapUserRow } from './supabaseData'
 
 let activeUnsubscribe = null
 
@@ -13,7 +13,7 @@ const attachPostgresListener = (channel, config, handler) => {
   })
 }
 
-export const subscribeToLiveData = ({ onChatMessage, onChatMessageUpdate, onReport, onUser }) => {
+export const subscribeToLiveData = ({ onChatMessage, onChatMessageUpdate, onReport, onUser, onProductRequest }) => {
   if (!hasSupabaseEnv || !supabase) {
     return () => {}
   }
@@ -63,6 +63,19 @@ export const subscribeToLiveData = ({ onChatMessage, onChatMessageUpdate, onRepo
       channel,
       { event: 'UPDATE', schema: 'public', table: 'users' },
       (row) => onUser(mapUserRow(row)),
+    )
+  }
+
+  if (onProductRequest) {
+    attachPostgresListener(
+      channel,
+      { event: 'INSERT', schema: 'public', table: 'product_requests' },
+      (row) => onProductRequest(mapProductRequest(row)),
+    )
+    attachPostgresListener(
+      channel,
+      { event: 'UPDATE', schema: 'public', table: 'product_requests' },
+      (row) => onProductRequest(mapProductRequest(row)),
     )
   }
 

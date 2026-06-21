@@ -465,6 +465,7 @@ const SupervisorDashboardPage = () => {
         const manager = staffByStation.get(station.id)
         const receivedProductType = latestToday ? resolveReceivedProductType(latestToday) : null
         const paymentBreakdown = stationReportsToday.flatMap((report) => Array.isArray(report.paymentBreakdown) ? report.paymentBreakdown : [])
+        const productDispatchReceipts = stationReportsToday.flatMap((report) => Array.isArray(report.productDispatchReceipts) ? report.productDispatchReceipts : [])
         const posTerminalBreakdown = Array.isArray(latestToday?.posTerminalBreakdown)
           ? latestToday.posTerminalBreakdown
           : []
@@ -562,6 +563,7 @@ const SupervisorDashboardPage = () => {
           totalPaymentDeposits,
           posValue,
           posTerminalBreakdown,
+          productDispatchReceipts,
           eodAttachments: Array.isArray(latestToday?.eodAttachments) ? latestToday.eodAttachments : [],
           cashBf,
           cashSales,
@@ -2856,6 +2858,38 @@ const SupervisorDashboardPage = () => {
                               </p>
                             </a>
                           ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedDailyOpeningReport.productDispatchReceipts?.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">Received Dispatches</p>
+                          <span className="rounded-full bg-[#a9cd39]/15 px-2.5 py-0.5 text-xs font-bold text-[#a9cd39]">
+                            {selectedDailyOpeningReport.productDispatchReceipts.length} receipt(s)
+                          </span>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {selectedDailyOpeningReport.productDispatchReceipts.map((item, index) => {
+                            const liters = Number(item.liters || 0)
+                            const tankDip = Number(item.tankDipAfterDelivery || 0)
+                            return (
+                              <div key={`${item.id || item.productType}-${index}`} className="rounded-xl border border-white/8 bg-black/20 p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-bold text-white">{item.productType || 'Product'}</p>
+                                    <p className="mt-1 text-xs text-slate-400">Received from terminal</p>
+                                  </div>
+                                  <p className="text-sm font-black text-[#a9cd39]">{liters.toLocaleString()} L</p>
+                                </div>
+                                <div className="mt-3 space-y-1 text-xs text-slate-300">
+                                  <p>Tank dip after delivery: <span className="font-bold text-white">{tankDip.toLocaleString()} L</span></p>
+                                  {item.truckNumber ? <p>Truck: <span className="font-bold text-white">{item.truckNumber}</span></p> : null}
+                                  {item.truckDriver ? <p>Driver: <span className="font-bold text-white">{item.truckDriver}</span></p> : null}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
                     )}

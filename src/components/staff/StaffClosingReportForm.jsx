@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, hasSupabaseEnv } from '../../lib/supabaseClient'
 import FormInput from '../ui/FormInput'
 import CustomSelect from '../ui/CustomSelect'
@@ -101,7 +101,18 @@ const StaffClosingReportForm = ({
   carriedCashBf = 0,
   priorPrices = { pms: 0, ago: 0, date: '' },
   pumpLastClosings = {}, // { [label::productType]: { closing, date, productType } }
+  receivedDispatches = [],
 }) => {
+  const receivedDispatchTotals = receivedDispatches.reduce(
+    (totals, dispatch) => {
+      const productType = dispatch.approvedProductType || dispatch.requestedProductType
+      const liters = Number(dispatch.approvedLiters || dispatch.requestedLiters || 0)
+      if (productType === 'AGO') return { ...totals, ago: totals.ago + liters }
+      return { ...totals, pms: totals.pms + liters }
+    },
+    { pms: 0, ago: 0 },
+  )
+  const hasReceivedDispatches = receivedDispatches.length > 0
   const [step, setStep] = useState(0)
   const [formData, setFormData] = useState(defaultForm)
   const [expenseDraft, setExpenseDraft] = useState({ category: 'Gas', otherLabel: '', amount: '' })
@@ -128,6 +139,16 @@ const StaffClosingReportForm = ({
   // Cash B/F confirmation
   const [cashBfConfirmed, setCashBfConfirmed] = useState(null)
   const [cashBfOverrideReason, setCashBfOverrideReason] = useState('')
+
+  useEffect(() => {
+    if (receivedDispatchTotals.pms <= 0 && receivedDispatchTotals.ago <= 0) return
+    setFormData((prev) => ({
+      ...prev,
+      receivedProduct: 'yes',
+      receivedQuantityPMS: prev.receivedQuantityPMS || (receivedDispatchTotals.pms > 0 ? String(receivedDispatchTotals.pms) : ''),
+      receivedQuantityAGO: prev.receivedQuantityAGO || (receivedDispatchTotals.ago > 0 ? String(receivedDispatchTotals.ago) : ''),
+    }))
+  }, [receivedDispatchTotals.pms, receivedDispatchTotals.ago])
   // Price confirmation
   const [priceConfirmed, setPriceConfirmed] = useState(null)
   // Pump opening confirmation per pump/product: { [label::productType]: { confirmed: null|true|false, overrideValue: '', reason: '' } }
@@ -441,6 +462,20 @@ const StaffClosingReportForm = ({
       : totalAmount - totalPaymentDeposits - resolvedPosValue
     const receivedQuantity = receivedPMS + receivedAGO
     const receivedProductType = receivedPMS > 0 && receivedAGO > 0 ? 'BOTH' : receivedAGO > 0 ? 'AGO' : receivedPMS > 0 ? 'PMS' : null
+    const productDispatchReceipts = receivedDispatches.map((dispatch) => {
+      const productType = dispatch.approvedProductType || dispatch.requestedProductType || ''
+      return {
+        id: dispatch.id,
+        productType,
+        liters: Number(dispatch.approvedLiters || dispatch.requestedLiters || 0),
+        tankDipAfterDelivery: Number(dispatch.receivedTankDip || 0),
+        receivedAt: dispatch.receivedAt || null,
+        receivedBy: dispatch.receivedBy || '',
+        truckNumber: dispatch.truckNumber || '',
+        truckDriver: dispatch.truckDriver || '',
+        terminalReviewedAt: dispatch.terminalReviewedAt || null,
+      }
+    })
     const resolvedPriceBandsPMS = isNoSalesDay ? [] : pmsMultiPrice === 'yes' ? normalizePriceBands(priceBandsPMS) : totalSalesLitersPMS > 0 ? [{ price: Number(formData.pmsPrice), liters: totalSalesLitersPMS }] : []
     const resolvedPriceBandsAGO = isNoSalesDay ? [] : agoMultiPrice === 'yes' ? normalizePriceBands(priceBandsAGO) : totalSalesLitersAGO > 0 ? [{ price: Number(formData.agoPrice), liters: totalSalesLitersAGO }] : []
     const salesAmountPMS = computeSalesAmountFromBands(resolvedPriceBandsPMS)
@@ -468,6 +503,7 @@ const StaffClosingReportForm = ({
       noSalesNote: isNoSalesDay ? String(formData.noSalesNote || '').trim() : '',
       openingPMS: openingStockPMS, openingAGO: openingStockAGO,
       receivedPMS, receivedAGO, salesPMS: totalSalesLitersPMS, salesAGO: totalSalesLitersAGO,
+      productDispatchReceipts,
       remarks: isNoSalesDay ? `No Sales Day - ${formData.noSalesReason}${formData.noSalesNote ? `: ${formData.noSalesNote}` : ''}` : formData.remark,
       paymentBreakdown: normalizedPaymentBreakdown, totalPaymentDeposits, posValue: resolvedPosValue, posTerminalBreakdown: isNoSalesDay ? [] : posTerminalBreakdown,
       cashSales, cashBf: effectiveCashBf, totalAmount, closingBalance, pumpReadings: normalizedPumpReadings,
@@ -505,7 +541,7 @@ const StaffClosingReportForm = ({
       setEodUploads([]); setEodInputKeys({}); setExtraSlotIds([])
       setStep(0); setSuccess(true)
       setTimeout(() => setSuccess(false), 2500)
-      await Promise.resolve(onSubmitted?.())
+      await Promise.resolve(onSubmitted?.(outcome))
     } finally { setSubmitting(false) }
   }
 
@@ -851,7 +887,7 @@ const StaffClosingReportForm = ({
         if (hasPriorPrices && priceConfirmed === null) { window.alert('Please confirm today\'s prices first.'); return }
         if (pmsMultiPrice === 'no' && !formData.pmsPrice.trim()) { window.alert('PMS price is required.'); return }
         if (agoMultiPrice === 'no' && !formData.agoPrice.trim()) { window.alert('AGO price is required.'); return }
-        setStep(4)
+        setStep(hasReceivedDispatches ? 5 : 4)
       }} />
     </div>
   )
@@ -863,6 +899,31 @@ const StaffClosingReportForm = ({
       <p className="text-2xl font-bold text-white mb-1">Received Product?</p>
       <p className="text-sm text-slate-500 mb-8">Did the station receive any fuel delivery today?</p>
       <div className="flex-1 space-y-3">
+        {receivedDispatches.length > 0 && (
+          <div className="rounded-2xl border border-[#a9cd39]/25 bg-[#a9cd39]/8 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#a9cd39]">Terminal dispatch</p>
+            <p className="mt-1 text-sm text-slate-200">This delivery will enter today&apos;s report.</p>
+            <div className="mt-3 space-y-2">
+              {receivedDispatches.map((dispatch) => {
+                const productType = dispatch.approvedProductType || dispatch.requestedProductType || 'Product'
+                const liters = Number(dispatch.approvedLiters || dispatch.requestedLiters || 0)
+                const tankDip = Number(dispatch.receivedTankDip || 0)
+                return (
+                  <div key={dispatch.id} className="rounded-xl border border-white/8 bg-black/20 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-bold text-white">{productType}</span>
+                      <span className="font-bold text-[#a9cd39]">{liters.toLocaleString()} L</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-400">
+                      <span>Tank dip after delivery</span>
+                      <span className="text-slate-200">{tankDip.toLocaleString()} L</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
         <button type="button" onClick={() => setFormData((prev) => ({ ...prev, receivedProduct: 'no' }))}
           className={`w-full flex items-center gap-4 rounded-2xl border-2 p-5 text-left transition-all ${formData.receivedProduct === 'no' ? 'border-white/20 bg-white/8' : 'border-white/5 bg-white/3 hover:border-white/10'}`}>
           <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl ${formData.receivedProduct === 'no' ? 'bg-white/15' : 'bg-white/5'}`}>🚫</div>
@@ -923,7 +984,7 @@ const StaffClosingReportForm = ({
           </div>
         </div>
       ) : <p className="text-sm text-slate-500 flex-1">Expense reporting is disabled in settings.</p>}
-      <NavButtons onBack={() => setStep(4)} onNext={() => setStep(6)} />
+      <NavButtons onBack={() => setStep(hasReceivedDispatches ? 3 : 4)} onNext={() => setStep(6)} />
     </div>
   )
 
@@ -1514,6 +1575,31 @@ const StaffClosingReportForm = ({
             <ReviewRow label="Manager PMS sold" value={liters(formData.managerSalesPMS)} />
             <ReviewRow label="Manager AGO sold" value={liters(formData.managerSalesAGO)} />
           </ReviewSection>
+
+          {hasReceivedDispatches && (
+            <ReviewSection title="Terminal delivery">
+              {receivedDispatches.map((dispatch) => {
+                const productType = dispatch.approvedProductType || dispatch.requestedProductType || 'Product'
+                const sentLiters = Number(dispatch.approvedLiters || dispatch.requestedLiters || 0)
+                const tankDip = Number(dispatch.receivedTankDip || 0)
+                return (
+                  <div key={dispatch.id} className="rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/8 p-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <ReviewRow label="Product" value={productType} strong tone="text-[#a9cd39]" />
+                      <ReviewRow label="Quantity sent" value={liters(sentLiters)} strong tone="text-white" />
+                      <ReviewRow label="Tank dip ref" value={liters(tankDip)} strong tone="text-blue-300" />
+                      <ReviewRow label="Truck" value={dispatch.truckNumber || '-'} />
+                      <ReviewRow label="Driver" value={dispatch.truckDriver || '-'} />
+                      <ReviewRow label="Received by" value={dispatch.receivedBy || '-'} />
+                    </div>
+                    {dispatch.receivedRemark ? (
+                      <p className="mt-2 text-xs text-slate-400">{dispatch.receivedRemark}</p>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </ReviewSection>
+          )}
 
           <ReviewSection title="Pump readings">
             {pumpReadings.length ? pumpReadings.map((item) => {

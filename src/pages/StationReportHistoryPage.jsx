@@ -22,6 +22,7 @@ const formatNumber = (value, digits = 0) =>
 
 const formatMoney = (value) => `NGN ${formatNumber(Math.round(Number(value || 0)))}`
 const formatLiters = (value, digits = 0) => `${formatNumber(Number(value || 0), digits)} L`
+const normalizeStationKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
 const normalizeDateRange = (from, to) => {
   const start = from && to && from > to ? to : from
@@ -134,6 +135,7 @@ const StationReportHistoryPage = () => {
   const currentUser = useAppStore((state) => state.currentUser)
   const stations = useAppStore((state) => state.stations)
   const storeReports = useAppStore((state) => state.reports)
+  const productRequests = useAppStore((state) => state.productRequests)
   const submitReport = useAppStore((state) => state.submitReport)
   const updateReportSupervisorReview = useAppStore((state) => state.updateReportSupervisorReview)
   const reportingConfiguration = useAppStore((state) => state.appSettings.reportingConfiguration)
@@ -255,6 +257,48 @@ const StationReportHistoryPage = () => {
     if (historyRange.end && report.date > historyRange.end) return false
     return true
   })
+
+  const deliveryHistory = useMemo(() => {
+    const stationKey = normalizeStationKey(station?.name)
+    return [...(productRequests || [])]
+      .filter((request) => {
+        if (!request) return false
+        if (request.stationId === stationId || request.managerId === currentUser?.id) return true
+        const requestStationKey = normalizeStationKey(request.stationName || request.station || request.stationLabel)
+        return Boolean(stationKey && requestStationKey && requestStationKey === stationKey)
+      })
+      .filter((request) => {
+        if (isStaffOwnStation && historyFilterDate) {
+          const eventDate = String(
+            request.receivedReportDate ||
+              request.receivedAt ||
+              request.terminalReviewedAt ||
+              request.updatedAt ||
+              request.createdAt ||
+              '',
+          ).slice(0, 10)
+          return eventDate === historyFilterDate
+        }
+        if (!isStaffOwnStation && (historyRange.start || historyRange.end)) {
+          const eventDate = String(
+            request.receivedReportDate ||
+              request.receivedAt ||
+              request.terminalReviewedAt ||
+              request.updatedAt ||
+              request.createdAt ||
+              '',
+          ).slice(0, 10)
+          if (historyRange.start && eventDate < historyRange.start) return false
+          if (historyRange.end && eventDate > historyRange.end) return false
+        }
+        return true
+      })
+      .sort((a, b) =>
+        String(b.receivedAt || b.terminalReviewedAt || b.updatedAt || b.createdAt || '').localeCompare(
+          String(a.receivedAt || a.terminalReviewedAt || a.updatedAt || a.createdAt || ''),
+        ),
+      )
+  }, [currentUser?.id, historyFilterDate, historyRange.end, historyRange.start, isStaffOwnStation, productRequests, station?.name, stationId])
 
   if (!station) {
     return <EmptyState title="Station not found" message="The selected retail station does not exist." />
@@ -750,6 +794,7 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
                 reportingConfiguration={reportingConfiguration}
                 submitReport={submitReport}
                 reportDate={historyFilterDate}
+                receivedDispatches={deliveryHistory.filter((request) => request.dispatchStatus === 'received')}
                 openingBannerTitle="Opening stock for selected date (prior closing)"
                 formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled}
                 submitButtonLabel={`Submit for ${historyFilterDate}`}
@@ -760,6 +805,94 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
         )}
       </Card>
 
+      {deliveryHistory.length > 0 && (
+        <Card className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Product delivery trail</p>
+              <h3 className="text-xl font-bold text-white">Terminal dispatches and received products</h3>
+              <p className="mt-1 text-sm text-slate-400">
+                Shows product sent to this station, manager receipt, and tank dip after delivery.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#a9cd39]/20 bg-[#a9cd39]/10 px-3 py-1 text-xs font-bold text-[#a9cd39]">
+              {deliveryHistory.length} record{deliveryHistory.length === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {deliveryHistory.map((request) => {
+              const status = request.dispatchStatus || request.status || 'requested'
+              const statusLabel =
+                status === 'received'
+                  ? 'Received'
+                  : status === 'issue_reported'
+                    ? 'Issue reported'
+                    : status === 'called_back'
+                      ? 'Recalled'
+                      : status === 'dispatched'
+                        ? 'On the way'
+                        : status
+              const quantity = Number(request.approvedLiters ?? request.quantity ?? request.liters ?? 0)
+              const productType = request.productType || request.product || 'Product'
+              const receivedDate = String(request.receivedAt || request.receivedReportDate || '').slice(0, 10)
+              const dispatchDate = String(request.terminalReviewedAt || request.updatedAt || request.createdAt || '').slice(0, 10)
+              const tankDip = request.receivedTankDip ?? request.tankDipAfterDelivery
+              return (
+                <div
+                  key={request.id}
+                  className="rounded-2xl border border-white/10 bg-[#111827]/85 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.18)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{dispatchDate || 'Dispatch'}</p>
+                      <h4 className="mt-1 text-lg font-bold text-white">{productType} - {formatLiters(quantity)}</h4>
+                    </div>
+                    <span
+                      className={`rounded-full border px-3 py-1 text-xs font-bold ${
+                        status === 'received'
+                          ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
+                          : status === 'issue_reported'
+                            ? 'border-amber-400/20 bg-amber-400/10 text-amber-300'
+                            : status === 'called_back'
+                              ? 'border-rose-400/20 bg-rose-400/10 text-rose-300'
+                              : 'border-sky-400/20 bg-sky-400/10 text-sky-300'
+                      }`}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl bg-black/20 px-3 py-2">
+                      <p className="text-xs text-slate-500">Truck</p>
+                      <p className="text-sm font-bold text-white">{request.truckNumber || '-'}</p>
+                    </div>
+                    <div className="rounded-xl bg-black/20 px-3 py-2">
+                      <p className="text-xs text-slate-500">Driver</p>
+                      <p className="text-sm font-bold text-white">{request.truckDriver || '-'}</p>
+                    </div>
+                    <div className="rounded-xl bg-black/20 px-3 py-2">
+                      <p className="text-xs text-slate-500">Tank dip after delivery</p>
+                      <p className="text-sm font-bold text-white">{tankDip != null && tankDip !== '' ? formatLiters(tankDip) : '-'}</p>
+                    </div>
+                    <div className="rounded-xl bg-black/20 px-3 py-2">
+                      <p className="text-xs text-slate-500">Report trail</p>
+                      <p className="text-sm font-bold text-white">{request.receivedReportDate || receivedDate || 'Not in report yet'}</p>
+                    </div>
+                  </div>
+
+                  {request.receivedRemark && (
+                    <p className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+                      {request.receivedRemark}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
       {reports.length ? (
         filteredReports.length ? (
           <div className="space-y-4">
@@ -877,8 +1010,8 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
         )
       ) : (
         <EmptyState
-          title="No report history"
-          message="This station has not submitted any report entries yet."
+          title={deliveryHistory.length ? 'No daily report history' : 'No report history'}
+          message={deliveryHistory.length ? 'Product delivery records exist, but this station has not submitted daily reports yet.' : 'This station has not submitted any report entries yet.'}
         />
       )}
       {selectedHistoryReport && (

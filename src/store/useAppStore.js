@@ -16,6 +16,7 @@ import { ROLE_ROUTE_MAP, ROLES } from '../constants/roles'
 import { buildStationMetrics } from '../utils/stock'
 import {
   deleteIntervention,
+  deleteProductRequest,
   insertChatMessage,
   insertReport,
   insertInspectorVisit,
@@ -489,7 +490,7 @@ export const useAppStore = create(
         set({
           reports: [...state.reports, newReport],
         })
-        return { ok: true }
+        return { ok: true, reportId: newReport.id, reportDate: resolvedDate }
       },
       updateReportSupervisorReview: ({ reportId, status, remark }) =>
         set((state) => ({
@@ -817,6 +818,17 @@ export const useAppStore = create(
           approvedProductType: null,
           approvedLiters: null,
           dispatchNote: '',
+          dispatchStatus: 'requested',
+          receivedTankDip: null,
+          receivedAt: null,
+          receivedBy: '',
+          receivedRemark: '',
+          issueReportedAt: null,
+          issueReportedBy: '',
+          issueRemark: '',
+          calledBackAt: null,
+          calledBackBy: '',
+          callbackReason: '',
           terminalDecision: null,
           terminalRemark: '',
           terminalName: '',
@@ -995,6 +1007,7 @@ export const useAppStore = create(
                 truckNumber: '',
                 truckDriver: '',
                 dispatchNote: '',
+                dispatchStatus: 'declined',
                 updatedAt: reviewedAt,
               }
               syncedRequest = nextRequest
@@ -1020,6 +1033,7 @@ export const useAppStore = create(
               truckNumber: trimmedTruckNumber,
               truckDriver: trimmedTruckDriver,
               dispatchNote: trimmedRemark,
+              dispatchStatus: 'dispatched',
               updatedAt: reviewedAt,
             }
             syncedRequest = nextRequest
@@ -1031,6 +1045,253 @@ export const useAppStore = create(
             // Keep local-first UX; remote sync errors can be surfaced later.
           })
         }
+      },
+      createDirectTerminalDispatch: async ({
+        stationId,
+        productType,
+        liters,
+        costPricePerLiter,
+        transportCostPerLiter,
+        truckNumber,
+        truckDriver,
+        remark,
+      }) => {
+        const state = get()
+        const operator = state.currentUser
+        const targetStation = state.stations.find((station) => station.id === stationId)
+        const targetManager = state.users.find(
+          (user) => user.role === ROLES.STAFF && user.stationId === targetStation?.id,
+        )
+        const requestOwner = targetManager || operator
+        const normalizedProductType = productType === 'AGO' ? 'AGO' : 'PMS'
+        const normalizedLiters = Number(liters || 0)
+        const normalizedCostPricePerLiter = Number(costPricePerLiter || 0)
+        const normalizedTransportCostPerLiter = Number(transportCostPerLiter || 0)
+        const landingCostPerLiter = normalizedCostPricePerLiter + normalizedTransportCostPerLiter
+        const totalProductCost = normalizedLiters * normalizedCostPricePerLiter
+        const totalTransportCost = normalizedLiters * normalizedTransportCostPerLiter
+        const totalLandingCost = normalizedLiters * landingCostPerLiter
+        const reviewedAt = new Date().toISOString()
+        const trimmedTruckNumber = String(truckNumber || '').trim()
+        const trimmedTruckDriver = String(truckDriver || '').trim()
+        const trimmedRemark = String(remark || '').trim()
+
+        if (!operator || !targetStation || !requestOwner || normalizedLiters <= 0) {
+          return { ok: false, message: 'Select a valid station and dispatch quantity.' }
+        }
+
+        const newRequest = {
+          id: `direct-${Date.now()}`,
+          stationId: targetStation.id,
+          managerId: requestOwner.id,
+          managerName: targetManager?.name || 'Direct terminal dispatch',
+          requestedProductType: normalizedProductType,
+          requestedLiters: normalizedLiters,
+          managerRemark: 'Created by terminal operator without station request',
+          status: 'approved',
+          managerStatusLabel: 'Approved',
+          supervisorDecision: null,
+          supervisorRemark: '',
+          supervisorName: '',
+          supervisorReviewedAt: null,
+          adminDecision: null,
+          adminRemark: '',
+          adminName: '',
+          adminReviewedAt: null,
+          approvedProductType: normalizedProductType,
+          approvedLiters: normalizedLiters,
+          costPricePerLiter: normalizedCostPricePerLiter,
+          transportCostPerLiter: normalizedTransportCostPerLiter,
+          landingCostPerLiter,
+          totalProductCost,
+          totalTransportCost,
+          totalLandingCost,
+          dispatchNote: trimmedRemark,
+          dispatchStatus: 'dispatched',
+          receivedTankDip: null,
+          receivedAt: null,
+          receivedBy: '',
+          receivedRemark: '',
+          issueReportedAt: null,
+          issueReportedBy: '',
+          issueRemark: '',
+          calledBackAt: null,
+          calledBackBy: '',
+          callbackReason: '',
+          terminalDecision: 'approved',
+          terminalRemark: trimmedRemark,
+          terminalName: operator.name || 'Terminal Operator',
+          terminalReviewedAt: reviewedAt,
+          truckNumber: trimmedTruckNumber,
+          truckDriver: trimmedTruckDriver,
+          lowStockPhotoUrls: [],
+          createdAt: reviewedAt,
+          updatedAt: reviewedAt,
+        }
+
+        try {
+          await upsertStation(targetStation)
+          await upsertUser(requestOwner)
+          await upsertProductRequest(newRequest)
+        } catch (err) {
+          return {
+            ok: false,
+            message: extractErrorMessage(err) || 'Could not save dispatch to Supabase.',
+          }
+        }
+
+        set((currentState) => ({
+          productRequests: [newRequest, ...currentState.productRequests],
+        }))
+        return { ok: true, requestId: newRequest.id }
+      },
+      callBackTerminalDispatch: ({ requestId, reason }) => {
+        const state = get()
+        const operatorName = state.currentUser?.name || 'Terminal Operator'
+        const calledBackAt = new Date().toISOString()
+        const trimmedReason = String(reason || '').trim()
+
+        let syncedRequest = null
+        set((currentState) => ({
+          productRequests: currentState.productRequests.map((request) => {
+            if (request.id !== requestId || request.dispatchStatus !== 'dispatched') {
+              return request
+            }
+            const nextRequest = {
+              ...request,
+              status: 'called_back',
+              managerStatusLabel: 'Called back',
+              dispatchStatus: 'called_back',
+              calledBackAt,
+              calledBackBy: operatorName,
+              callbackReason: trimmedReason || 'Called back by terminal operator',
+              updatedAt: calledBackAt,
+            }
+            syncedRequest = nextRequest
+            return nextRequest
+          }),
+        }))
+        if (syncedRequest) {
+          upsertProductRequest(syncedRequest).catch(() => {
+            // Keep local-first UX; remote sync errors can be surfaced later.
+          })
+        }
+      },
+      reportDispatchIssue: ({ requestId, reason }) => {
+        const state = get()
+        const managerName = state.currentUser?.name || 'Manager'
+        const issueReportedAt = new Date().toISOString()
+        const trimmedReason = String(reason || '').trim()
+
+        let syncedRequest = null
+        set((currentState) => ({
+          productRequests: currentState.productRequests.map((request) => {
+            if (request.id !== requestId || request.dispatchStatus !== 'dispatched') {
+              return request
+            }
+            const nextRequest = {
+              ...request,
+              dispatchStatus: 'issue_reported',
+              managerStatusLabel: 'Issue reported',
+              issueReportedAt,
+              issueReportedBy: managerName,
+              issueRemark: trimmedReason || 'Issue reported by manager',
+              updatedAt: issueReportedAt,
+            }
+            syncedRequest = nextRequest
+            return nextRequest
+          }),
+        }))
+        if (syncedRequest) {
+          upsertProductRequest(syncedRequest).catch(() => {
+            // Keep local-first UX; remote sync errors can be surfaced later.
+          })
+        }
+      },
+      confirmDispatchReceived: async ({ requestId, tankDip, remark }) => {
+        const state = get()
+        const managerName = state.currentUser?.name || 'Manager'
+        const receivedAt = new Date().toISOString()
+        const normalizedTankDip = Number(tankDip || 0)
+        const trimmedRemark = String(remark || '').trim()
+
+        const target = state.productRequests.find(
+          (request) => request.id === requestId && request.dispatchStatus === 'dispatched',
+        )
+        if (!target) {
+          return { ok: false, message: 'This dispatch is no longer available for receipt confirmation.' }
+        }
+
+        const receivedRequest = {
+          ...target,
+          dispatchStatus: 'received',
+          managerStatusLabel: 'Received',
+          receivedTankDip: normalizedTankDip,
+          receivedAt,
+          receivedBy: managerName,
+          receivedRemark: trimmedRemark,
+          updatedAt: receivedAt,
+        }
+
+        try {
+          await upsertProductRequest(receivedRequest)
+        } catch (err) {
+          return {
+            ok: false,
+            message: extractErrorMessage(err) || 'Could not save received product confirmation.',
+          }
+        }
+
+        set((currentState) => ({
+          productRequests: currentState.productRequests.map((request) =>
+            request.id === requestId ? receivedRequest : request,
+          ),
+        }))
+        return { ok: true, requestId }
+      },
+      markReceivedDispatchesReported: ({ requestIds = [], reportId, reportDate }) => {
+        const ids = new Set(requestIds)
+        if (!ids.size || !reportId || !reportDate) return
+
+        const updatedAt = new Date().toISOString()
+        let syncedRequests = []
+        set((currentState) => ({
+          productRequests: currentState.productRequests.map((request) => {
+            if (!ids.has(request.id) || request.dispatchStatus !== 'received') {
+              return request
+            }
+            const nextRequest = {
+              ...request,
+              receivedReportId: reportId,
+              receivedReportDate: reportDate,
+              updatedAt,
+            }
+            syncedRequests.push(nextRequest)
+            return nextRequest
+          }),
+        }))
+        syncedRequests.forEach((request) => {
+          upsertProductRequest(request).catch(() => {
+            // Keep local-first UX; remote sync errors can be surfaced later.
+          })
+        })
+      },
+      deleteTerminalDispatch: async (requestId) => {
+        if (!requestId) {
+          return { ok: false, message: 'No dispatch selected.' }
+        }
+        try {
+          await deleteProductRequest(requestId)
+        } catch (err) {
+          return {
+            ok: false,
+            message: extractErrorMessage(err) || 'Could not delete dispatch.',
+          }
+        }
+        set((state) => ({
+          productRequests: state.productRequests.filter((request) => request.id !== requestId),
+        }))
+        return { ok: true }
       },
       getManagerProductRequests: () => {
         const state = get()
@@ -1499,6 +1760,22 @@ export const useAppStore = create(
         set((state) => ({
           users: mergeUsersById(state.users, [remoteUser]),
         }))
+      },
+      applyRemoteProductRequest: (remoteRequest) => {
+        if (!remoteRequest?.id) {
+          return
+        }
+        set((state) => {
+          const index = state.productRequests.findIndex((request) => request.id === remoteRequest.id)
+          if (index >= 0) {
+            const productRequests = [...state.productRequests]
+            productRequests[index] = { ...productRequests[index], ...remoteRequest }
+            return { productRequests }
+          }
+          return {
+            productRequests: [remoteRequest, ...state.productRequests],
+          }
+        })
       },
       refreshFromSupabase: async () => {
         const state = get()

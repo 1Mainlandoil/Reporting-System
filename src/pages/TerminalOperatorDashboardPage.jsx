@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
+import DateRangePicker from '../components/ui/DateRangePicker'
 import EmptyState from '../components/ui/EmptyState'
 import EvidencePhotoList from '../components/ui/EvidencePhotoList'
 import { useAppStore } from '../store/useAppStore'
@@ -17,14 +18,69 @@ const emptyApproveDraft = {
   remark: '',
 }
 
-const formatNaira = (value) => `NGN ${Number(value || 0).toLocaleString()}`
+const emptyDirectDraft = {
+  stationId: '',
+  productType: 'PMS',
+  liters: '',
+  costPricePerLiter: '',
+  transportCostPerLiter: '',
+  truckNumber: '',
+  truckDriver: '',
+  remark: '',
+}
 
-const DetailField = ({ label, value, className = '' }) => (
+const formatNaira = (value) => `NGN ${Number(value || 0).toLocaleString()}`
+const formatLiters = (value) => `${Math.round(Number(value || 0)).toLocaleString()} L`
+
+const DetailField = ({ label, value, className = '', valueClassName = 'text-slate-900 dark:text-white' }) => (
   <div className={className}>
     <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
-    <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{value || '—'}</p>
+    <p className={`mt-1 text-sm font-medium ${valueClassName}`}>{value || '—'}</p>
   </div>
 )
+
+const TerminalSelect = ({ label, value, placeholder, options, onChange }) => {
+  const [open, setOpen] = useState(false)
+  const selected = options.find((option) => option.value === value)
+
+  return (
+    <div className="relative space-y-1">
+      <span className="text-sm font-semibold text-slate-300">{label}</span>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-left text-sm font-semibold text-white shadow-inner shadow-black/20 outline-none transition hover:border-lime-400/30 focus:border-lime-400/60 focus:ring-2 focus:ring-lime-400/15"
+      >
+        <span className={selected ? 'text-white' : 'text-slate-500'}>
+          {selected?.label || placeholder}
+        </span>
+        <span className="text-lime-400">v</span>
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 top-full z-40 mt-2 max-h-72 overflow-y-auto rounded-xl border border-white/10 bg-slate-950 p-1 shadow-2xl shadow-black/40">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value)
+                setOpen(false)
+              }}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition ${
+                option.value === value
+                  ? 'bg-lime-400 text-slate-950'
+                  : 'text-slate-200 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {option.label}
+              {option.value === value ? <span>Selected</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 const TerminalOperatorDashboardPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -33,6 +89,9 @@ const TerminalOperatorDashboardPage = () => {
   const stockThresholds = useAppStore((state) => state.appSettings.stockThresholds)
   const productRequests = useAppStore((state) => state.productRequests)
   const currentUser = useAppStore((state) => state.currentUser)
+  const createDirectTerminalDispatch = useAppStore((state) => state.createDirectTerminalDispatch)
+  const callBackTerminalDispatch = useAppStore((state) => state.callBackTerminalDispatch)
+  const deleteTerminalDispatch = useAppStore((state) => state.deleteTerminalDispatch)
   const resolveProductRequestByTerminalOperator = useAppStore(
     (state) => state.resolveProductRequestByTerminalOperator,
   )
@@ -40,8 +99,19 @@ const TerminalOperatorDashboardPage = () => {
   const [declineRemark, setDeclineRemark] = useState('')
   const [approveTarget, setApproveTarget] = useState(null)
   const [approveDraft, setApproveDraft] = useState(emptyApproveDraft)
+  const [directDraft, setDirectDraft] = useState(emptyDirectDraft)
+  const [directReviewOpen, setDirectReviewOpen] = useState(false)
+  const [directSubmitting, setDirectSubmitting] = useState(false)
+  const [callbackTarget, setCallbackTarget] = useState(null)
+  const [callbackReason, setCallbackReason] = useState('')
+  const [actionMenuId, setActionMenuId] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+  const [historyRange, setHistoryRange] = useState({ from: '', to: '' })
 
-  const activeView = searchParams.get('view') === 'history' ? 'history' : 'queue'
+  const activeView = ['requests', 'direct', 'history', 'costing', 'stock', 'reports'].includes(searchParams.get('view'))
+    ? searchParams.get('view')
+    : 'dashboard'
 
   const pendingRows = useMemo(
     () =>
@@ -65,19 +135,59 @@ const TerminalOperatorDashboardPage = () => {
           stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
           createdDate: request.createdAt?.split('T')[0] || '-',
           decidedDate: request.terminalReviewedAt?.split('T')[0] || '-',
-          finalStatus: request.status === 'approved' ? 'Approved' : 'Declined',
+          finalStatus:
+            request.dispatchStatus === 'called_back'
+              ? 'Called back'
+              : request.dispatchStatus === 'received'
+                ? 'Received'
+                : request.dispatchStatus === 'issue_reported'
+                  ? 'Issue reported'
+                  : request.dispatchStatus === 'dispatched'
+                    ? 'Dispatched'
+                    : request.status === 'declined'
+                      ? 'Declined'
+                      : request.managerStatusLabel || request.status || 'Requested',
           reasonOrRemark: request.terminalRemark || request.managerRemark || '-',
         }))
         .sort((a, b) => new Date(b.terminalReviewedAt) - new Date(a.terminalReviewedAt)),
     [productRequests, stations],
   )
 
-  const activeRows = activeView === 'history' ? historyRows : pendingRows
+  const filteredHistoryRows = useMemo(() => {
+    if (!historyRange.from && !historyRange.to) {
+      return historyRows
+    }
+    return historyRows.filter((request) => {
+      const decidedDate = request.terminalReviewedAt?.split('T')[0] || ''
+      if (!decidedDate) return false
+      if (historyRange.from && decidedDate < historyRange.from) return false
+      if (historyRange.to && decidedDate > historyRange.to) return false
+      return true
+    })
+  }, [historyRange.from, historyRange.to, historyRows])
+
+  const approvedDispatches = useMemo(
+    () => historyRows.filter((request) => request.status === 'approved' && request.dispatchStatus !== 'called_back'),
+    [historyRows],
+  )
+
+  const todayIso = new Date().toISOString().split('T')[0]
+  const todaysDispatches = useMemo(
+    () => approvedDispatches.filter((request) => request.terminalReviewedAt?.startsWith(todayIso)),
+    [approvedDispatches, todayIso],
+  )
+
+  const activeRows = activeView === 'history' ? filteredHistoryRows : pendingRows
   const approveLiters = Number(approveDraft.approvedLiters || 0)
   const approveCostPerLiter = Number(approveDraft.costPricePerLiter || 0)
   const approveTransportPerLiter = Number(approveDraft.transportCostPerLiter || 0)
   const approveLandingPerLiter = approveCostPerLiter + approveTransportPerLiter
   const approveTotalLandingCost = approveLiters * approveLandingPerLiter
+  const directLiters = Number(directDraft.liters || 0)
+  const directCostPerLiter = Number(directDraft.costPricePerLiter || 0)
+  const directTransportPerLiter = Number(directDraft.transportCostPerLiter || 0)
+  const directLandingPerLiter = directCostPerLiter + directTransportPerLiter
+  const directTotalLandingCost = directLiters * directLandingPerLiter
 
   const stationStockById = useMemo(() => {
     const map = new Map()
@@ -109,6 +219,36 @@ const TerminalOperatorDashboardPage = () => {
     return map
   }, [stations, reports, stockThresholds])
 
+  const terminalMetrics = useMemo(() => {
+    const pmsToday = todaysDispatches
+      .filter((request) => (request.approvedProductType || request.requestedProductType) === 'PMS')
+      .reduce((sum, request) => sum + Number(request.approvedLiters || 0), 0)
+    const agoToday = todaysDispatches
+      .filter((request) => (request.approvedProductType || request.requestedProductType) === 'AGO')
+      .reduce((sum, request) => sum + Number(request.approvedLiters || 0), 0)
+    const landedCost = todaysDispatches.reduce((sum, request) => sum + Number(request.totalLandingCost || 0), 0)
+    const totalLiters = todaysDispatches.reduce((sum, request) => sum + Number(request.approvedLiters || 0), 0)
+    const totalPmsStock = Array.from(stationStockById.values()).reduce(
+      (sum, stock) => sum + Number(stock.pmsRemaining || 0),
+      0,
+    )
+    const totalAgoStock = Array.from(stationStockById.values()).reduce(
+      (sum, stock) => sum + Number(stock.agoRemaining || 0),
+      0,
+    )
+
+    return {
+      pending: pendingRows.length,
+      approvedToday: todaysDispatches.length,
+      pmsToday,
+      agoToday,
+      landedCost,
+      averageLandingCost: totalLiters ? landedCost / totalLiters : 0,
+      totalPmsStock,
+      totalAgoStock,
+    }
+  }, [pendingRows.length, stationStockById, todaysDispatches])
+
   useEffect(() => {
     setDetailRequest(null)
     setDeclineRemark('')
@@ -131,6 +271,79 @@ const TerminalOperatorDashboardPage = () => {
   const closeDetail = () => {
     setDetailRequest(null)
     setDeclineRemark('')
+  }
+
+  const getDispatchStatusLabel = (request) => {
+    if (request.dispatchStatus === 'called_back') return 'Called back'
+    if (request.dispatchStatus === 'received') return 'Received'
+    if (request.dispatchStatus === 'issue_reported') return 'Issue reported'
+    if (request.dispatchStatus === 'dispatched') return 'Dispatched'
+    if (request.status === 'declined') return 'Declined'
+    return request.managerStatusLabel || request.status || 'Requested'
+  }
+
+  const isDispatchUsedInReport = (request) => {
+    const productKey = String(request.approvedProductType || request.requestedProductType || 'PMS').toLowerCase()
+    const dispatchDate = request.terminalReviewedAt?.split('T')[0] || request.updatedAt?.split('T')[0] || ''
+    if (!dispatchDate) return false
+    return reports.some((report) => {
+      if (report.stationId !== request.stationId || String(report.date || '') < dispatchDate) return false
+      return getReceivedForProduct(report, productKey) > 0
+    })
+  }
+
+  const getCallbackBlockReason = (request) => {
+    if (request.dispatchStatus !== 'dispatched') return 'Only active dispatched products can be called back.'
+    if (request.receivedAt || request.receivedTankDip != null) return 'Manager has already marked this product as received.'
+    if (isDispatchUsedInReport(request)) return 'Station report already used received product for this dispatch period.'
+    return ''
+  }
+
+  const openCallbackForm = (request) => {
+    const blockReason = getCallbackBlockReason(request)
+    if (blockReason) {
+      window.alert(blockReason)
+      return
+    }
+    setCallbackTarget(request)
+    setCallbackReason('')
+  }
+
+  const closeCallbackForm = () => {
+    setCallbackTarget(null)
+    setCallbackReason('')
+  }
+
+  const submitCallback = () => {
+    if (!callbackTarget) return
+    const blockReason = getCallbackBlockReason(callbackTarget)
+    if (blockReason) {
+      window.alert(blockReason)
+      closeCallbackForm()
+      return
+    }
+    if (!String(callbackReason || '').trim()) {
+      window.alert('Enter callback reason.')
+      return
+    }
+    callBackTerminalDispatch({ requestId: callbackTarget.id, reason: callbackReason })
+    closeCallbackForm()
+    closeDetail()
+  }
+
+  const submitDeleteDispatch = async () => {
+    if (!deleteTarget) return
+    setDeleteSubmitting(true)
+    const result = await deleteTerminalDispatch(deleteTarget.id).finally(() => setDeleteSubmitting(false))
+    if (result?.ok === false) {
+      window.alert(result.message || 'Could not delete dispatch.')
+      return
+    }
+    if (detailRequest?.id === deleteTarget.id) {
+      closeDetail()
+    }
+    setDeleteTarget(null)
+    setActionMenuId('')
   }
 
   const openApproveForm = (request) => {
@@ -200,11 +413,70 @@ const TerminalOperatorDashboardPage = () => {
     closeDetail()
   }
 
+  const validateDirectDispatch = () => {
+    if (!directDraft.stationId) {
+      window.alert('Select the station receiving product.')
+      return false
+    }
+    if (directLiters <= 0) {
+      window.alert('Enter the liters being sent.')
+      return false
+    }
+    if (directCostPerLiter <= 0) {
+      window.alert('Enter the product cost price per liter.')
+      return false
+    }
+    if (directTransportPerLiter < 0) {
+      window.alert('Transport cost per liter cannot be negative.')
+      return false
+    }
+    if (!String(directDraft.truckNumber || '').trim()) {
+      window.alert('Enter the truck number.')
+      return false
+    }
+    if (!String(directDraft.truckDriver || '').trim()) {
+      window.alert('Enter the truck driver name.')
+      return false
+    }
+    return true
+  }
+
+  const reviewDirectDispatch = () => {
+    if (!validateDirectDispatch()) return
+    setDirectReviewOpen(true)
+  }
+
+  const submitDirectDispatch = async () => {
+    if (!validateDirectDispatch()) return
+
+    setDirectSubmitting(true)
+    const result = await createDirectTerminalDispatch({
+        stationId: directDraft.stationId,
+        productType: directDraft.productType,
+        liters: directLiters,
+        costPricePerLiter: directCostPerLiter,
+        transportCostPerLiter: directTransportPerLiter,
+        truckNumber: directDraft.truckNumber,
+        truckDriver: directDraft.truckDriver,
+        remark: directDraft.remark,
+      })
+      .finally(() => setDirectSubmitting(false))
+
+    if (result?.ok === false) {
+      window.alert(result.message || 'Could not save dispatch. Please try again.')
+      return
+    }
+
+    setDirectDraft(emptyDirectDraft)
+    setDirectReviewOpen(false)
+    setView('history')
+  }
+
   const setView = (view) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      if (view === 'history') {
-        next.set('view', 'history')
+      if (view && view !== 'dashboard') {
+        next.set('view', view)
       } else {
         next.delete('view')
       }
@@ -215,19 +487,53 @@ const TerminalOperatorDashboardPage = () => {
   const renderRequestList = (rows) => (
     <div className="mx-auto max-w-lg space-y-2">
       {rows.map((request) => (
-        <button
+        <div
           key={request.id}
-          type="button"
-          onClick={() => openDetail(request)}
           className={clsx(
-            'w-full rounded-xl border px-4 py-4 text-left transition hover:shadow-md',
+            'relative flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition hover:shadow-md',
             detailRequest?.id === request.id
               ? 'border-blue-500 bg-blue-50 shadow-sm dark:border-blue-400 dark:bg-blue-500/10'
-              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-slate-600',
+              : 'border-white/10 bg-slate-900 hover:border-lime-400/30 hover:bg-slate-800 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-slate-600',
           )}
         >
-          <p className="text-base font-semibold text-slate-900 dark:text-white">{request.stationName}</p>
-        </button>
+          <button
+            type="button"
+            onClick={() => openDetail(request)}
+            className="min-w-0 flex-1 py-1 text-left"
+          >
+            <p className="truncate text-base font-semibold text-white">{request.stationName}</p>
+          </button>
+          {activeView === 'history' ? (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setActionMenuId((current) => (current === request.id ? '' : request.id))
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg font-black text-slate-200 transition hover:border-lime-400/30 hover:text-white"
+                aria-label="Dispatch actions"
+              >
+                ...
+              </button>
+              {actionMenuId === request.id ? (
+                <div className="absolute right-0 top-11 z-30 w-44 rounded-xl border border-white/10 bg-slate-950 p-1 shadow-2xl">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setDeleteTarget(request)
+                      setActionMenuId('')
+                    }}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-rose-200 transition hover:bg-rose-500/15 hover:text-rose-100"
+                  >
+                    Delete dispatch
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       ))}
     </div>
   )
@@ -334,9 +640,10 @@ const TerminalOperatorDashboardPage = () => {
           value={`${Math.round(request.requestedLiters).toLocaleString()} L`}
         />
         <DetailField label="Decided by" value={request.terminalName} />
+        <DetailField label="Dispatch status" value={getDispatchStatusLabel(request)} />
       </div>
 
-      {request.status === 'approved' ? (
+      {request.status === 'approved' || request.dispatchStatus === 'called_back' ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
           <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
             Dispatch details
@@ -354,6 +661,26 @@ const TerminalOperatorDashboardPage = () => {
             <DetailField label="Truck driver" value={request.truckDriver} />
             <DetailField label="Remark" value={request.reasonOrRemark} className="sm:col-span-2" />
           </div>
+          {request.dispatchStatus === 'called_back' ? (
+            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+              <DetailField label="Callback reason" value={request.callbackReason || '-'} />
+              <DetailField label="Called back by" value={request.calledBackBy || '-'} className="mt-3" />
+            </div>
+          ) : null}
+          {request.dispatchStatus === 'dispatched' ? (
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-emerald-500/20 pt-4">
+              <button
+                type="button"
+                onClick={() => openCallbackForm(request)}
+                className="rounded-xl border border-rose-500 bg-rose-100 px-4 py-2 text-sm font-black text-rose-800 shadow-sm transition hover:bg-rose-200 dark:border-rose-400/70 dark:bg-rose-500/20 dark:text-rose-100 dark:hover:bg-rose-500/30"
+              >
+                Recall dispatch
+              </button>
+              <p className="text-xs text-slate-400">
+                Use this only if the dispatch was entered by mistake before the manager confirms receipt.
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
@@ -364,36 +691,295 @@ const TerminalOperatorDashboardPage = () => {
     </>
   )
 
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gradient-to-r from-slate-900 to-blue-900 text-white">
-        <h2 className="text-xl font-bold">Terminal Operator — Product Requests</h2>
-        <p className="text-sm text-slate-200">
-          Tap a station to open the request · Signed in as {currentUser?.name || 'Terminal Operator'}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setView('queue')}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              activeView === 'queue' ? 'bg-white text-slate-900' : 'bg-white/15 text-white hover:bg-white/25'
-            }`}
-          >
-            Pending ({pendingRows.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('history')}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              activeView === 'history' ? 'bg-white text-slate-900' : 'bg-white/15 text-white hover:bg-white/25'
-            }`}
-          >
-            History ({historyRows.length})
-          </button>
+  const MetricCard = ({ label, value, note, tone = 'default' }) => (
+    <div
+      className={clsx(
+        'rounded-2xl border p-5',
+        tone === 'green'
+          ? 'border-emerald-500/30 bg-emerald-500/10'
+          : tone === 'amber'
+            ? 'border-amber-500/30 bg-amber-500/10'
+            : 'border-white/10 bg-slate-900 dark:border-slate-800 dark:bg-slate-900/70',
+      )}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-black text-white">{value}</p>
+      {note ? <p className="mt-1 text-sm text-slate-300">{note}</p> : null}
+    </div>
+  )
+
+  const renderDashboard = () => (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Pending requests" value={terminalMetrics.pending} tone="amber" />
+        <MetricCard label="Approved today" value={terminalMetrics.approvedToday} tone="green" />
+        <MetricCard label="PMS dispatched" value={formatLiters(terminalMetrics.pmsToday)} />
+        <MetricCard label="AGO dispatched" value={formatLiters(terminalMetrics.agoToday)} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Pending actions</p>
+              <h3 className="text-lg font-bold text-white">Station requests awaiting dispatch</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setView('requests')}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+            >
+              Open
+            </button>
+          </div>
+          <div className="mt-4 space-y-3">
+            {pendingRows.slice(0, 4).map((request) => (
+              <button
+                key={request.id}
+                type="button"
+                onClick={() => openDetail(request)}
+                className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-left hover:border-lime-400/30 hover:bg-slate-800 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <span>
+                  <span className="block font-bold text-white">{request.stationName}</span>
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    {request.requestedProductType} - {formatLiters(request.requestedLiters)}
+                  </span>
+                </span>
+                <span className="text-xs font-bold uppercase text-amber-600 dark:text-amber-300">Pending</span>
+              </button>
+            ))}
+            {!pendingRows.length ? <EmptyState title="No pending requests" message="All station requests are clear." /> : null}
+          </div>
+        </Card>
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Costing snapshot</p>
+          <div className="mt-4 space-y-4">
+            <DetailField
+              label="Average landing/liter today"
+              value={formatNaira(terminalMetrics.averageLandingCost)}
+              valueClassName="text-white"
+            />
+            <DetailField
+              label="Total landed cost today"
+              value={formatNaira(terminalMetrics.landedCost)}
+              valueClassName="text-white"
+            />
+            <DetailField label="Recent dispatches" value={approvedDispatches.length} valueClassName="text-white" />
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+
+  const renderDirectDispatch = () => {
+    if (directReviewOpen) {
+      return (
+        <Card>
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Review dispatch</p>
+            <h3 className="mt-1 text-2xl font-black text-white">Confirm product dispatch</h3>
+            <p className="mt-2 text-sm text-slate-300">Check the dispatch details before sending it to the station.</p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <DetailField
+                label="Station"
+                value={stations.find((station) => station.id === directDraft.stationId)?.name || '-'}
+                valueClassName="text-white"
+                className="rounded-2xl border border-white/8 bg-slate-900 p-4"
+              />
+              <DetailField label="Product" value={directDraft.productType} valueClassName="text-white" className="rounded-2xl border border-white/8 bg-slate-900 p-4" />
+              <DetailField label="Liters" value={formatLiters(directLiters)} valueClassName="text-white" className="rounded-2xl border border-white/8 bg-slate-900 p-4" />
+              <DetailField label="Cost/liter" value={formatNaira(directCostPerLiter)} valueClassName="text-white" className="rounded-2xl border border-white/8 bg-slate-900 p-4" />
+              <DetailField label="Transport/liter" value={formatNaira(directTransportPerLiter)} valueClassName="text-white" className="rounded-2xl border border-white/8 bg-slate-900 p-4" />
+              <DetailField label="Landing/liter" value={formatNaira(directLandingPerLiter)} valueClassName="text-lime-300" className="rounded-2xl border border-lime-400/20 bg-lime-400/10 p-4" />
+              <DetailField label="Total landed cost" value={formatNaira(directTotalLandingCost)} valueClassName="text-lime-300" className="rounded-2xl border border-lime-400/20 bg-lime-400/10 p-4 sm:col-span-2" />
+              <DetailField label="Truck number" value={directDraft.truckNumber} valueClassName="text-white" className="rounded-2xl border border-white/8 bg-slate-900 p-4" />
+              <DetailField label="Truck driver" value={directDraft.truckDriver} valueClassName="text-white" className="rounded-2xl border border-white/8 bg-slate-900 p-4" />
+              <DetailField label="Remark" value={directDraft.remark || '-'} valueClassName="text-white" className="rounded-2xl border border-white/8 bg-slate-900 p-4 sm:col-span-2" />
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={submitDirectDispatch}
+                disabled={directSubmitting}
+                className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700"
+              >
+                {directSubmitting ? 'Saving dispatch...' : 'Confirm dispatch'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDirectReviewOpen(false)}
+                className="rounded-xl border border-white/10 bg-slate-900 px-6 py-3 text-sm font-bold text-slate-200 hover:border-lime-400/30 hover:text-white"
+              >
+                Edit details
+              </button>
+            </div>
+          </div>
+        </Card>
+      )
+    }
+
+    return (
+      <Card>
+        <div className="max-w-3xl">
+        <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Direct dispatch</p>
+        <h3 className="mt-1 text-2xl font-black text-white">Send product without a station request</h3>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <TerminalSelect
+            label="Station"
+            value={directDraft.stationId}
+            placeholder="Select station"
+            options={stations.map((station) => ({ value: station.id, label: station.name }))}
+            onChange={(value) => {
+              setDirectReviewOpen(false)
+              setDirectDraft((prev) => ({ ...prev, stationId: value }))
+            }}
+          />
+          <TerminalSelect
+            label="Product"
+            value={directDraft.productType}
+            placeholder="Select product"
+            options={[
+              { value: 'PMS', label: 'PMS' },
+              { value: 'AGO', label: 'AGO' },
+            ]}
+            onChange={(value) => {
+              setDirectReviewOpen(false)
+              setDirectDraft((prev) => ({ ...prev, productType: value }))
+            }}
+          />
+          {[
+            ['liters', 'Liters sending'],
+            ['costPricePerLiter', 'Cost price/liter'],
+            ['transportCostPerLiter', 'Transport/liter'],
+            ['truckNumber', 'Truck number'],
+            ['truckDriver', 'Truck driver'],
+            ['remark', 'Remark'],
+          ].map(([key, label]) => (
+            <label key={key} className="space-y-1">
+              <span className="text-sm font-semibold text-slate-300">{label}</span>
+              <input
+                type={key.includes('Liter') || key === 'liters' ? 'number' : 'text'}
+                min={key.includes('Liter') || key === 'liters' ? '0' : undefined}
+                step={key.includes('Liter') ? '0.01' : undefined}
+                value={directDraft[key]}
+                onChange={(event) => {
+                  setDirectReviewOpen(false)
+                  setDirectDraft((prev) => ({ ...prev, [key]: event.target.value }))
+                }}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white placeholder:text-slate-500 shadow-inner shadow-black/20 outline-none transition hover:border-lime-400/30 focus:border-lime-400/60 focus:ring-2 focus:ring-lime-400/15"
+              />
+            </label>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">Landing cost per liter</p>
+            <p className="mt-1 text-xl font-black text-white">{formatNaira(directLandingPerLiter)}</p>
+            <p className="mt-1 text-xs text-slate-400">Cost/liter + transport/liter</p>
+          </div>
+          <div className="rounded-2xl border border-lime-400/30 bg-lime-400/10 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-lime-300">Total landed cost</p>
+            <p className="mt-1 text-xl font-black text-white">{formatNaira(directTotalLandingCost)}</p>
+            <p className="mt-1 text-xs text-slate-400">Liters x landing cost per liter</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={reviewDirectDispatch}
+          className="mt-5 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700"
+        >
+          Review dispatch
+        </button>
         </div>
       </Card>
+    )
+  }
 
-      {activeView === 'queue' && (
+  const renderCosting = () => (
+    <Card>
+      <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Costing</p>
+      <h3 className="mt-1 text-xl font-black text-white">Approved dispatch costing</h3>
+      <div className="mt-5 grid gap-4 md:grid-cols-3">
+        <MetricCard label="Average landing/liter" value={formatNaira(terminalMetrics.averageLandingCost)} />
+        <MetricCard label="Total product cost" value={formatNaira(approvedDispatches.reduce((sum, request) => sum + Number(request.totalProductCost || 0), 0))} />
+        <MetricCard label="Total transport cost" value={formatNaira(approvedDispatches.reduce((sum, request) => sum + Number(request.totalTransportCost || 0), 0))} />
+      </div>
+    </Card>
+  )
+
+  const renderStock = () => (
+    <Card>
+      <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Terminal stock view</p>
+      <h3 className="mt-1 text-xl font-black text-white">Station stock visibility</h3>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <MetricCard label="PMS across stations" value={formatLiters(terminalMetrics.totalPmsStock)} />
+        <MetricCard label="AGO across stations" value={formatLiters(terminalMetrics.totalAgoStock)} />
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {stations.slice(0, 12).map((station) => {
+          const stock = stationStockById.get(station.id)
+          return (
+            <div key={station.id} className="rounded-xl border border-white/10 bg-slate-900 p-4 dark:border-slate-800 dark:bg-slate-900">
+              <p className="font-bold text-white">{station.name}</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">PMS: {formatLiters(stock?.pmsRemaining)}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">AGO: {formatLiters(stock?.agoRemaining)}</p>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+
+  const renderReports = () => (
+    <Card>
+      <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Reports</p>
+      <h3 className="mt-1 text-xl font-black text-white">Dispatch report summary</h3>
+      <div className="mt-5 grid gap-4 md:grid-cols-4">
+        <MetricCard label="All dispatches" value={approvedDispatches.length} />
+        <MetricCard label="PMS total" value={formatLiters(approvedDispatches.filter((request) => (request.approvedProductType || request.requestedProductType) === 'PMS').reduce((sum, request) => sum + Number(request.approvedLiters || 0), 0))} />
+        <MetricCard label="AGO total" value={formatLiters(approvedDispatches.filter((request) => (request.approvedProductType || request.requestedProductType) === 'AGO').reduce((sum, request) => sum + Number(request.approvedLiters || 0), 0))} />
+        <MetricCard label="Landed cost" value={formatNaira(approvedDispatches.reduce((sum, request) => sum + Number(request.totalLandingCost || 0), 0))} />
+      </div>
+    </Card>
+  )
+
+  const pageTitleByView = {
+    dashboard: 'Terminal Dashboard',
+    requests: 'Station Requests',
+    direct: 'Direct Dispatch',
+    history: 'Dispatch History',
+    costing: 'Costing',
+    stock: 'Terminal Stock',
+    reports: 'Reports',
+  }
+
+  const pageSubtitleByView = {
+    dashboard: 'Today\'s dispatch position, pending station requests and costing snapshot.',
+    requests: 'Review product requests submitted by stations and approve or decline dispatch.',
+    direct: 'Send product to a station without waiting for a station request.',
+    history: 'Approved and declined terminal dispatch records.',
+    costing: 'Cost per liter, transport cost and landed cost summary.',
+    stock: 'Latest stock visibility from station reports.',
+    reports: 'Dispatch totals prepared for review and export.',
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-5 py-4">
+        <div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-lime-400">Terminal operations</p>
+            <h2 className="mt-1 text-xl font-black text-white">{pageTitleByView[activeView]}</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-400">{pageSubtitleByView[activeView]}</p>
+          </div>
+        </div>
+      </div>
+
+      {activeView === 'dashboard' ? renderDashboard() : null}
+
+      {activeView === 'requests' && (
         <Card className="py-6">
           {pendingRows.length ? (
             renderRequestList(pendingRows)
@@ -406,18 +992,34 @@ const TerminalOperatorDashboardPage = () => {
         </Card>
       )}
 
+      {activeView === 'direct' ? renderDirectDispatch() : null}
+
       {activeView === 'history' && (
         <Card className="py-6">
-          {historyRows.length ? (
-            renderRequestList(historyRows)
+          <div className="mx-auto mb-5 flex max-w-lg justify-end px-1">
+            <DateRangePicker
+              from={historyRange.from}
+              to={historyRange.to}
+              onChange={setHistoryRange}
+              label="History date"
+              emptyLabel="All dates"
+              align="right"
+            />
+          </div>
+          {filteredHistoryRows.length ? (
+            renderRequestList(filteredHistoryRows)
           ) : (
             <EmptyState
-              title="No decision history yet"
-              message="Approved and declined requests will appear here."
+              title="No history in this date range"
+              message="Clear the calendar or choose another date range."
             />
           )}
         </Card>
       )}
+
+      {activeView === 'costing' ? renderCosting() : null}
+      {activeView === 'stock' ? renderStock() : null}
+      {activeView === 'reports' ? renderReports() : null}
 
       {detailRequest && (
         <div
@@ -486,6 +1088,90 @@ const TerminalOperatorDashboardPage = () => {
               {activeView === 'history'
                 ? renderHistoryBody(detailRequest)
                 : renderPendingBody(detailRequest)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {callbackTarget && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-950 p-6 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Recall dispatch</p>
+            <h3 className="mt-1 text-lg font-bold text-white">{callbackTarget.stationName}</h3>
+            <p className="mt-2 text-sm text-slate-300">
+              This reverses this dispatch and removes it from active dispatch and costing totals. It only works before the manager confirms receipt.
+            </p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-slate-900 p-3">
+              <DetailField
+                label="Product"
+                value={`${callbackTarget.approvedProductType || callbackTarget.requestedProductType} - ${formatLiters(callbackTarget.approvedLiters || callbackTarget.requestedLiters)}`}
+                valueClassName="text-white"
+              />
+              <DetailField label="Truck" value={callbackTarget.truckNumber || '-'} valueClassName="text-white" className="mt-3" />
+            </div>
+            <label className="mt-4 block space-y-1">
+              <span className="text-sm font-semibold text-slate-300">Reason for recall</span>
+              <textarea
+                value={callbackReason}
+                onChange={(event) => setCallbackReason(event.target.value)}
+                rows={3}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/15"
+                placeholder="e.g. Wrong station, wrong quantity, duplicate dispatch..."
+              />
+            </label>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={submitCallback}
+                className="flex-1 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400"
+              >
+                Confirm recall
+              </button>
+              <button
+                type="button"
+                onClick={closeCallbackForm}
+                className="rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-rose-500/30 bg-slate-950 p-6 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-300">Delete dispatch</p>
+            <h3 className="mt-1 text-lg font-black text-white">{deleteTarget.stationName}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-300">
+              This will permanently remove this dispatch record. Use it only for wrong or duplicate dispatch entries.
+            </p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-slate-900 p-3">
+              <DetailField
+                label="Product"
+                value={`${deleteTarget.approvedProductType || deleteTarget.requestedProductType} - ${formatLiters(deleteTarget.approvedLiters || deleteTarget.requestedLiters)}`}
+                valueClassName="text-white"
+              />
+              <DetailField label="Truck" value={deleteTarget.truckNumber || '-'} valueClassName="text-white" className="mt-3" />
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={submitDeleteDispatch}
+                disabled={deleteSubmitting}
+                className="flex-1 rounded-xl bg-rose-600 px-4 py-3 text-sm font-black text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deleteSubmitting ? 'Deleting...' : 'Delete dispatch'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteSubmitting}
+                className="rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:text-white disabled:opacity-60"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

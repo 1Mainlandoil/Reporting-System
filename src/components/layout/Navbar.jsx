@@ -58,7 +58,15 @@ const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) =
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const station = getCurrentStation()
-  const roleLabel = role === 'staff' ? 'Manager' : role === 'supervisor' ? 'Supervisor' : 'Admin'
+  const roleLabel = role === 'staff'
+    ? 'Manager'
+    : role === 'supervisor'
+      ? 'Supervisor'
+      : role === 'terminal_operator'
+        ? 'Terminal Operator'
+        : role === 'inspector'
+          ? 'Inspector'
+          : 'Admin'
   const staffHistoryPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : ''
   const mobileLinks = role === 'staff'
     ? [
@@ -113,7 +121,7 @@ const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) =
               <button
                 type="button"
                 onClick={onToggleSupervisorTheme}
-                className="hidden rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/10 sm:inline-flex"
+                className="inline-flex rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
               >
                 {supervisorTheme === 'light' ? 'Dark' : 'Light'}
               </button>

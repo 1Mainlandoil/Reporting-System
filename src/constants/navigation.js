@@ -24,9 +24,13 @@ export const linksByRole = {
     { label: 'Settings', path: '/settings' },
   ],
   terminal_operator: [
-    { label: 'Product Requests', path: '/terminal-operator' },
-    { label: 'History', path: '/terminal-operator?view=history' },
-    { label: 'Users', path: '/users' },
+    { label: 'Dashboard', path: '/terminal-operator' },
+    { label: 'Station Requests', path: '/terminal-operator?view=requests' },
+    { label: 'Direct Dispatch', path: '/terminal-operator?view=direct' },
+    { label: 'Dispatch History', path: '/terminal-operator?view=history' },
+    { label: 'Costing', path: '/terminal-operator?view=costing' },
+    { label: 'Terminal Stock', path: '/terminal-operator?view=stock' },
+    { label: 'Reports', path: '/terminal-operator?view=reports' },
     { label: 'Settings', path: '/settings' },
   ],
   inspector: [

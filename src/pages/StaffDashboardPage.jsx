@@ -6,11 +6,18 @@ import { getClosingForProduct, getPumpHistoryKey, normalizePumpProductType } fro
 import { formatStaffCalendarDay, getDailyReportPendingInfo, getOldestMissingReportDateUpTo, listMissedReportDatesInclusive } from '../utils/reportPending'
 import { getReportingDateIso } from '../utils/dateFormat'
 
+const normalizeStationKey = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+
 const StaffDashboardPage = () => {
   const currentUser = useAppStore((state) => state.currentUser)
+  const stations = useAppStore((state) => state.stations)
   const submitReport = useAppStore((state) => state.submitReport)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const reports = useAppStore((state) => state.reports)
+  const productRequests = useAppStore((state) => state.productRequests)
+  const confirmDispatchReceived = useAppStore((state) => state.confirmDispatchReceived)
+  const reportDispatchIssue = useAppStore((state) => state.reportDispatchIssue)
+  const markReceivedDispatchesReported = useAppStore((state) => state.markReceivedDispatchesReported)
   const reportingConfiguration = useAppStore((state) => state.appSettings.reportingConfiguration)
 
   const todayIso = getReportingDateIso()
@@ -57,11 +64,22 @@ const StaffDashboardPage = () => {
   const availableReportDate = earliestBacklogDate || (stationReportDates.has(todayIso) ? '' : todayIso)
   const [reportStarted, setReportStarted] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
+  const [receiveTarget, setReceiveTarget] = useState(null)
+  const [receiveDraft, setReceiveDraft] = useState({ tankDip: '', remark: '' })
+  const [receiveSubmitting, setReceiveSubmitting] = useState(false)
+  const [issueTarget, setIssueTarget] = useState(null)
+  const [issueReason, setIssueReason] = useState('')
   const activeReportDate = availableReportDate
 
   useEffect(() => {
     setReportStarted(false)
   }, [activeReportDate])
+
+  useEffect(() => {
+    if (currentUser?.stationId) {
+      refreshFromSupabase()
+    }
+  }, [currentUser?.stationId, refreshFromSupabase])
 
   const recentSevenStats = useMemo(() => {
     let completed = 0
@@ -229,6 +247,82 @@ const StaffDashboardPage = () => {
     return map
   }, [activeReportDate, reports, currentUser?.stationId])
 
+  const activeDispatches = useMemo(() => {
+    const sid = currentUser?.stationId
+    if (!sid) return []
+    const currentStation = stations.find((station) => station.id === sid)
+    const managerKeys = new Set([
+      normalizeStationKey(sid),
+      normalizeStationKey(currentStation?.name),
+    ].filter(Boolean))
+    const matchesManagerStation = (request) => {
+      const requestStation = stations.find((station) => station.id === request.stationId)
+      return [
+        normalizeStationKey(request.stationId),
+        normalizeStationKey(requestStation?.name),
+      ].some((key) => managerKeys.has(key))
+    }
+    return productRequests
+      .filter((request) => matchesManagerStation(request) && request.dispatchStatus === 'dispatched')
+      .sort((a, b) => new Date(b.terminalReviewedAt || b.updatedAt || 0) - new Date(a.terminalReviewedAt || a.updatedAt || 0))
+  }, [currentUser?.stationId, productRequests, stations])
+
+  const receivedDispatchesForReport = useMemo(() => {
+    const sid = currentUser?.stationId
+    if (!sid || !activeReportDate) return []
+    const currentStation = stations.find((station) => station.id === sid)
+    const managerKeys = new Set([
+      normalizeStationKey(sid),
+      normalizeStationKey(currentStation?.name),
+    ].filter(Boolean))
+    const matchesManagerStation = (request) => {
+      const requestStation = stations.find((station) => station.id === request.stationId)
+      return [
+        normalizeStationKey(request.stationId),
+        normalizeStationKey(requestStation?.name),
+      ].some((key) => managerKeys.has(key))
+    }
+    return productRequests
+      .filter((request) => {
+        if (!matchesManagerStation(request) || request.dispatchStatus !== 'received' || request.receivedReportId) return false
+        const receivedDate = request.receivedAt?.split('T')[0] || ''
+        return receivedDate && receivedDate <= activeReportDate
+      })
+      .sort((a, b) => new Date(a.receivedAt || 0) - new Date(b.receivedAt || 0))
+  }, [activeReportDate, currentUser?.stationId, productRequests, stations])
+
+  const submitDispatchIssue = () => {
+    if (!issueTarget) return
+    if (!String(issueReason || '').trim()) {
+      window.alert('Enter the issue with this dispatch.')
+      return
+    }
+    reportDispatchIssue({ requestId: issueTarget.id, reason: issueReason })
+    setIssueTarget(null)
+    setIssueReason('')
+  }
+
+  const submitDispatchReceived = async () => {
+    if (!receiveTarget) return
+    const tankDip = Number(receiveDraft.tankDip || 0)
+    if (tankDip <= 0) {
+      window.alert('Enter tank dip after delivery.')
+      return
+    }
+    setReceiveSubmitting(true)
+    const result = await confirmDispatchReceived({
+      requestId: receiveTarget.id,
+      tankDip,
+      remark: receiveDraft.remark,
+    }).finally(() => setReceiveSubmitting(false))
+    if (result?.ok === false) {
+      window.alert(result.message || 'Could not save received product confirmation.')
+      return
+    }
+    setReceiveTarget(null)
+    setReceiveDraft({ tankDip: '', remark: '' })
+  }
+
   const historyPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : '/staff/report'
 
   return (
@@ -239,6 +333,57 @@ const StaffDashboardPage = () => {
           <p className="mt-1 text-sm text-slate-400">
             Your account is not linked to a retail station. Ask an administrator to assign you.
           </p>
+        </Card>
+      )}
+
+      {!reportStarted && activeDispatches.length > 0 && (
+        <Card className="border-[#a9cd39]/20 bg-[#a9cd39]/5">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#a9cd39]">Product dispatch</p>
+          <h3 className="mt-1 text-lg font-black text-white">Product is on the way to your station</h3>
+          <p className="mt-1 text-sm text-slate-400">Confirm only after the truck arrives and delivery is completed.</p>
+          <div className="mt-4 space-y-3">
+            {activeDispatches.map((dispatch) => (
+              <div key={dispatch.id} className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-white">
+                      {dispatch.approvedProductType || dispatch.requestedProductType} - {Math.round(Number(dispatch.approvedLiters || dispatch.requestedLiters || 0)).toLocaleString()} L
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Truck: {dispatch.truckNumber || '-'} | Driver: {dispatch.truckDriver || '-'}
+                    </p>
+                    {dispatch.terminalReviewedAt ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Dispatched {dispatch.terminalReviewedAt.split('T')[0]}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReceiveTarget(dispatch)
+                        setReceiveDraft({ tankDip: '', remark: '' })
+                      }}
+                      className="rounded-xl bg-[#a9cd39] px-4 py-2 text-sm font-black text-black"
+                    >
+                      Received?
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIssueTarget(dispatch)
+                        setIssueReason('')
+                      }}
+                      className="rounded-xl border border-[#c4151d]/30 bg-[#c4151d]/10 px-4 py-2 text-sm font-bold text-red-200"
+                    >
+                      Report issue
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -328,6 +473,7 @@ const StaffDashboardPage = () => {
           isFirstReport={isFirstReport}
           priorPrices={priorPrices}
           pumpLastClosings={pumpLastClosings}
+          receivedDispatches={receivedDispatchesForReport}
           submissionReminder={submissionReminder}
           pastCatchUpNeeded={pastCatchUpNeeded}
           historyPath={historyPath}
@@ -335,7 +481,16 @@ const StaffDashboardPage = () => {
           reportingConfiguration={reportingConfiguration}
           submitReport={submitReport}
           formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled || !activeReportDate}
-          onSubmitted={() => refreshFromSupabase()}
+          onSubmitted={(result) => {
+            if (result?.reportId && receivedDispatchesForReport.length) {
+              markReceivedDispatchesReported({
+                requestIds: receivedDispatchesForReport.map((request) => request.id),
+                reportId: result.reportId,
+                reportDate: activeReportDate,
+              })
+            }
+            refreshFromSupabase()
+          }}
         />
       </Card>
       )}
@@ -389,6 +544,104 @@ const StaffDashboardPage = () => {
               <span className="rounded-full bg-[#a9cd39]/10 px-2 py-1 font-semibold text-[#a9cd39]">Active</span>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 font-semibold text-emerald-300">Submitted</span>
               <span className="rounded-full bg-amber-500/10 px-2 py-1 font-semibold text-amber-300">Locked</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {issueTarget && (
+        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0d1220] p-4 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-300">Report issue</p>
+            <h3 className="mt-1 text-lg font-black text-white">
+              {issueTarget.approvedProductType || issueTarget.requestedProductType} - {Math.round(Number(issueTarget.approvedLiters || issueTarget.requestedLiters || 0)).toLocaleString()} L
+            </h3>
+            <p className="mt-2 text-sm text-slate-400">
+              Tell terminal/admin what is wrong with this dispatch.
+            </p>
+            <textarea
+              value={issueReason}
+              onChange={(event) => setIssueReason(event.target.value)}
+              rows={4}
+              className="mt-4 w-full resize-none rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white outline-none focus:border-red-300/60"
+              placeholder="e.g. Truck has not arrived, quantity differs, wrong product..."
+            />
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={submitDispatchIssue}
+                className="flex-1 rounded-xl bg-[#c4151d] px-4 py-3 text-sm font-black text-white"
+              >
+                Send issue
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIssueTarget(null)
+                  setIssueReason('')
+                }}
+                className="rounded-xl border border-white/10 px-4 py-3 text-sm font-bold text-slate-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {receiveTarget && (
+        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0d1220] p-4 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#a9cd39]">Confirm receipt</p>
+            <h3 className="mt-1 text-lg font-black text-white">
+              {receiveTarget.approvedProductType || receiveTarget.requestedProductType} - {Math.round(Number(receiveTarget.approvedLiters || receiveTarget.requestedLiters || 0)).toLocaleString()} L
+            </h3>
+            <p className="mt-2 text-sm text-slate-400">
+              Enter tank dip after the truck finishes delivery.
+            </p>
+            <label className="mt-4 block space-y-1">
+              <span className="text-sm font-semibold text-slate-300">Tank dip after delivery</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={receiveDraft.tankDip}
+                onChange={(event) => setReceiveDraft((prev) => ({ ...prev, tankDip: event.target.value }))}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/60"
+                placeholder="e.g. 49900"
+              />
+            </label>
+            <label className="mt-3 block space-y-1">
+              <span className="text-sm font-semibold text-slate-300">Remark</span>
+              <textarea
+                value={receiveDraft.remark}
+                onChange={(event) => setReceiveDraft((prev) => ({ ...prev, remark: event.target.value }))}
+                rows={3}
+                className="w-full resize-none rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/60"
+                placeholder="Optional note"
+              />
+            </label>
+            <div className="mt-4 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/10 p-3 text-sm font-semibold text-[#a9cd39]">
+              This locks the dispatch as received and blocks callback.
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={submitDispatchReceived}
+                className="flex-1 rounded-xl bg-[#a9cd39] px-4 py-3 text-sm font-black text-black"
+              >
+                Save receipt
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setReceiveTarget(null)
+                  setReceiveDraft({ tankDip: '', remark: '' })
+                }}
+                className="rounded-xl border border-white/10 px-4 py-3 text-sm font-bold text-slate-300"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

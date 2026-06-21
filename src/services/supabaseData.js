@@ -123,6 +123,7 @@ export const mapReportRow = (row) => {
   posTerminalBreakdown,
   posEodPhotoUrl,
   pumpReadings: Array.isArray(row.pump_readings) ? row.pump_readings : [],
+  productDispatchReceipts: Array.isArray(row.product_dispatch_receipts) ? row.product_dispatch_receipts : [],
   cashBf: Number(row.cash_bf ?? 0) || 0,
   cashSales: Number(row.cash_sales ?? 0) || 0,
   totalAmount: Number(row.total_amount ?? 0) || 0,
@@ -181,7 +182,7 @@ const mapAdminDailyReview = (row) => ({
   createdAt: row.created_at,
 })
 
-const mapProductRequest = (row) => ({
+export const mapProductRequest = (row) => ({
   id: row.id,
   stationId: row.station_id,
   managerId: row.manager_id,
@@ -208,6 +209,19 @@ const mapProductRequest = (row) => ({
   totalTransportCost: Number(row.total_transport_cost || 0),
   totalLandingCost: Number(row.total_landing_cost || 0),
   dispatchNote: row.dispatch_note || '',
+  dispatchStatus: row.dispatch_status || (row.terminal_decision === 'approved' ? 'dispatched' : row.status === 'declined' ? 'declined' : 'requested'),
+  receivedTankDip: row.received_tank_dip == null ? null : Number(row.received_tank_dip),
+  receivedAt: row.received_at || null,
+  receivedBy: row.received_by || '',
+  receivedRemark: row.received_remark || '',
+  receivedReportId: row.received_report_id || '',
+  receivedReportDate: row.received_report_date || null,
+  issueReportedAt: row.issue_reported_at || null,
+  issueReportedBy: row.issue_reported_by || '',
+  issueRemark: row.issue_remark || '',
+  calledBackAt: row.called_back_at || null,
+  calledBackBy: row.called_back_by || '',
+  callbackReason: row.callback_reason || '',
   terminalDecision: row.terminal_decision || null,
   terminalRemark: row.terminal_remark || '',
   terminalName: row.terminal_name || '',
@@ -457,6 +471,7 @@ export const insertReport = async (report) => {
     ],
     total_payment_deposits: Number(report.totalPaymentDeposits || 0),
     pump_readings: report.pumpReadings || [],
+    product_dispatch_receipts: Array.isArray(report.productDispatchReceipts) ? report.productDispatchReceipts : [],
     cash_bf: Number(report.cashBf || 0),
     cash_sales: Number(report.cashSales || 0),
     total_amount: Number(report.totalAmount || 0),
@@ -643,6 +658,19 @@ export const upsertProductRequest = async (request) => {
     total_transport_cost: request.totalTransportCost || 0,
     total_landing_cost: request.totalLandingCost || 0,
     dispatch_note: request.dispatchNote || '',
+    dispatch_status: request.dispatchStatus || (request.terminalDecision === 'approved' ? 'dispatched' : request.status === 'declined' ? 'declined' : 'requested'),
+    received_tank_dip: request.receivedTankDip ?? null,
+    received_at: request.receivedAt || null,
+    received_by: request.receivedBy || '',
+    received_remark: request.receivedRemark || '',
+    received_report_id: request.receivedReportId || '',
+    received_report_date: request.receivedReportDate || null,
+    issue_reported_at: request.issueReportedAt || null,
+    issue_reported_by: request.issueReportedBy || '',
+    issue_remark: request.issueRemark || '',
+    called_back_at: request.calledBackAt || null,
+    called_back_by: request.calledBackBy || '',
+    callback_reason: request.callbackReason || '',
     terminal_decision: request.terminalDecision || null,
     terminal_remark: request.terminalRemark || '',
     terminal_name: request.terminalName || '',
@@ -654,6 +682,17 @@ export const upsertProductRequest = async (request) => {
     updated_at: request.updatedAt || request.createdAt || new Date().toISOString(),
   }
   const { error } = await supabase.from('product_requests').upsert(payload)
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
+}
+
+export const deleteProductRequest = async (requestId) => {
+  if (!hasSupabaseEnv || !supabase) {
+    return null
+  }
+  const { error } = await supabase.from('product_requests').delete().eq('id', requestId)
   if (error) {
     throw new Error(error.message)
   }

@@ -115,6 +115,41 @@ html.dark body {
   background: #ffffff;
 }
 
+.terminal-light-mode .bg-slate-950,
+.terminal-light-mode .bg-slate-950\/70,
+.terminal-light-mode .bg-slate-900,
+.terminal-light-mode .bg-slate-900\/70,
+.terminal-light-mode .dark\:bg-slate-900,
+.terminal-light-mode .dark\:bg-slate-900\/70 {
+  background-color: #ffffff !important;
+}
+
+.terminal-light-mode main {
+  background:
+    linear-gradient(90deg, rgba(196, 21, 29, 0.08) 0 4px, transparent 4px),
+    linear-gradient(90deg, transparent calc(100% - 4px), rgba(95, 143, 31, 0.18) calc(100% - 4px)),
+    linear-gradient(180deg, #fbfcf8 0%, #f2f5ec 100%) !important;
+}
+
+.terminal-light-mode .text-lime-400 {
+  color: #5f8f1f !important;
+}
+
+.terminal-light-mode main .text-white {
+  color: #111827 !important;
+}
+
+.terminal-light-mode main .bg-emerald-600,
+.terminal-light-mode main .bg-rose-600 {
+  color: #ffffff !important;
+}
+
+.terminal-light-mode .border-slate-800,
+.terminal-light-mode .dark\:border-slate-800,
+.terminal-light-mode .dark\:border-slate-700 {
+  border-color: rgba(31, 41, 55, 0.12) !important;
+}
+
 .supervisor-light-mode .supervisor-light-stat {
   background: transparent !important;
   border: 0 !important;
