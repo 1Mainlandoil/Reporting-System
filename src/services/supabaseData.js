@@ -54,6 +54,7 @@ export const mapReportRow = (row) => {
     label: item.label || item.channel || 'POS',
     channel: item.channel || 'POS',
     category: 'POS',
+    unmapped: Boolean(item.unmapped),
     amount: Number(item.amount || 0),
     eodPhotoUrl: item.eodPhotoUrl || '',
     eodPhotoUrls: Array.isArray(item.eodPhotoUrls) ? item.eodPhotoUrls : item.eodPhotoUrl ? [item.eodPhotoUrl] : [],
@@ -457,6 +458,7 @@ export const insertReport = async (report) => {
             terminalId: item.terminalId || '',
             bank: item.bank || '',
             label: item.label || '',
+            unmapped: Boolean(item.unmapped),
           }))
         : Number(report.posValue || 0) > 0
           ? [

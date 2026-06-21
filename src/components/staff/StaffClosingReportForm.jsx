@@ -20,6 +20,7 @@ const PUMP_LABEL_OPTIONS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'Oth
 const toOpts = (arr) => arr.map((v) => ({ value: v, label: v }))
 const DEFAULT_PUMP_READING = { label: 'P1', otherLabel: '', closing: '', productType: 'PMS' }
 const DEFAULT_PRICE_BAND_DRAFT = { price: '', liters: '' }
+const DEFAULT_OTHER_POS_DRAFT = { terminalId: '', amount: '' }
 
 const defaultForm = {
   closingStockPMS: '',
@@ -120,6 +121,8 @@ const StaffClosingReportForm = ({
   const [paymentDraft, setPaymentDraft] = useState({ channel: PAYMENT_CHANNEL_OPTIONS[0], otherChannel: '', amount: '' })
   const [paymentBreakdown, setPaymentBreakdown] = useState([])
   const [posTerminalAmounts, setPosTerminalAmounts] = useState({})
+  const [otherPosDraft, setOtherPosDraft] = useState(DEFAULT_OTHER_POS_DRAFT)
+  const [otherPosEntries, setOtherPosEntries] = useState([])
   const [pumpDraft, setPumpDraft] = useState(DEFAULT_PUMP_READING)
   const [pumpReadings, setPumpReadings] = useState([])
   const [pmsMultiPrice, setPmsMultiPrice] = useState('no')
@@ -165,8 +168,8 @@ const StaffClosingReportForm = ({
     [stationId],
   )
   const posTerminalBreakdown = useMemo(
-    () =>
-      assignedPosTerminals
+    () => {
+      const assignedRows = assignedPosTerminals
         .map((terminal) => ({
           terminalId: terminal.tid,
           bank: terminal.bank,
@@ -175,8 +178,21 @@ const StaffClosingReportForm = ({
           category: 'POS',
           channel: `POS - ${terminal.bank} - ${terminal.tid}`,
         }))
-        .filter((item) => item.amount > 0),
-    [assignedPosTerminals, posTerminalAmounts],
+        .filter((item) => item.amount > 0)
+      const otherRows = otherPosEntries
+        .map((entry) => ({
+          terminalId: entry.terminalId,
+          bank: 'Unmapped POS',
+          label: `Unmapped POS - ${entry.terminalId}`,
+          amount: Number(entry.amount || 0),
+          category: 'POS',
+          channel: `POS - Unmapped - ${entry.terminalId}`,
+          unmapped: true,
+        }))
+        .filter((item) => item.terminalId && item.amount > 0)
+      return [...assignedRows, ...otherRows]
+    },
+    [assignedPosTerminals, otherPosEntries, posTerminalAmounts],
   )
   const posValue = posTerminalBreakdown.reduce((sum, item) => sum + item.amount, 0)
 
@@ -310,6 +326,14 @@ const StaffClosingReportForm = ({
     const entry = { id: `band-${product}-${Date.now()}`, price, liters }
     if (isPms) { setPriceBandsPMS((prev) => [...prev, entry]); setPriceBandDraftPMS(DEFAULT_PRICE_BAND_DRAFT) }
     else { setPriceBandsAGO((prev) => [...prev, entry]); setPriceBandDraftAGO(DEFAULT_PRICE_BAND_DRAFT) }
+  }
+
+  const addOtherPosEntry = () => {
+    const terminalId = String(otherPosDraft.terminalId || '').trim()
+    const amount = Number(otherPosDraft.amount || 0)
+    if (!terminalId || amount <= 0) return
+    setOtherPosEntries((prev) => [...prev, { id: `other-pos-${Date.now()}`, terminalId, amount }])
+    setOtherPosDraft(DEFAULT_OTHER_POS_DRAFT)
   }
 
   const uploadEodFile = async (fileId, file) => {
@@ -530,7 +554,7 @@ const StaffClosingReportForm = ({
       setFormData(defaultForm)
       setExpenseDraft({ category: 'Gas', otherLabel: '', amount: '' }); setExpenseItems([])
       setPaymentDraft({ channel: PAYMENT_CHANNEL_OPTIONS[0], otherChannel: '', amount: '' }); setPaymentBreakdown([])
-      setPosTerminalAmounts({})
+      setPosTerminalAmounts({}); setOtherPosDraft(DEFAULT_OTHER_POS_DRAFT); setOtherPosEntries([])
       setPumpDraft(DEFAULT_PUMP_READING); setPumpReadings([])
       setPmsMultiPrice('no'); setAgoMultiPrice('no')
       setPriceBandDraftPMS(DEFAULT_PRICE_BAND_DRAFT); setPriceBandDraftAGO(DEFAULT_PRICE_BAND_DRAFT)
@@ -1094,7 +1118,7 @@ const StaffClosingReportForm = ({
         {!assignedPosTerminals.length ? (
           <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4">
             <p className="text-sm font-bold text-amber-300">No POS terminal assigned to this station.</p>
-            <p className="mt-1 text-xs text-slate-400">Continue if the station had no POS collections today.</p>
+            <p className="mt-1 text-xs text-slate-400">Use Other POS below if a terminal was used today.</p>
           </div>
         ) : (
           assignedPosTerminals.map((terminal) => (
@@ -1116,6 +1140,53 @@ const StaffClosingReportForm = ({
             </div>
           ))
         )}
+        <div className="rounded-2xl border border-dashed border-[#a9cd39]/25 bg-[#a9cd39]/5 p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Other POS</p>
+              <p className="mt-1 text-sm text-slate-400">Use this if the POS terminal is not listed.</p>
+            </div>
+            <span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-[11px] font-bold text-amber-300">Unmapped</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_0.8fr_auto] md:items-end">
+            <FormInput
+              label="POS Terminal ID / Name"
+              value={otherPosDraft.terminalId}
+              onChange={(e) => setOtherPosDraft((prev) => ({ ...prev, terminalId: e.target.value }))}
+            />
+            <FormInput
+              type="number"
+              min="0"
+              label="Amount (NGN)"
+              value={otherPosDraft.amount}
+              onChange={(e) => setOtherPosDraft((prev) => ({ ...prev, amount: e.target.value }))}
+            />
+            <button
+              type="button"
+              onClick={addOtherPosEntry}
+              disabled={!String(otherPosDraft.terminalId || '').trim() || Number(otherPosDraft.amount || 0) <= 0}
+              className="rounded-xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-4 py-3 text-sm font-black text-[#a9cd39] transition hover:bg-[#a9cd39]/15 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Add
+            </button>
+          </div>
+          {otherPosEntries.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {otherPosEntries.map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2.5 text-sm">
+                  <span className="min-w-0 truncate text-slate-200">{entry.terminalId} - NGN {Number(entry.amount || 0).toLocaleString()}</span>
+                  <button
+                    type="button"
+                    onClick={() => setOtherPosEntries((prev) => prev.filter((item) => item.id !== entry.id))}
+                    className="shrink-0 text-sm font-bold text-rose-400"
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <div className="mt-4 rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-4 py-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">POS Total</p>
