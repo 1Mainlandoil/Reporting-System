@@ -918,7 +918,7 @@ const TerminalOperatorDashboardPage = () => {
         <MetricCard label="AGO across stations" value={formatLiters(terminalMetrics.totalAgoStock)} />
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {stations.slice(0, 12).map((station) => {
+        {stations.map((station) => {
           const stock = stationStockById.get(station.id)
           return (
             <div key={station.id} className="rounded-xl border border-white/10 bg-slate-900 p-4 dark:border-slate-800 dark:bg-slate-900">
