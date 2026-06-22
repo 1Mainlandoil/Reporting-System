@@ -422,9 +422,47 @@ export const useAppStore = create(
           }
         }
 
-        const dup = state.reports.some((r) => r.stationId === stationId && r.date === resolvedDate)
+        const reportType = restPayload.reportType === 'lpg' ? 'lpg' : 'fuel'
+        const dup = state.reports.some((r) => r.stationId === stationId && r.date === resolvedDate && (r.reportType || 'fuel') === reportType)
         if (dup) {
           return { ok: false, error: 'duplicate_date' }
+        }
+
+        if (reportType === 'lpg') {
+          const lpg = restPayload.lpgReport || {}
+          const carriedCashBf = Number(restPayload.cashBf ?? lpg.cashBf ?? 0)
+          const normalizedCashSales = Number(restPayload.cashSales ?? lpg.cashSales ?? 0)
+          const normalizedPosValue = Number(restPayload.posValue ?? lpg.posTotal ?? 0)
+          const normalizedBankLodgements = Number(restPayload.totalPaymentDeposits ?? lpg.bankTotal ?? 0)
+          const derivedTotalAmount = carriedCashBf + normalizedCashSales
+          const closingBalance = Number(restPayload.closingBalance ?? lpg.closingBalance ?? 0)
+          const newReport = {
+            id: `stn-${stationId}-lpg-${Date.now()}`,
+            ...restPayload,
+            reportType,
+            lpgReport: lpg,
+            stationId,
+            date: resolvedDate,
+            cashBf: carriedCashBf,
+            cashSales: normalizedCashSales,
+            posValue: normalizedPosValue,
+            totalPaymentDeposits: normalizedBankLodgements,
+            totalAmount: derivedTotalAmount,
+            closingBalance,
+            expenseAmount: 0,
+          }
+          try {
+            await insertReport(newReport)
+          } catch (err) {
+            return {
+              ok: false,
+              error: 'sync_failed',
+              message: extractErrorMessage(err),
+              rawError: err,
+            }
+          }
+          set({ reports: [...state.reports, newReport] })
+          return { ok: true, reportId: newReport.id, reportDate: resolvedDate }
         }
 
         const openingStockPMS = Number(restPayload.openingStockPMS ?? 0)
@@ -462,6 +500,7 @@ export const useAppStore = create(
         const newReport = {
           id: `stn-${stationId}-${Date.now()}`,
           ...restPayload,
+          reportType,
           openingStockPMS: openingStockPMSStored,
           openingStockAGO: openingStockAGOStored,
           openingPMS: openingStockPMSStored,

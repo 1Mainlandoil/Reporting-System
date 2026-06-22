@@ -14,6 +14,33 @@ import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
 import { getReportingDateIso } from '../utils/dateFormat'
 
+const money = (value) => `NGN ${Math.round(Number(value || 0)).toLocaleString()}`
+const liters = (value) => `${Math.round(Number(value || 0)).toLocaleString()} L`
+const getReportLiters = (report, product) => {
+  const key = product === 'AGO' ? 'AGO' : 'PMS'
+  return Number(
+    report[`pumpSalesLiters${key}`] ??
+      report[`totalSalesLiters${key}`] ??
+      report[`sales${key}`] ??
+      0,
+  )
+}
+const getReportRevenue = (report, product) => {
+  const key = product === 'AGO' ? 'AGO' : 'PMS'
+  const stored = Number(report[`salesAmount${key}`] || 0)
+  if (stored > 0) return stored
+  const price = Number(report[`${product.toLowerCase()}Price`] || 0)
+  return getReportLiters(report, key) * price
+}
+const getWeekKey = (dateString) => {
+  const date = new Date(`${dateString}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return 'Unknown week'
+  const first = new Date(date.getFullYear(), 0, 1)
+  const dayOffset = Math.floor((date - first) / 86400000)
+  const week = Math.ceil((dayOffset + first.getDay() + 1) / 7)
+  return `${date.getFullYear()} W${String(week).padStart(2, '0')}`
+}
+
 const AdminDashboardPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
@@ -51,7 +78,7 @@ const AdminDashboardPage = () => {
   const metrics = useMemo(
     () =>
       stations.map((station) => {
-        const stationReports = reports.filter((report) => report.stationId === station.id)
+        const stationReports = reports.filter((report) => report.stationId === station.id && (report.reportType || 'fuel') !== 'lpg')
         return buildStationMetrics(station, stationReports, stockThresholds)
       }),
     [reports, stations, stockThresholds],
@@ -84,11 +111,149 @@ const AdminDashboardPage = () => {
     [users],
   )
 
-  const todayReports = useMemo(() => reports.filter((report) => report.date === today), [reports, today])
+  const todayReports = useMemo(() => reports.filter((report) => report.date === today && (report.reportType || 'fuel') !== 'lpg'), [reports, today])
+  const costingRows = useMemo(
+    () =>
+      productRequests
+        .filter((request) => Number(request.approvedLiters || 0) > 0)
+        .filter((request) => request.terminalReviewedAt || request.dispatchStatus === 'dispatched' || request.dispatchStatus === 'received')
+        .map((request) => {
+          const stationName = stations.find((station) => station.id === request.stationId)?.name || request.stationName || request.stationId
+          const approvedLiters = Number(request.approvedLiters || request.requestedLiters || 0)
+          const landingCostPerLiter =
+            Number(request.landingCostPerLiter || 0) ||
+            Number(request.costPricePerLiter || 0) + Number(request.transportCostPerLiter || 0)
+          const totalLandingCost = Number(request.totalLandingCost || 0) || approvedLiters * landingCostPerLiter
+          return {
+            id: request.id,
+            date: String(request.terminalReviewedAt || request.updatedAt || request.createdAt || '').slice(0, 10) || '-',
+            stationId: request.stationId,
+            stationName,
+            product: request.approvedProductType || request.requestedProductType || 'PMS',
+            approvedLiters,
+            costPricePerLiter: Number(request.costPricePerLiter || 0),
+            transportCostPerLiter: Number(request.transportCostPerLiter || 0),
+            landingCostPerLiter,
+            totalLandingCost,
+            status: request.dispatchStatus || request.status || '-',
+          }
+        })
+        .sort((a, b) => String(b.date).localeCompare(String(a.date))),
+    [productRequests, stations],
+  )
+
+  const averageLandingCostByProduct = useMemo(() => {
+    const byProduct = new Map()
+    for (const row of costingRows) {
+      const product = row.product === 'AGO' ? 'AGO' : 'PMS'
+      const current = byProduct.get(product) || { liters: 0, cost: 0 }
+      current.liters += Number(row.approvedLiters || 0)
+      current.cost += Number(row.totalLandingCost || 0)
+      byProduct.set(product, current)
+    }
+    return {
+      PMS: byProduct.get('PMS')?.liters ? byProduct.get('PMS').cost / byProduct.get('PMS').liters : 0,
+      AGO: byProduct.get('AGO')?.liters ? byProduct.get('AGO').cost / byProduct.get('AGO').liters : 0,
+    }
+  }, [costingRows])
+
+  const profitRows = useMemo(
+    () =>
+      reports
+        .filter((report) => report.date && (report.reportType || 'fuel') !== 'lpg')
+        .map((report) => {
+          const stationName = stations.find((station) => station.id === report.stationId)?.name || report.stationName || report.stationId
+          const pmsLiters = getReportLiters(report, 'PMS')
+          const agoLiters = getReportLiters(report, 'AGO')
+          const pmsRevenue = getReportRevenue(report, 'PMS')
+          const agoRevenue = getReportRevenue(report, 'AGO')
+          const revenue = pmsRevenue + agoRevenue
+          const pmsCost = pmsLiters * averageLandingCostByProduct.PMS
+          const agoCost = agoLiters * averageLandingCostByProduct.AGO
+          const cogs = pmsCost + agoCost
+          const expense = Number(report.expenseAmount || 0)
+          const grossProfit = revenue - cogs
+          const netProfit = grossProfit - expense
+          return {
+            id: report.id,
+            date: report.date,
+            week: getWeekKey(report.date),
+            month: String(report.date || '').slice(0, 7),
+            year: String(report.date || '').slice(0, 4),
+            stationId: report.stationId,
+            stationName,
+            pmsLiters,
+            agoLiters,
+            litersSold: pmsLiters + agoLiters,
+            pmsRevenue,
+            agoRevenue,
+            revenue,
+            cogs,
+            expense,
+            grossProfit,
+            netProfit,
+            margin: revenue ? (netProfit / revenue) * 100 : 0,
+            sourceStatus: report.supervisorReview?.status || report.reviewStatus || 'Submitted',
+          }
+        })
+        .sort((a, b) => String(b.date).localeCompare(String(a.date))),
+    [averageLandingCostByProduct.AGO, averageLandingCostByProduct.PMS, reports, stations],
+  )
+
+  const summarizeProfitRows = (rowsToSummarize, keyGetter, labelGetter = keyGetter) => {
+    const map = new Map()
+    for (const row of rowsToSummarize) {
+      const key = keyGetter(row)
+      const current = map.get(key) || {
+        id: key,
+        label: labelGetter(row),
+        reports: 0,
+        litersSold: 0,
+        revenue: 0,
+        cogs: 0,
+        expense: 0,
+        grossProfit: 0,
+        netProfit: 0,
+      }
+      current.reports += 1
+      current.litersSold += row.litersSold
+      current.revenue += row.revenue
+      current.cogs += row.cogs
+      current.expense += row.expense
+      current.grossProfit += row.grossProfit
+      current.netProfit += row.netProfit
+      current.margin = current.revenue ? (current.netProfit / current.revenue) * 100 : 0
+      map.set(key, current)
+    }
+    return [...map.values()].sort((a, b) => b.netProfit - a.netProfit)
+  }
+
+  const profitSummary = useMemo(() => {
+    const revenue = profitRows.reduce((sum, row) => sum + row.revenue, 0)
+    const cogs = profitRows.reduce((sum, row) => sum + row.cogs, 0)
+    const expense = profitRows.reduce((sum, row) => sum + row.expense, 0)
+    const grossProfit = revenue - cogs
+    const netProfit = grossProfit - expense
+    return {
+      reports: profitRows.length,
+      revenue,
+      cogs,
+      expense,
+      grossProfit,
+      netProfit,
+      margin: revenue ? (netProfit / revenue) * 100 : 0,
+    }
+  }, [profitRows])
+
+  const dailyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.date), [profitRows])
+  const weeklyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.week), [profitRows])
+  const monthlyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.month), [profitRows])
+  const yearlyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.year), [profitRows])
+  const stationProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.stationId, (row) => row.stationName), [profitRows])
   const reportDatesByStation = useMemo(() => {
     const byStation = new Map()
     for (const report of reports) {
-      if (!report?.stationId || !report?.date) {
+      if (!report?.stationId || !report?.date || (report.reportType || 'fuel') === 'lpg') {
         continue
       }
       if (!byStation.has(report.stationId)) {
@@ -927,6 +1092,103 @@ const AdminDashboardPage = () => {
   const isReportsView = adminView === 'reports'
   const isProductRequestsView = adminView === 'product-requests'
   const isHistoryView = adminView === 'history'
+  const profitLossViewMeta = {
+    'profit-loss': {
+      title: 'Dashboard',
+      subtitle: 'Company-wide profit and loss command center.',
+      focus: ['Gross profit', 'Net profit', 'Margin trend', 'Best and weak stations'],
+    },
+    'profit-loss/daily': {
+      title: 'Daily P/L',
+      subtitle: 'Profit and loss by report date from finalised reports.',
+      focus: ['Daily sales revenue', 'Cost of goods sold', 'Expenses', 'Net profit'],
+    },
+    'profit-loss/weekly': {
+      title: 'Weekly P/L',
+      subtitle: 'Weekly profit and loss movement across stations.',
+      focus: ['Weekly revenue', 'Weekly COGS', 'Expense trend', 'Station ranking'],
+    },
+    'profit-loss/monthly': {
+      title: 'Monthly P/L',
+      subtitle: 'Month-to-date station ranking and profit movement.',
+      focus: ['Station ranking', 'Product contribution', 'Expense weight', 'Cash/POS/bank checks'],
+    },
+    'profit-loss/yearly': {
+      title: 'Yearly P/L',
+      subtitle: 'Year-to-date company and station performance.',
+      focus: ['Monthly comparison', 'Year trend', 'Station contribution', 'Product contribution'],
+    },
+    'profit-loss/stations': {
+      title: 'Station P/L',
+      subtitle: 'Open one station and inspect its full profit/loss trail.',
+      focus: ['Daily station P/L', 'Monthly station P/L', 'Product mix', 'Expense behavior'],
+    },
+    'profit-loss/costing': {
+      title: 'Costing',
+      subtitle: 'Landing cost records from terminal dispatches.',
+      focus: ['Cost/liter', 'Transport/liter', 'Landing/liter', 'Total landed cost'],
+    },
+    'profit-loss/margins': {
+      title: 'Product Margin',
+      subtitle: 'PMS and AGO margin analysis by station and date.',
+      focus: ['Selling price', 'Landing cost', 'Profit per liter', 'Total product margin'],
+    },
+    'profit-loss/expenses': {
+      title: 'Expenses Analysis',
+      subtitle: 'Expense impact on station and company profitability.',
+      focus: ['Expense category totals', 'Station expense ranking', 'Expense-to-sales ratio', 'Unusual cost spikes'],
+    },
+  }
+  const activeProfitLossView = profitLossViewMeta[adminView]
+  const profitColumns = [
+    { key: 'label', header: 'Period / Station', minWidth: 160 },
+    { key: 'reports', header: 'Reports', minWidth: 90, render: (row) => Number(row.reports || 0).toLocaleString() },
+    { key: 'litersSold', header: 'Liters Sold', minWidth: 130, render: (row) => liters(row.litersSold) },
+    { key: 'revenue', header: 'Revenue', minWidth: 150, render: (row) => money(row.revenue) },
+    { key: 'cogs', header: 'COGS', minWidth: 150, render: (row) => money(row.cogs) },
+    { key: 'expense', header: 'Expenses', minWidth: 140, render: (row) => money(row.expense) },
+    { key: 'grossProfit', header: 'Gross Profit', minWidth: 150, render: (row) => money(row.grossProfit) },
+    {
+      key: 'netProfit',
+      header: 'Net P/L',
+      minWidth: 150,
+      render: (row) => <span className={Number(row.netProfit || 0) < 0 ? 'text-rose-400' : 'text-[#a9cd39]'}>{money(row.netProfit)}</span>,
+    },
+    { key: 'margin', header: 'Margin', minWidth: 110, render: (row) => `${Number(row.margin || 0).toFixed(1)}%` },
+  ]
+  const dailyColumns = [
+    { key: 'date', header: 'Date', minWidth: 120 },
+    { key: 'stationName', header: 'Station', minWidth: 170 },
+    { key: 'litersSold', header: 'Liters Sold', minWidth: 130, render: (row) => liters(row.litersSold) },
+    { key: 'revenue', header: 'Revenue', minWidth: 150, render: (row) => money(row.revenue) },
+    { key: 'cogs', header: 'COGS', minWidth: 150, render: (row) => money(row.cogs) },
+    { key: 'expense', header: 'Expenses', minWidth: 140, render: (row) => money(row.expense) },
+    { key: 'netProfit', header: 'Net P/L', minWidth: 150, render: (row) => <span className={Number(row.netProfit || 0) < 0 ? 'text-rose-400' : 'text-[#a9cd39]'}>{money(row.netProfit)}</span> },
+    { key: 'sourceStatus', header: 'Status', minWidth: 130 },
+  ]
+  const costingColumns = [
+    { key: 'date', header: 'Date', minWidth: 120 },
+    { key: 'stationName', header: 'Station', minWidth: 170 },
+    { key: 'product', header: 'Product', minWidth: 100 },
+    { key: 'approvedLiters', header: 'Liters', minWidth: 120, render: (row) => liters(row.approvedLiters) },
+    { key: 'costPricePerLiter', header: 'Cost/L', minWidth: 120, render: (row) => money(row.costPricePerLiter) },
+    { key: 'transportCostPerLiter', header: 'Transport/L', minWidth: 130, render: (row) => money(row.transportCostPerLiter) },
+    { key: 'landingCostPerLiter', header: 'Landing/L', minWidth: 130, render: (row) => money(row.landingCostPerLiter) },
+    { key: 'totalLandingCost', header: 'Total Landed Cost', minWidth: 180, render: (row) => money(row.totalLandingCost) },
+    { key: 'status', header: 'Status', minWidth: 120 },
+  ]
+  const activeProfitRows =
+    adminView === 'profit-loss/daily'
+      ? profitRows
+      : adminView === 'profit-loss/weekly'
+        ? weeklyProfitRows
+        : adminView === 'profit-loss/monthly'
+          ? monthlyProfitRows
+          : adminView === 'profit-loss/yearly'
+            ? yearlyProfitRows
+            : adminView === 'profit-loss/stations'
+              ? stationProfitRows
+              : dailyProfitRows
 
   const openInventoryFiltersScreen = () => {
     setInventorySearchParams((prev) => {
@@ -1023,6 +1285,116 @@ const AdminDashboardPage = () => {
             </Card>
           </div>
         </>
+      )}
+
+      {activeProfitLossView && (
+        <div className="space-y-4">
+          <Card className="overflow-hidden border border-[#a9cd39]/15 bg-[#0b111d] text-white">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-l-4 border-l-[#a9cd39] pl-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#a9cd39]">Profit and Loss</p>
+                <h2 className="mt-2 text-2xl font-black">{activeProfitLossView.title}</h2>
+                <p className="mt-1 max-w-2xl text-sm text-slate-400">{activeProfitLossView.subtitle}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-right">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cost basis</p>
+                <p className="mt-1 text-sm text-slate-200">
+                  PMS {money(averageLandingCostByProduct.PMS)}/L · AGO {money(averageLandingCostByProduct.AGO)}/L
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['Revenue', money(profitSummary.revenue), 'Sales value from reports'],
+                ['COGS', money(profitSummary.cogs), 'Liters sold x landing cost'],
+                ['Expenses', money(profitSummary.expense), 'Manager expense lines'],
+                ['Net P/L', money(profitSummary.netProfit), `${profitSummary.margin.toFixed(1)}% margin`],
+              ].map(([label, value, hint]) => (
+                <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</p>
+                  <p className={`mt-2 text-xl font-black ${label === 'Net P/L' && profitSummary.netProfit < 0 ? 'text-rose-400' : 'text-white'}`}>{value}</p>
+                  <p className="mt-1 text-xs text-slate-500">{hint}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {adminView === 'profit-loss' && (
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card className="space-y-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">Top station P/L</p>
+                  <h3 className="text-lg font-bold">Best performing stations</h3>
+                </div>
+                {stationProfitRows.slice(0, 5).map((row, index) => (
+                  <div key={row.id} className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
+                    <div>
+                      <p className="font-bold">{index + 1}. {row.label}</p>
+                      <p className="text-sm text-slate-500">{liters(row.litersSold)} · {row.reports} report(s)</p>
+                    </div>
+                    <p className={row.netProfit < 0 ? 'font-black text-rose-400' : 'font-black text-[#a9cd39]'}>{money(row.netProfit)}</p>
+                  </div>
+                ))}
+              </Card>
+              <Card className="space-y-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">Recent daily P/L</p>
+                  <h3 className="text-lg font-bold">Latest report days</h3>
+                </div>
+                {dailyProfitRows.slice(0, 5).map((row) => (
+                  <div key={row.id} className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
+                    <div>
+                      <p className="font-bold">{row.label}</p>
+                      <p className="text-sm text-slate-500">{liters(row.litersSold)} · revenue {money(row.revenue)}</p>
+                    </div>
+                    <p className={row.netProfit < 0 ? 'font-black text-rose-400' : 'font-black text-[#a9cd39]'}>{money(row.netProfit)}</p>
+                  </div>
+                ))}
+              </Card>
+            </div>
+          )}
+
+          {adminView === 'profit-loss/costing' ? (
+            <Card className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-bold">Costing Ledger</h3>
+                  <p className="text-sm text-slate-500">Terminal dispatch costs used as P/L landing cost basis.</p>
+                </div>
+                <span className="rounded-full bg-[#a9cd39]/15 px-3 py-1 text-sm font-bold text-[#a9cd39]">
+                  {costingRows.length} dispatch record{costingRows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              {costingRows.length ? (
+                <DataTable columns={costingColumns} rows={costingRows} tableClassName="min-w-[1280px]" />
+              ) : (
+                <EmptyState title="No costing records yet" message="Terminal dispatches with cost price and transport price will appear here." />
+              )}
+            </Card>
+          ) : adminView !== 'profit-loss' ? (
+            <Card className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-bold">{activeProfitLossView.title} Breakdown</h3>
+                  <p className="text-sm text-slate-500">Revenue - COGS - expenses, using current landing cost basis.</p>
+                </div>
+                <span className="rounded-full bg-[#a9cd39]/15 px-3 py-1 text-sm font-bold text-[#a9cd39]">
+                  {activeProfitRows.length} row{activeProfitRows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              {activeProfitRows.length ? (
+                <DataTable
+                  columns={adminView === 'profit-loss/daily' ? dailyColumns : profitColumns}
+                  rows={activeProfitRows}
+                  tableClassName="min-w-[1180px]"
+                />
+              ) : (
+                <EmptyState title="No P/L data yet" message="Finalised/ submitted reports with sales, prices, expenses and costing will appear here." />
+              )}
+            </Card>
+          ) : null}
+        </div>
       )}
 
       {isDashboardView && (

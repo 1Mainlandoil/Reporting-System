@@ -17,7 +17,7 @@ export const ROLE_OPTIONS = [
 export const ROLE_ROUTE_MAP = {
   [ROLES.STAFF]: '/staff',
   [ROLES.SUPERVISOR]: '/supervisor',
-  [ROLES.ADMIN]: '/admin/dashboard',
+  [ROLES.ADMIN]: '/admin/profit-loss',
   [ROLES.TERMINAL_OPERATOR]: '/terminal-operator',
   [ROLES.INSPECTOR]: '/inspector',
 }

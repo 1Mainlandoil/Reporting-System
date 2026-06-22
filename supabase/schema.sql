@@ -272,6 +272,10 @@ alter table public.daily_reports
   add column if not exists report_finalized_at timestamptz,
   add column if not exists report_finalization_remark text not null default '';
 
+alter table public.daily_reports
+  add column if not exists report_type text not null default 'fuel',
+  add column if not exists lpg_report jsonb;
+
 create table if not exists public.inspector_visits (
   id text primary key,
   station_id text not null references public.stations(id) on delete cascade,
@@ -361,7 +365,8 @@ set name = excluded.name,
     approval_status = excluded.approval_status;
 
 create index if not exists idx_daily_reports_station_date on public.daily_reports(station_id, date desc);
-create unique index if not exists ux_daily_reports_station_date on public.daily_reports(station_id, date);
+drop index if exists ux_daily_reports_station_date;
+create unique index if not exists ux_daily_reports_station_date_type on public.daily_reports(station_id, date, report_type);
 create index if not exists idx_chat_messages_pair on public.chat_messages(from_user_id, to_user_id, created_at desc);
 create index if not exists idx_admin_daily_reviews_date on public.admin_daily_reviews(date desc);
 create index if not exists idx_product_requests_station_created on public.product_requests(station_id, created_at desc);

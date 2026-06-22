@@ -208,6 +208,11 @@ const formatLiters = (value, digits = 0) => `${toFiniteNumber(value).toLocaleStr
   minimumFractionDigits: digits,
 })} L`
 
+const formatKg = (value, digits = 2) => `${toFiniteNumber(value).toLocaleString(undefined, {
+  maximumFractionDigits: digits,
+  minimumFractionDigits: digits,
+})} kg`
+
 const formatMoney = (value) => `NGN ${Math.round(toFiniteNumber(value)).toLocaleString()}`
 
 const differenceTone = (value) => {
@@ -257,6 +262,7 @@ const SupervisorDashboardPage = () => {
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
+  const [selectedReportView, setSelectedReportView] = useState('fuel')
   const [rangeSummaryReport, setRangeSummaryReport] = useState(null)
   const [reviewRemark, setReviewRemark] = useState('')
   const [correctionOpen, setCorrectionOpen] = useState(false)
@@ -366,7 +372,7 @@ const SupervisorDashboardPage = () => {
 
   const portfolio = useMemo(() => {
     return stations.map((station) => {
-      const stationReports = reports.filter((report) => report.stationId === station.id)
+      const stationReports = reports.filter((report) => report.stationId === station.id && (report.reportType || 'fuel') !== 'lpg')
       return buildStationMetrics(station, stationReports, stockThresholds)
     })
   }, [reports, stations, stockThresholds])
@@ -418,7 +424,7 @@ const SupervisorDashboardPage = () => {
   const reportDatesByStation = useMemo(() => {
     const byStation = new Map()
     for (const report of reports) {
-      if (!report?.stationId || !report?.date) {
+      if (!report?.stationId || !report?.date || (report.reportType || 'fuel') === 'lpg') {
         continue
       }
       if (!byStation.has(report.stationId)) {
@@ -455,7 +461,18 @@ const SupervisorDashboardPage = () => {
           reportRange.end,
         )
         const stationReportsToday = reports.filter(
-          (report) => report.stationId === station.id && report.date >= reportRange.start && report.date <= reportRange.end,
+          (report) =>
+            report.stationId === station.id &&
+            report.date >= reportRange.start &&
+            report.date <= reportRange.end &&
+            (report.reportType || 'fuel') !== 'lpg',
+        )
+        const lpgReportsToday = reports.filter(
+          (report) =>
+            report.stationId === station.id &&
+            report.date >= reportRange.start &&
+            report.date <= reportRange.end &&
+            report.reportType === 'lpg',
         )
         const latestToday = stationReportsToday.at(-1)
         const firstToday = stationReportsToday[0]
@@ -573,6 +590,8 @@ const SupervisorDashboardPage = () => {
           pumpReadings,
           pumpMeterRows,
           pumpReadingsCount: pumpReadings.length,
+          lpgReport: lpgReportsToday.at(-1)?.lpgReport || null,
+          lpgReports: lpgReportsToday,
           sortKey: station.name.toLowerCase(),
           pendingSubmissionDays: isSingleReportDate ? pendingInfo.pendingDays : pendingDaysInRange,
           pendingSubmissionNoHistory: pendingInfo.noPriorSubmissions,
@@ -990,7 +1009,11 @@ const SupervisorDashboardPage = () => {
           reportRange.end,
         )
         const stationReportsToday = reports.filter(
-          (report) => report.stationId === station.id && report.date >= reportRange.start && report.date <= reportRange.end,
+          (report) =>
+            report.stationId === station.id &&
+            report.date >= reportRange.start &&
+            report.date <= reportRange.end &&
+            (report.reportType || 'fuel') !== 'lpg',
         )
         const latestToday = stationReportsToday.at(-1)
         const manager = staffByStation.get(station.id)
@@ -1376,6 +1399,10 @@ const SupervisorDashboardPage = () => {
   useEffect(() => {
     setDailyOpeningVisibleKeys(new Set(dailyOpeningPickableKeys))
   }, [dailyOpeningPickableKeys])
+
+  useEffect(() => {
+    setSelectedReportView('fuel')
+  }, [selectedDailyOpeningReport?.stationId, selectedDailyOpeningReport?.reportDate])
 
   const visibleDailyOpeningColumns = useMemo(
     () => filterColumnsForTable(dailyOpeningColumns, dailyOpeningVisibleKeys),
@@ -1901,7 +1928,8 @@ const SupervisorDashboardPage = () => {
     return reports.find(
       (report) =>
         report.stationId === selectedDailyOpeningReport.stationId &&
-        report.date === selectedDailyOpeningReport.reportDate,
+        report.date === selectedDailyOpeningReport.reportDate &&
+        (report.reportType || 'fuel') !== 'lpg',
     ) || null
   }, [reports, selectedDailyOpeningReport])
 
@@ -1911,7 +1939,8 @@ const SupervisorDashboardPage = () => {
       .filter((report) =>
         report.stationId === selectedDailyOpeningReport.stationId &&
         report.date >= reportRange.start &&
-        report.date <= reportRange.end
+        report.date <= reportRange.end &&
+        (report.reportType || 'fuel') !== 'lpg'
       )
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [reportRange.end, reportRange.start, reports, selectedDailyOpeningReport, selectedRawReport])
@@ -1921,7 +1950,7 @@ const SupervisorDashboardPage = () => {
     const station = stations.find((item) => item.id === report.stationId)
     const manager = users.find((user) => user.stationId === report.stationId)
     const allPriorReports = reports
-      .filter((item) => item.stationId === report.stationId && item.date < report.date)
+      .filter((item) => item.stationId === report.stationId && item.date < report.date && (item.reportType || 'fuel') !== 'lpg')
       .sort((a, b) => a.date.localeCompare(b.date))
     const row = buildDailyReportViewRow({
       stationId: report.stationId,
@@ -1948,6 +1977,7 @@ const SupervisorDashboardPage = () => {
 
   const closeDailyOpeningModal = () => {
     setSelectedDailyOpeningReport(null)
+    setSelectedReportView('fuel')
     setRangeSummaryReport(null)
   }
 
@@ -2440,6 +2470,117 @@ const SupervisorDashboardPage = () => {
                     </button>
                   )}
 
+                  {selectedDailyOpeningReport.lpgReport && (
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReportView('fuel')}
+                        className={`w-1/2 rounded-xl px-3 py-2 text-xs font-black transition ${
+                          selectedReportView === 'fuel'
+                            ? 'bg-[#a9cd39] text-black'
+                            : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                        }`}
+                      >
+                        PMS/AGO Report
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReportView('lpg')}
+                        className={`w-1/2 rounded-xl px-3 py-2 text-xs font-black transition ${
+                          selectedReportView === 'lpg'
+                            ? 'bg-[#a9cd39] text-black'
+                            : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                        }`}
+                      >
+                        See LPG Report
+                      </button>
+                    </div>
+                  )}
+
+                  {selectedReportView === 'lpg' && selectedDailyOpeningReport.lpgReport && (() => {
+                    const lpg = selectedDailyOpeningReport.lpgReport
+                    const bankLines = Array.isArray(lpg.bankLines) ? lpg.bankLines : []
+                    const posLines = Array.isArray(lpg.posLines) ? lpg.posLines : []
+                    const meterLines = Array.isArray(lpg.meterLines) ? lpg.meterLines : []
+                    return (
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
+                          <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">LPG Report</p>
+                          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                            {[
+                              ['Qty sold', formatKg(lpg.quantitySoldKg)],
+                              ['Sales value', formatMoney(lpg.salesAmount)],
+                              ['Variance', formatMoney(lpg.variance)],
+                            ].map(([label, value]) => (
+                              <div key={label} className="rounded-xl bg-black/20 p-3">
+                                <p className="text-xs text-slate-500">{label}</p>
+                                <p className="mt-1 text-lg font-black text-white">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-400">Stock & meter</p>
+                            <div className="mt-3 space-y-2 text-sm">
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Opening stock</span><span className="font-bold text-white">{formatKg(lpg.openingStockKg)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Closing stock</span><span className="font-bold text-white">{formatKg(lpg.closingStockKg)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Sold by stock</span><span className="font-bold text-white">{formatKg(lpg.stockSoldKg)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Sold by meter</span><span className="font-bold text-white">{formatKg(lpg.meterSoldKg)}</span></div>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-400">Cash</p>
+                            <div className="mt-3 space-y-2 text-sm">
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Unit price</span><span className="font-bold text-white">{formatMoney(lpg.unitPrice)}/kg</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Cash B/F</span><span className="font-bold text-white">{formatMoney(lpg.cashBf)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Cash sales</span><span className="font-bold text-white">{formatMoney(lpg.cashSales)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Closing balance</span><span className="font-bold text-white">{formatMoney(lpg.closingBalance)}</span></div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-400">Bank deposit</p>
+                            <div className="mt-3 space-y-2 text-sm">
+                              {bankLines.length ? bankLines.map((item, index) => (
+                                <div key={`${item.channel}-${index}`} className="flex justify-between gap-3">
+                                  <span className="text-slate-500">{item.channel || 'Bank'}</span>
+                                  <span className="font-bold text-white">{formatMoney(item.amount)}</span>
+                                </div>
+                              )) : <p className="text-slate-500">No bank line</p>}
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-400">POS</p>
+                            <div className="mt-3 space-y-2 text-sm">
+                              {posLines.length ? posLines.map((item, index) => (
+                                <div key={`${item.terminal}-${index}`} className="flex justify-between gap-3">
+                                  <span className="text-slate-500">{item.terminal || 'POS'}</span>
+                                  <span className="font-bold text-white">{formatMoney(item.amount)}</span>
+                                </div>
+                              )) : <p className="text-slate-500">No POS line</p>}
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-400">LPG meter readings</p>
+                            <div className="mt-3 space-y-2 text-sm">
+                              {meterLines.length ? meterLines.map((item, index) => (
+                                <p key={`${item.label}-${index}`} className="text-slate-200">
+                                  {item.label || `P${index + 1}`}: {formatKg(item.opening)} to {formatKg(item.closing)} ({formatKg(item.quantity)} sold)
+                                </p>
+                              )) : <p className="text-slate-500">No meter line</p>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {selectedReportView === 'fuel' && (
+                  <>
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {[
                       ['Status', selectedDailyOpeningReport.reportStatus, 'text-[#a9cd39]'],
@@ -2609,6 +2750,8 @@ const SupervisorDashboardPage = () => {
                       )}
                     </div>
                   </div>
+                  )}
+                  </>
                   )}
                 </div>
 
@@ -2781,7 +2924,7 @@ const SupervisorDashboardPage = () => {
                   </div>
                 </div>
 
-                {selectedRawReport && (
+                {selectedReportView === 'fuel' && selectedRawReport && (
                   <>
                     {selectedDailyOpeningReport.expenseItems.length > 0 && (
                       <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-4">
@@ -2932,7 +3075,7 @@ const SupervisorDashboardPage = () => {
                   </>
                 )}
                 {(() => {
-                  const report = selectedRawReport
+                  const report = selectedReportView === 'fuel' ? selectedRawReport : null
                   const alreadyReviewed = report?.supervisorReview?.status === 'Reviewed'
                   const alreadyFinalised = report?.finalizationStatus === 'finalized'
                   return (

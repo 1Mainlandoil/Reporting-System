@@ -92,8 +92,17 @@ const App = () => (
         </ProtectedRoute>
       }
     >
-      <Route index element={<Navigate to="/admin/dashboard" replace />} />
-      <Route path="dashboard" element={<AdminDashboardPage />} />
+      <Route index element={<Navigate to="/admin/profit-loss" replace />} />
+      <Route path="dashboard" element={<Navigate to="/admin/profit-loss" replace />} />
+      <Route path="profit-loss" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/daily" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/weekly" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/monthly" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/yearly" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/stations" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/costing" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/margins" element={<AdminDashboardPage />} />
+      <Route path="profit-loss/expenses" element={<AdminDashboardPage />} />
       <Route path="reports" element={<AdminDashboardPage />} />
       <Route path="product-requests" element={<AdminProductRequestsPage />} />
       <Route path="inspector-visits" element={<AdminInspectorVisitsPage />} />

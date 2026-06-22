@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Card from '../components/ui/Card'
 import StaffClosingReportForm from '../components/staff/StaffClosingReportForm'
+import LpgReportForm from '../components/staff/LpgReportForm'
 import { useAppStore } from '../store/useAppStore'
 import { getClosingForProduct, getPumpHistoryKey, normalizePumpProductType } from '../utils/reportFields'
 import { formatStaffCalendarDay, getDailyReportPendingInfo, getOldestMissingReportDateUpTo, listMissedReportDatesInclusive } from '../utils/reportPending'
@@ -27,7 +28,7 @@ const StaffDashboardPage = () => {
     if (!sid) return new Set()
     const dates = new Set()
     for (const report of reports) {
-      if (report.stationId === sid && report.date) dates.add(report.date)
+      if (report.stationId === sid && (report.reportType || 'fuel') !== 'lpg' && report.date) dates.add(report.date)
     }
     return dates
   }, [reports, currentUser?.stationId])
@@ -35,7 +36,7 @@ const StaffDashboardPage = () => {
   const isFirstReport = useMemo(() => {
     const sid = currentUser?.stationId
     if (!sid) return false
-    return !reports.some((r) => r.stationId === sid)
+    return !reports.some((r) => r.stationId === sid && (r.reportType || 'fuel') !== 'lpg')
   }, [reports, currentUser?.stationId])
 
   const pastCatchUpNeeded = useMemo(() => {
@@ -63,17 +64,32 @@ const StaffDashboardPage = () => {
   const earliestBacklogDate = backlogDates[0] || ''
   const availableReportDate = earliestBacklogDate || (stationReportDates.has(todayIso) ? '' : todayIso)
   const [reportStarted, setReportStarted] = useState(false)
+  const [reportMode, setReportMode] = useState('fuel')
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [receiveTarget, setReceiveTarget] = useState(null)
   const [receiveDraft, setReceiveDraft] = useState({ tankDip: '', remark: '' })
   const [receiveSubmitting, setReceiveSubmitting] = useState(false)
   const [issueTarget, setIssueTarget] = useState(null)
   const [issueReason, setIssueReason] = useState('')
-  const activeReportDate = availableReportDate
+  const lpgReportDates = useMemo(() => {
+    const sid = currentUser?.stationId
+    if (!sid) return new Set()
+    return new Set(reports.filter((report) => report.stationId === sid && report.reportType === 'lpg' && report.date).map((report) => report.date))
+  }, [currentUser?.stationId, reports])
+  const fuelReportDates = useMemo(() => {
+    const sid = currentUser?.stationId
+    if (!sid) return new Set()
+    return new Set(reports.filter((report) => report.stationId === sid && (report.reportType || 'fuel') !== 'lpg' && report.date).map((report) => report.date))
+  }, [currentUser?.stationId, reports])
+  const selectedReportDates = reportMode === 'lpg' ? lpgReportDates : fuelReportDates
+  const selectedOldest = getOldestMissingReportDateUpTo(todayIso, selectedReportDates)
+  const selectedBacklogDates = selectedOldest ? listMissedReportDatesInclusive(selectedOldest, todayIso).filter((date) => !selectedReportDates.has(date)) : []
+  const selectedActiveReportDate = selectedBacklogDates[0] || (selectedReportDates.has(todayIso) ? '' : todayIso)
+  const activeReportDate = selectedActiveReportDate
 
   useEffect(() => {
     setReportStarted(false)
-  }, [activeReportDate])
+  }, [activeReportDate, reportMode])
 
   useEffect(() => {
     if (currentUser?.stationId) {
@@ -112,6 +128,7 @@ const StaffDashboardPage = () => {
 
     const recentReports = reports.filter((report) => (
       report.stationId === sid
+      && (report.reportType || 'fuel') !== 'lpg'
       && recentSevenStats.days.includes(report.date)
     ))
 
@@ -187,13 +204,13 @@ const StaffDashboardPage = () => {
         iso,
         day,
         active: iso === activeReportDate,
-        submitted: stationReportDates.has(iso),
-        locked: backlogDates.includes(iso) && iso !== earliestBacklogDate,
+        submitted: selectedReportDates.has(iso),
+        locked: selectedBacklogDates.includes(iso) && iso !== selectedBacklogDates[0],
         future: iso > todayIso,
       })
     }
     return days
-  }, [activeReportDate, backlogDates, earliestBacklogDate, stationReportDates, todayIso])
+  }, [activeReportDate, selectedBacklogDates, selectedReportDates, todayIso])
 
   const calendarLabel = useMemo(() => {
     const baseIso = activeReportDate || todayIso
@@ -208,7 +225,7 @@ const StaffDashboardPage = () => {
     const sid = currentUser?.stationId
     if (!sid) return null
     return [...reports]
-      .filter((r) => r.stationId === sid && r.date < activeReportDate)
+      .filter((r) => r.stationId === sid && r.date < activeReportDate && (r.reportType || 'fuel') !== 'lpg')
       .sort((a, b) => b.date.localeCompare(a.date))[0] || null
   }, [activeReportDate, reports, currentUser?.stationId])
 
@@ -230,7 +247,7 @@ const StaffDashboardPage = () => {
     const sid = currentUser?.stationId
     if (!sid) return {}
     const sorted = [...reports]
-      .filter((r) => r.stationId === sid && r.date < activeReportDate && Array.isArray(r.pumpReadings))
+      .filter((r) => r.stationId === sid && r.date < activeReportDate && (r.reportType || 'fuel') !== 'lpg' && Array.isArray(r.pumpReadings))
       .sort((a, b) => a.date.localeCompare(b.date))
     const map = {}
     for (const r of sorted) {
@@ -432,6 +449,24 @@ const StaffDashboardPage = () => {
                 </div>
               </div>
 
+              <div className="mb-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/8 bg-black/20 p-1">
+                {[
+                  ['fuel', 'PMS/AGO Reporting'],
+                  ['lpg', 'LPG Reporting'],
+                ].map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => { setReportMode(mode); setReportStarted(false) }}
+                    className={`rounded-xl px-3 py-3 text-xs font-black transition ${
+                      reportMode === mode ? 'bg-[#a9cd39] text-black' : 'text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setCalendarOpen(true)}
@@ -441,7 +476,7 @@ const StaffDashboardPage = () => {
                 <p className="mt-2 text-2xl font-black text-white">{activeReportDate || 'No due date'}</p>
                 <p className="mt-1 text-sm text-slate-400">
                   {activeReportDate
-                    ? backlogDates.length
+                    ? selectedBacklogDates.length
                       ? 'Oldest missing report'
                       : 'Ready for submission'
                     : 'All caught up'}
@@ -465,33 +500,43 @@ const StaffDashboardPage = () => {
 
       {reportStarted && (
       <Card>
-        <StaffClosingReportForm
-          key={activeReportDate}
-          stationId={currentUser?.stationId}
-          carriedOpening={carriedOpening}
-          carriedCashBf={carriedCashBf}
-          isFirstReport={isFirstReport}
-          priorPrices={priorPrices}
-          pumpLastClosings={pumpLastClosings}
-          receivedDispatches={receivedDispatchesForReport}
-          submissionReminder={submissionReminder}
-          pastCatchUpNeeded={pastCatchUpNeeded}
-          historyPath={historyPath}
-          reportDate={activeReportDate}
-          reportingConfiguration={reportingConfiguration}
-          submitReport={submitReport}
-          formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled || !activeReportDate}
-          onSubmitted={(result) => {
-            if (result?.reportId && receivedDispatchesForReport.length) {
-              markReceivedDispatchesReported({
-                requestIds: receivedDispatchesForReport.map((request) => request.id),
-                reportId: result.reportId,
-                reportDate: activeReportDate,
-              })
-            }
-            refreshFromSupabase()
-          }}
-        />
+        {reportMode === 'lpg' ? (
+          <LpgReportForm
+            key={`lpg-${activeReportDate}`}
+            stationId={currentUser?.stationId}
+            reportDate={activeReportDate}
+            submitReport={submitReport}
+            onSubmitted={() => refreshFromSupabase()}
+          />
+        ) : (
+          <StaffClosingReportForm
+            key={`fuel-${activeReportDate}`}
+            stationId={currentUser?.stationId}
+            carriedOpening={carriedOpening}
+            carriedCashBf={carriedCashBf}
+            isFirstReport={isFirstReport}
+            priorPrices={priorPrices}
+            pumpLastClosings={pumpLastClosings}
+            receivedDispatches={receivedDispatchesForReport}
+            submissionReminder={submissionReminder}
+            pastCatchUpNeeded={pastCatchUpNeeded}
+            historyPath={historyPath}
+            reportDate={activeReportDate}
+            reportingConfiguration={reportingConfiguration}
+            submitReport={submitReport}
+            formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled || !activeReportDate}
+            onSubmitted={(result) => {
+              if (result?.reportId && receivedDispatchesForReport.length) {
+                markReceivedDispatchesReported({
+                  requestIds: receivedDispatchesForReport.map((request) => request.id),
+                  reportId: result.reportId,
+                  reportDate: activeReportDate,
+                })
+              }
+              refreshFromSupabase()
+            }}
+          />
+        )}
       </Card>
       )}
 

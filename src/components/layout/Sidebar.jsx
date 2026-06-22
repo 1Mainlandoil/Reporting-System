@@ -33,9 +33,23 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     Reports: 'reports',
     Settings: 'settings',
   }
+  const adminIconByLabel = {
+    Dashboard: 'dashboard',
+    Costing: 'reconciliation',
+    'Daily P/L': 'reports',
+    'Weekly P/L': 'summary',
+    'Monthly P/L': 'summary',
+    'Yearly P/L': 'summary',
+    'Station P/L': 'stations',
+    'Finalised Report': 'reports',
+    Users: 'users',
+    Settings: 'settings',
+  }
 
   const menuItems = role === 'terminal_operator'
     ? links.map((item) => ({ ...item, icon: terminalIconByLabel[item.label] || 'dashboard' }))
+    : role === 'admin'
+      ? links.map((item) => ({ ...item, icon: adminIconByLabel[item.label] || 'dashboard' }))
     : [
         { label: 'Dashboard', icon: 'dashboard', path: role === 'staff' ? '/staff' : linkMap.dashboard },
         { label: 'Reports', icon: 'reports', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
@@ -103,8 +117,11 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 const isSupervisorProductRequests = role === 'supervisor' && item.label === 'Product Requests' && location.pathname === '/supervisor' && currentView === 'product-requests'
                 const isSupervisorHistory = role === 'supervisor' && item.label === 'History' && location.pathname === '/supervisor' && currentView === 'history'
                 const isTerminalActive = role === 'terminal_operator' && item.path === currentPathWithSearch
+                const isAdminActive = role === 'admin' && item.path === location.pathname
                 const isCustomActive = role === 'terminal_operator'
                   ? isTerminalActive
+                  : role === 'admin'
+                    ? isAdminActive
                   : role === 'supervisor' && ['Dashboard','Reports','Month-End Summary','Product Requests','History'].includes(item.label)
                     ? isSupervisorDashboard || isSupervisorReports || isSupervisorMonthEnd || isSupervisorProductRequests || isSupervisorHistory
                     : isActive
