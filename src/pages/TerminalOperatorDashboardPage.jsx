@@ -92,6 +92,7 @@ const TerminalOperatorDashboardPage = () => {
   const createDirectTerminalDispatch = useAppStore((state) => state.createDirectTerminalDispatch)
   const callBackTerminalDispatch = useAppStore((state) => state.callBackTerminalDispatch)
   const deleteTerminalDispatch = useAppStore((state) => state.deleteTerminalDispatch)
+  const rerouteTerminalDispatch = useAppStore((state) => state.rerouteTerminalDispatch)
   const resolveProductRequestByTerminalOperator = useAppStore(
     (state) => state.resolveProductRequestByTerminalOperator,
   )
@@ -108,8 +109,12 @@ const TerminalOperatorDashboardPage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [historyRange, setHistoryRange] = useState({ from: '', to: '' })
+  const [rerouteTarget, setRerouteTarget] = useState(null)
+  const [rerouteStationId, setRerouteStationId] = useState('')
+  const [rerouteReason, setRerouteReason] = useState('')
+  const [rerouteSubmitting, setRerouteSubmitting] = useState(false)
 
-  const activeView = ['requests', 'direct', 'history', 'costing', 'stock', 'reports'].includes(searchParams.get('view'))
+  const activeView = ['requests', 'direct', 'history', 'reviews', 'costing', 'stock', 'reports'].includes(searchParams.get('view'))
     ? searchParams.get('view')
     : 'dashboard'
 
@@ -169,6 +174,18 @@ const TerminalOperatorDashboardPage = () => {
   const approvedDispatches = useMemo(
     () => historyRows.filter((request) => request.status === 'approved' && request.dispatchStatus !== 'called_back'),
     [historyRows],
+  )
+
+  const confirmedDeliveries = useMemo(
+    () =>
+      productRequests
+        .filter((request) => request.dispatchStatus === 'received')
+        .map((request) => ({
+          ...request,
+          stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
+        }))
+        .sort((a, b) => new Date(b.receivedAt || b.updatedAt) - new Date(a.receivedAt || a.updatedAt)),
+    [productRequests, stations],
   )
 
   const todayIso = new Date().toISOString().split('T')[0]
@@ -668,17 +685,28 @@ const TerminalOperatorDashboardPage = () => {
             </div>
           ) : null}
           {request.dispatchStatus === 'dispatched' ? (
-            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-emerald-500/20 pt-4">
-              <button
-                type="button"
-                onClick={() => openCallbackForm(request)}
-                className="rounded-xl border border-rose-500 bg-rose-100 px-4 py-2 text-sm font-black text-rose-800 shadow-sm transition hover:bg-rose-200 dark:border-rose-400/70 dark:bg-rose-500/20 dark:text-rose-100 dark:hover:bg-rose-500/30"
-              >
-                Recall dispatch
-              </button>
-              <p className="text-xs text-slate-400">
-                Use this only if the dispatch was entered by mistake before the manager confirms receipt.
-              </p>
+            <div className="mt-4 space-y-3 border-t border-emerald-500/20 pt-4">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRerouteTarget(request)
+                    setRerouteStationId('')
+                    setRerouteReason('')
+                  }}
+                  className="rounded-xl border border-amber-400/50 bg-amber-400/10 px-4 py-2 text-sm font-black text-amber-300 shadow-sm transition hover:bg-amber-400/20"
+                >
+                  Reroute Truck
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openCallbackForm(request)}
+                  className="rounded-xl border border-rose-500 bg-rose-100 px-4 py-2 text-sm font-black text-rose-800 shadow-sm transition hover:bg-rose-200 dark:border-rose-400/70 dark:bg-rose-500/20 dark:text-rose-100 dark:hover:bg-rose-500/30"
+                >
+                  Recall dispatch
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">Reroute sends this truck to a different station. Recall removes the dispatch entirely.</p>
             </div>
           ) : null}
         </div>
@@ -897,6 +925,58 @@ const TerminalOperatorDashboardPage = () => {
     )
   }
 
+  const renderDeliveryReviews = () => (
+    <Card>
+      <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Delivery Reviews</p>
+      <h3 className="mt-1 text-xl font-black text-white">Station-confirmed receipts</h3>
+      <p className="mt-1 text-sm text-slate-400">All dispatches confirmed received by station managers.</p>
+      {confirmedDeliveries.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState title="No confirmed deliveries yet" message="When a manager confirms receipt of a dispatch, it will appear here." />
+        </div>
+      ) : (
+        <div className="mt-5 space-y-3">
+          {confirmedDeliveries.map((delivery) => (
+            <div key={delivery.id} className="rounded-2xl border border-white/10 bg-slate-900 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-white">{delivery.stationName}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {delivery.approvedProductType || delivery.requestedProductType} · Received {delivery.receivedAt ? new Date(delivery.receivedAt).toLocaleDateString('en-GB') : '—'}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-400">Received</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                <DetailField label="Sent liters" value={delivery.approvedLiters ? `${Math.round(delivery.approvedLiters).toLocaleString()} L` : '—'} valueClassName="text-white" />
+                <DetailField label="Tank dip confirmed" value={delivery.receivedTankDip != null ? `${Number(delivery.receivedTankDip).toLocaleString()} L` : '—'} valueClassName="text-lime-300" />
+                <DetailField label="Received by" value={delivery.receivedBy || '—'} valueClassName="text-white" />
+                <DetailField label="Truck number" value={delivery.truckNumber || '—'} valueClassName="text-white" />
+                <DetailField label="Truck driver" value={delivery.truckDriver || '—'} valueClassName="text-white" />
+                <DetailField label="Dispatched by" value={delivery.terminalName || '—'} valueClassName="text-white" />
+              </div>
+              {delivery.receivedRemark ? (
+                <div className="rounded-xl border border-white/8 bg-white/5 px-3 py-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Manager remark</p>
+                  <p className="mt-1 text-sm text-slate-200">{delivery.receivedRemark}</p>
+                </div>
+              ) : null}
+              {delivery.reroutedFrom ? (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">Rerouted</p>
+                  <p className="mt-0.5 text-xs text-slate-300">
+                    Originally destined for {stations.find((s) => s.id === delivery.reroutedFrom)?.name || delivery.reroutedFrom}.
+                    {delivery.rerouteReason ? ` Reason: ${delivery.rerouteReason}` : ''}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+
   const renderCosting = () => (
     <Card>
       <p className="text-xs font-semibold uppercase tracking-wide text-lime-400">Costing</p>
@@ -950,6 +1030,7 @@ const TerminalOperatorDashboardPage = () => {
     requests: 'Station Requests',
     direct: 'Direct Dispatch',
     history: 'Dispatch History',
+    reviews: 'Delivery Reviews',
     costing: 'Costing',
     stock: 'Terminal Stock',
     reports: 'Reports',
@@ -960,6 +1041,7 @@ const TerminalOperatorDashboardPage = () => {
     requests: 'Review product requests submitted by stations and approve or decline dispatch.',
     direct: 'Send product to a station without waiting for a station request.',
     history: 'Approved and declined terminal dispatch records.',
+    reviews: 'Deliveries confirmed received by station managers, with tank dip readings and remarks.',
     costing: 'Cost per liter, transport cost and landed cost summary.',
     stock: 'Latest stock visibility from station reports.',
     reports: 'Dispatch totals prepared for review and export.',
@@ -1017,6 +1099,7 @@ const TerminalOperatorDashboardPage = () => {
         </Card>
       )}
 
+      {activeView === 'reviews' ? renderDeliveryReviews() : null}
       {activeView === 'costing' ? renderCosting() : null}
       {activeView === 'stock' ? renderStock() : null}
       {activeView === 'reports' ? renderReports() : null}
@@ -1169,6 +1252,71 @@ const TerminalOperatorDashboardPage = () => {
                 onClick={() => setDeleteTarget(null)}
                 disabled={deleteSubmitting}
                 className="rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:text-white disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rerouteTarget && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-amber-500/30 bg-slate-950 p-6 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Reroute Truck</p>
+            <h3 className="mt-1 text-lg font-bold text-white">{rerouteTarget.stationName}</h3>
+            <p className="mt-2 text-sm text-slate-300">
+              The truck is currently dispatched to this station. Select a new destination — this must be done before the manager confirms receipt.
+            </p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-slate-900 p-3">
+              <DetailField
+                label="Product"
+                value={`${rerouteTarget.approvedProductType || rerouteTarget.requestedProductType} - ${formatLiters(rerouteTarget.approvedLiters || rerouteTarget.requestedLiters)}`}
+                valueClassName="text-white"
+              />
+              <DetailField label="Truck" value={rerouteTarget.truckNumber || '-'} valueClassName="text-white" className="mt-3" />
+            </div>
+            <div className="mt-4 space-y-3">
+              <TerminalSelect
+                label="New destination station"
+                value={rerouteStationId}
+                placeholder="Select station"
+                options={stations
+                  .filter((s) => s.id !== rerouteTarget.stationId)
+                  .map((s) => ({ value: s.id, label: s.name }))}
+                onChange={setRerouteStationId}
+              />
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-slate-300">Reason for reroute <span className="text-amber-400">*</span></span>
+                <textarea
+                  value={rerouteReason}
+                  onChange={(e) => setRerouteReason(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/15"
+                  placeholder="e.g. Station closed, stock already full, wrong routing..."
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                disabled={!rerouteStationId || !rerouteReason.trim() || rerouteSubmitting}
+                onClick={() => {
+                  if (!rerouteStationId || !rerouteReason.trim()) return
+                  setRerouteSubmitting(true)
+                  rerouteTerminalDispatch({ requestId: rerouteTarget.id, newStationId: rerouteStationId, reason: rerouteReason.trim() })
+                  setRerouteSubmitting(false)
+                  setRerouteTarget(null)
+                  closeDetail()
+                }}
+                className="flex-1 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {rerouteSubmitting ? 'Rerouting...' : 'Confirm Reroute'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRerouteTarget(null)}
+                className="rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:text-white"
               >
                 Cancel
               </button>

@@ -28,6 +28,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     'Station Requests': 'product',
     'Direct Dispatch': 'order',
     'Dispatch History': 'history',
+    'Delivery Reviews': 'reports',
     Costing: 'analytics',
     'Terminal Stock': 'stations',
     Reports: 'reports',

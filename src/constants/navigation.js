@@ -27,6 +27,7 @@ export const linksByRole = {
     { label: 'Station Requests', path: '/terminal-operator?view=requests' },
     { label: 'Direct Dispatch', path: '/terminal-operator?view=direct' },
     { label: 'Dispatch History', path: '/terminal-operator?view=history' },
+    { label: 'Delivery Reviews', path: '/terminal-operator?view=reviews' },
     { label: 'Costing', path: '/terminal-operator?view=costing' },
     { label: 'Terminal Stock', path: '/terminal-operator?view=stock' },
     { label: 'Reports', path: '/terminal-operator?view=reports' },

@@ -1211,6 +1211,31 @@ export const useAppStore = create(
         }))
         return { ok: true, requestId: newRequest.id }
       },
+      rerouteTerminalDispatch: ({ requestId, newStationId, reason }) => {
+        const state = get()
+        const operatorName = state.currentUser?.name || 'Terminal Operator'
+        const reroutedAt = new Date().toISOString()
+        let syncedRequest = null
+        set((currentState) => ({
+          productRequests: currentState.productRequests.map((request) => {
+            if (request.id !== requestId || request.dispatchStatus !== 'dispatched') return request
+            const nextRequest = {
+              ...request,
+              stationId: newStationId,
+              reroutedFrom: request.stationId,
+              reroutedAt,
+              reroutedBy: operatorName,
+              rerouteReason: String(reason || '').trim(),
+              updatedAt: reroutedAt,
+            }
+            syncedRequest = nextRequest
+            return nextRequest
+          }),
+        }))
+        if (syncedRequest) {
+          upsertProductRequest(syncedRequest).catch(() => {})
+        }
+      },
       callBackTerminalDispatch: ({ requestId, reason }) => {
         const state = get()
         const operatorName = state.currentUser?.name || 'Terminal Operator'
