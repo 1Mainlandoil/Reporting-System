@@ -924,6 +924,20 @@ export const insertInspectorVisit = async (visit) => {
   return true
 }
 
+export const deleteReportById = async (reportId) => {
+  if (!hasSupabaseEnv || !supabase) {
+    return null
+  }
+  if (!reportId) {
+    throw new Error('report_id_required')
+  }
+  const { error } = await supabase.from('daily_reports').delete().eq('id', reportId)
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
+}
+
 export const deleteDailyReportByStationAndDate = async (stationId, date) => {
   if (!hasSupabaseEnv || !supabase) {
     return null

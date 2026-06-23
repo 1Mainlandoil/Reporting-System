@@ -20,6 +20,7 @@ const StaffDashboardPage = () => {
   const reportDispatchIssue = useAppStore((state) => state.reportDispatchIssue)
   const markReceivedDispatchesReported = useAppStore((state) => state.markReceivedDispatchesReported)
   const reportingConfiguration = useAppStore((state) => state.appSettings.reportingConfiguration)
+  const rejectedReports = useAppStore((state) => state.rejectedReports)
 
   const todayIso = getReportingDateIso()
 
@@ -342,8 +343,24 @@ const StaffDashboardPage = () => {
 
   const historyPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : '/staff/report'
 
+  const pendingRejections = rejectedReports.filter(
+    (r) => r.stationId === currentUser?.stationId && !stationReportDates.has(r.date),
+  )
+
   return (
     <div className="mx-auto flex min-h-[calc(100vh-96px)] max-w-3xl flex-col space-y-3">
+      {pendingRejections.map((rej) => (
+        <div key={`${rej.stationId}-${rej.date}`} className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-4">
+          <p className="text-xs font-black uppercase tracking-widest text-red-400 mb-1">Report Rejected</p>
+          <p className="text-sm font-semibold text-white">
+            Your report for <span className="text-red-300">{rej.date}</span> was rejected by {rej.rejectedBy || 'your supervisor'}
+          </p>
+          {rej.reason && (
+            <p className="mt-1 text-sm text-slate-300">Reason: {rej.reason}</p>
+          )}
+          <p className="mt-2 text-xs text-slate-400">Please fill and resubmit your report for this date.</p>
+        </div>
+      ))}
       {!currentUser?.stationId && (
         <Card>
           <p className="text-sm font-semibold text-white">Station assignment required</p>

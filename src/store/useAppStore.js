@@ -17,6 +17,7 @@ import { buildStationMetrics } from '../utils/stock'
 import {
   deleteIntervention,
   deleteProductRequest,
+  deleteReportById,
   insertChatMessage,
   insertReport,
   insertInspectorVisit,
@@ -134,6 +135,7 @@ export const useAppStore = create(
       filters: initialFilters,
       interventions: [],
       productRequests: [],
+      rejectedReports: [],
       inspectorVisits: [],
       dailyFinalizations: [],
       monthEndFinalizations: [],
@@ -530,6 +532,31 @@ export const useAppStore = create(
           reports: [...state.reports, newReport],
         })
         return { ok: true, reportId: newReport.id, reportDate: resolvedDate }
+      },
+      rejectReport: async ({ reportId, reason }) => {
+        const state = get()
+        const report = state.reports.find((r) => r.id === reportId)
+        if (!report) return { ok: false, error: 'not_found' }
+        try {
+          await deleteReportById(reportId)
+        } catch {
+          // swallow — still remove locally so manager can resubmit
+        }
+        set({
+          reports: state.reports.filter((r) => r.id !== reportId),
+          rejectedReports: [
+            ...state.rejectedReports,
+            {
+              stationId: report.stationId,
+              date: report.date,
+              reportType: report.reportType || 'fuel',
+              reason: String(reason || '').trim(),
+              rejectedBy: state.currentUser?.name || 'Supervisor',
+              rejectedAt: new Date().toISOString(),
+            },
+          ],
+        })
+        return { ok: true }
       },
       updateReportSupervisorReview: ({ reportId, status, remark }) =>
         set((state) => ({
@@ -1908,6 +1935,7 @@ export const useAppStore = create(
         theme: state.theme,
         interventions: state.interventions,
         productRequests: state.productRequests,
+        rejectedReports: state.rejectedReports,
         dailyFinalizations: state.dailyFinalizations,
         monthEndFinalizations: state.monthEndFinalizations,
         adminDailyReviews: state.adminDailyReviews,

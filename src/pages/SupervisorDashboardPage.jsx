@@ -252,6 +252,7 @@ const SupervisorDashboardPage = () => {
   const unflagStationIntervention = useAppStore((state) => state.unflagStationIntervention)
   const correctReportBySupervisor = useAppStore((state) => state.correctReportBySupervisor)
   const finalizeReportBySupervisor = useAppStore((state) => state.finalizeReportBySupervisor)
+  const rejectReport = useAppStore((state) => state.rejectReport)
 
   const productRequests = useAppStore((state) => state.productRequests)
   const reviewProductRequestBySupervisor = useAppStore((state) => state.reviewProductRequestBySupervisor)
@@ -265,6 +266,9 @@ const SupervisorDashboardPage = () => {
   const [selectedReportView, setSelectedReportView] = useState('fuel')
   const [rangeSummaryReport, setRangeSummaryReport] = useState(null)
   const [reviewRemark, setReviewRemark] = useState('')
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectSubmitting, setRejectSubmitting] = useState(false)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [correctionReason, setCorrectionReason] = useState('')
   const [correctionDraft, setCorrectionDraft] = useState(null)
@@ -1979,6 +1983,8 @@ const SupervisorDashboardPage = () => {
     setSelectedDailyOpeningReport(null)
     setSelectedReportView('fuel')
     setRangeSummaryReport(null)
+    setRejectOpen(false)
+    setRejectReason('')
   }
 
   const returnToRangeSummary = () => {
@@ -3171,40 +3177,86 @@ const SupervisorDashboardPage = () => {
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          <p className="text-sm font-semibold text-white">Mark this report as reviewed?</p>
-                          <textarea
-                            value={reviewRemark}
-                            onChange={(e) => setReviewRemark(e.target.value)}
-                            placeholder="Add a supervisor remark (optional)..."
-                            rows={2}
-                            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-[#a9cd39]/40 focus:outline-none resize-none"
-                          />
-                          <div className="flex gap-3">
-                            <button
-                              type="button"
-                              onClick={closeDailyOpeningModal}
-                              className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-semibold text-slate-400 hover:bg-white/5 transition"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (report?.id) {
-                                  updateReportSupervisorReview({
-                                    reportId: report.id,
-                                    status: 'Reviewed',
-                                    remark: reviewRemark.trim() || `Reviewed by ${currentUser?.name || 'Supervisor'}`,
-                                  })
-                                }
-                                setReviewRemark('')
-                                closeDailyOpeningModal()
-                              }}
-                              className="flex-1 rounded-xl bg-[#a9cd39] py-3 text-sm font-bold text-black hover:bg-[#bcd94a] transition"
-                            >
-                              Confirm Review
-                            </button>
-                          </div>
+                          {rejectOpen ? (
+                            <>
+                              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+                                <p className="text-sm font-bold text-red-400 mb-1">Reject this report?</p>
+                                <p className="text-xs text-slate-400 leading-relaxed">
+                                  The report will be permanently deleted. The manager will need to resubmit for this date.
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Rejection Reason <span className="text-red-400">*</span></span>
+                                <textarea
+                                  value={rejectReason}
+                                  onChange={(e) => setRejectReason(e.target.value)}
+                                  placeholder="Explain why this report is being rejected..."
+                                  rows={3}
+                                  className="w-full rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-red-500/50 focus:outline-none resize-none"
+                                />
+                              </div>
+                              <div className="flex gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => { setRejectOpen(false); setRejectReason('') }}
+                                  className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-semibold text-slate-400 hover:bg-white/5 transition"
+                                >
+                                  ← Back
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!rejectReason.trim() || rejectSubmitting}
+                                  onClick={async () => {
+                                    if (!report?.id || !rejectReason.trim()) return
+                                    setRejectSubmitting(true)
+                                    await rejectReport({ reportId: report.id, reason: rejectReason.trim() })
+                                    setRejectSubmitting(false)
+                                    closeDailyOpeningModal()
+                                  }}
+                                  className="flex-1 rounded-xl bg-red-500 py-3 text-sm font-bold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40 transition"
+                                >
+                                  {rejectSubmitting ? 'Rejecting...' : 'Yes, Reject Report'}
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm font-semibold text-white">Mark this report as reviewed?</p>
+                              <textarea
+                                value={reviewRemark}
+                                onChange={(e) => setReviewRemark(e.target.value)}
+                                placeholder="Add a supervisor remark (optional)..."
+                                rows={2}
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-[#a9cd39]/40 focus:outline-none resize-none"
+                              />
+                              <div className="flex gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setRejectOpen(true)}
+                                  className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 py-3 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition"
+                                >
+                                  Reject Report
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (report?.id) {
+                                      updateReportSupervisorReview({
+                                        reportId: report.id,
+                                        status: 'Reviewed',
+                                        remark: reviewRemark.trim() || `Reviewed by ${currentUser?.name || 'Supervisor'}`,
+                                      })
+                                    }
+                                    setReviewRemark('')
+                                    closeDailyOpeningModal()
+                                  }}
+                                  className="flex-1 rounded-xl bg-[#a9cd39] py-3 text-sm font-bold text-black hover:bg-[#bcd94a] transition"
+                                >
+                                  Confirm Review
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
