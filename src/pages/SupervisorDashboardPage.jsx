@@ -2732,7 +2732,7 @@ const SupervisorDashboardPage = () => {
                               <p className="text-xs font-bold text-[#a9cd39]">PMS</p>
                               {selectedDailyOpeningReport.priceBandsPMS.map((band, index) => (
                                 <div key={`visible-pms-band-${index}`} className="flex justify-between gap-3 text-xs text-slate-300">
-                                  <span>{formatMoney(band.price)}/L x {formatLiters(band.liters)}</span>
+                                  <span>{formatMoney(band.price)}/L x {formatLiters(band.liters, 2)}</span>
                                   <span className="font-bold text-white">{formatMoney(Number(band.price || 0) * Number(band.liters || 0))}</span>
                                 </div>
                               ))}
@@ -2743,7 +2743,7 @@ const SupervisorDashboardPage = () => {
                               <p className="text-xs font-bold text-blue-300">AGO</p>
                               {selectedDailyOpeningReport.priceBandsAGO.map((band, index) => (
                                 <div key={`visible-ago-band-${index}`} className="flex justify-between gap-3 text-xs text-slate-300">
-                                  <span>{formatMoney(band.price)}/L x {formatLiters(band.liters)}</span>
+                                  <span>{formatMoney(band.price)}/L x {formatLiters(band.liters, 2)}</span>
                                   <span className="font-bold text-white">{formatMoney(Number(band.price || 0) * Number(band.liters || 0))}</span>
                                 </div>
                               ))}

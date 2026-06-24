@@ -8,6 +8,7 @@ import { computeSalesFromMovement, getPumpHistoryKey, normalizePumpProductType }
 import {
   computeSalesAmountFromBands,
   normalizePriceBands,
+  sumBandLiters,
   validatePriceBandsForProduct,
   weightedAveragePrice,
 } from '../../utils/priceBands'
@@ -504,8 +505,8 @@ const StaffClosingReportForm = ({
     const resolvedPriceBandsAGO = isNoSalesDay ? [] : agoMultiPrice === 'yes' ? normalizePriceBands(priceBandsAGO) : totalSalesLitersAGO > 0 ? [{ price: Number(formData.agoPrice), liters: totalSalesLitersAGO }] : []
     const salesAmountPMS = computeSalesAmountFromBands(resolvedPriceBandsPMS)
     const salesAmountAGO = computeSalesAmountFromBands(resolvedPriceBandsAGO)
-    const pmsPrice = isNoSalesDay ? 0 : pmsMultiPrice === 'yes' ? weightedAveragePrice(resolvedPriceBandsPMS, totalSalesLitersPMS) : Number(formData.pmsPrice || 0)
-    const agoPrice = isNoSalesDay ? 0 : agoMultiPrice === 'yes' ? weightedAveragePrice(resolvedPriceBandsAGO, totalSalesLitersAGO) : Number(formData.agoPrice || 0)
+    const pmsPrice = isNoSalesDay ? 0 : pmsMultiPrice === 'yes' ? weightedAveragePrice(resolvedPriceBandsPMS, sumBandLiters(resolvedPriceBandsPMS)) : Number(formData.pmsPrice || 0)
+    const agoPrice = isNoSalesDay ? 0 : agoMultiPrice === 'yes' ? weightedAveragePrice(resolvedPriceBandsAGO, sumBandLiters(resolvedPriceBandsAGO)) : Number(formData.agoPrice || 0)
 
     const discrepancies = [...buildDiscrepancies(), ...salesDiscrepancies]
     const payload = {
