@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { supabase, hasSupabaseEnv } from '../../lib/supabaseClient'
 
 const emptyMeter = { label: 'P1', opening: '', closing: '' }
 const emptyBank = { channel: '', amount: '' }
@@ -40,6 +41,9 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
   const [meterLines, setMeterLines] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [eodUploads, setEodUploads] = useState([])
+  const [eodInputKeys, setEodInputKeys] = useState({})
+  const [extraSlotIds, setExtraSlotIds] = useState([])
 
   const totals = useMemo(() => {
     const stockSoldKg = numberValue(form.openingStockKg) - numberValue(form.closingStockKg)
@@ -71,6 +75,34 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
     setMeterDraft({ ...emptyMeter, label: `P${meterLines.length + 2}` })
   }
 
+  const uploadEodFile = async (fileId, file) => {
+    if (!hasSupabaseEnv || !supabase) {
+      setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'error', error: 'Supabase not configured.' } : u))
+      return
+    }
+    setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'uploading' } : u))
+    const ext = file.name.split('.').pop()
+    const path = `eod/lpg/${stationId || 'unknown'}/${reportDate || 'unknown'}/${fileId}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('eod-uploads').upload(path, file, { upsert: true })
+    if (uploadError) {
+      setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'error', error: uploadError.message } : u))
+      return
+    }
+    const { data } = supabase.storage.from('eod-uploads').getPublicUrl(path)
+    const url = data?.publicUrl || ''
+    setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'done', url } : u))
+  }
+
+  const addEodFile = async (slotId, slotLabel, category, file) => {
+    if (!file) return
+    const fileId = `${slotId}-${Date.now()}`
+    setEodUploads((prev) => [...prev, { fileId, slotId, slotLabel, category, file, url: '', status: 'idle', error: '' }])
+    setEodInputKeys((prev) => ({ ...prev, [slotId]: Date.now() }))
+    await uploadEodFile(fileId, file)
+  }
+
+  const removeEodFile = (fileId) => setEodUploads((prev) => prev.filter((u) => u.fileId !== fileId))
+
   const handleSubmit = async () => {
     setError('')
     if (!reportDate) {
@@ -79,6 +111,10 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
     }
     if (form.openingStockKg === '' || form.closingStockKg === '' || form.unitPrice === '') {
       setError('Enter opening stock, closing stock and LPG unit price.')
+      return
+    }
+    if (eodUploads.some((u) => u.status === 'uploading')) {
+      setError('Please wait — files are still uploading.')
       return
     }
     setSubmitting(true)
@@ -112,6 +148,7 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
           closingBalance: numberValue(form.closingBalance),
           variance: totals.variance,
         },
+        eodAttachments: eodUploads.filter((u) => u.status === 'done').map((u) => ({ label: u.slotLabel, category: u.category, url: u.url, fileName: u.file?.name || '' })),
       })
       if (!outcome?.ok) {
         setError(outcome?.message || (outcome?.error === 'duplicate_date' ? 'LPG report already submitted for this date.' : 'Could not submit LPG report.'))
@@ -190,6 +227,59 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
           <div><p className="text-xs text-slate-400">Sales value</p><p className="font-black text-white">{money(totals.salesAmount)}</p></div>
           <div><p className="text-xs text-slate-400">Bank + POS</p><p className="font-black text-white">{money(totals.bankTotal + totals.posTotal)}</p></div>
           <div><p className="text-xs text-slate-400">Variance</p><p className={`font-black ${Math.abs(totals.variance) > 0.5 ? 'text-amber-300' : 'text-[#a9cd39]'}`}>{money(totals.variance)}</p></div>
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-white/8 bg-white/[0.04] p-4">
+        <p className="mb-1 text-xs font-black uppercase tracking-widest text-[#a9cd39]">EOD Documents</p>
+        <p className="mb-4 text-xs text-slate-500">Upload bank slips, POS receipts or any supporting documents</p>
+        <div className="space-y-3">
+          {[
+            ...bankLines.map((line) => ({ slotId: `lpg-bank-${line.id}`, slotLabel: line.channel, category: 'Bank' })),
+            ...posLines.map((line) => ({ slotId: `lpg-pos-${line.id}`, slotLabel: line.terminal, category: 'POS' })),
+            ...extraSlotIds.map((sid) => ({ slotId: sid, slotLabel: 'Extra Document', category: 'Extra' })),
+          ].map(({ slotId, slotLabel, category }) => {
+            const files = eodUploads.filter((u) => u.slotId === slotId)
+            const inputId = `eod-${slotId}`
+            const inputKey = eodInputKeys[slotId] || slotId
+            const anyUploading = files.some((f) => f.status === 'uploading')
+            const badgeCls = category === 'Bank' ? 'bg-blue-500/15 text-blue-400' : category === 'POS' ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-white/10 text-slate-400'
+            return (
+              <div key={slotId} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs rounded-full px-2 py-0.5 font-semibold ${badgeCls}`}>{category}</span>
+                  <p className="text-sm font-semibold text-white">{slotLabel}</p>
+                  <span className="ml-auto text-xs text-slate-500">{files.filter((f) => f.status === 'done').length} uploaded</span>
+                </div>
+                {files.map((f) => (
+                  <div key={f.fileId} className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${f.status === 'done' ? 'border-[#a9cd39]/20 bg-[#a9cd39]/5' : f.status === 'error' ? 'border-rose-500/20 bg-rose-500/5' : 'border-white/10 bg-white/5'}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg shrink-0">{f.file?.type?.startsWith('image') ? '🖼️' : '📄'}</span>
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-200 truncate max-w-[160px]">{f.file?.name || 'file'}</p>
+                        {f.status === 'done' && <a href={f.url} target="_blank" rel="noreferrer" className="text-xs text-[#a9cd39] underline">View</a>}
+                        {f.status === 'uploading' && <p className="text-xs text-slate-400 animate-pulse">Uploading…</p>}
+                        {f.status === 'error' && <p className="text-xs text-rose-400">{f.error}</p>}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => removeEodFile(f.fileId)} className="ml-2 shrink-0 text-slate-500 hover:text-rose-400 transition text-sm">✕</button>
+                  </div>
+                ))}
+                <label htmlFor={inputId} className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm transition ${anyUploading ? 'border-white/10 text-slate-600 cursor-not-allowed' : 'border-white/20 text-slate-400 hover:border-[#a9cd39]/40 hover:text-[#a9cd39]'}`}>
+                  <span>📎</span>
+                  <span>{files.length === 0 ? 'Tap to upload' : '+ Add another file'}</span>
+                </label>
+                <input id={inputId} key={inputKey} type="file" accept="image/*,application/pdf" disabled={anyUploading} onChange={(e) => addEodFile(slotId, slotLabel, category, e.target.files?.[0])} className="hidden" />
+              </div>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setExtraSlotIds((prev) => [...prev, `lpg-extra-${Date.now()}`])}
+            className="w-full rounded-xl border border-dashed border-white/10 py-3 text-sm font-medium text-slate-400 hover:border-[#a9cd39]/30 hover:text-[#a9cd39] transition"
+          >
+            + Add Document Slot
+          </button>
         </div>
       </section>
 
