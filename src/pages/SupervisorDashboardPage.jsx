@@ -2720,8 +2720,8 @@ const SupervisorDashboardPage = () => {
                     <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                       <p className="text-xs font-black uppercase tracking-widest text-slate-400">Pricing & expense</p>
                       <div className="mt-3 space-y-2 text-sm">
-                        <div className="flex justify-between gap-3"><span className="text-slate-500">PMS price</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.pmsPrice)}/L</span></div>
-                        <div className="flex justify-between gap-3"><span className="text-slate-500">AGO price</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.agoPrice)}/L</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">PMS price</span><span className="font-bold text-white">{(selectedDailyOpeningReport.priceBandsPMS || []).length > 1 ? selectedDailyOpeningReport.priceBandsPMS.map((b) => formatMoney(b.price)).join('/') + '/L' : formatMoney(selectedDailyOpeningReport.pmsPrice) + '/L'}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-500">AGO price</span><span className="font-bold text-white">{(selectedDailyOpeningReport.priceBandsAGO || []).length > 1 ? selectedDailyOpeningReport.priceBandsAGO.map((b) => formatMoney(b.price)).join('/') + '/L' : formatMoney(selectedDailyOpeningReport.agoPrice) + '/L'}</span></div>
                         <div className="flex justify-between gap-3"><span className="text-slate-500">Expense</span><span className="font-bold text-white">{formatMoney(selectedDailyOpeningReport.expenseAmount)}</span></div>
                       </div>
                       {((selectedDailyOpeningReport.priceBandsPMS || []).length > 0 || (selectedDailyOpeningReport.priceBandsAGO || []).length > 0) && (
@@ -2789,9 +2789,8 @@ const SupervisorDashboardPage = () => {
                   <div className="rounded-xl border border-white/5 bg-white/5 p-3">
                     <p className="text-xs uppercase text-slate-500">PMS Price</p>
                     <p className="font-medium text-white">
-                      {selectedDailyOpeningReport.multiPricing &&
-                      (selectedDailyOpeningReport.priceBandsPMS || []).length > 1
-                        ? `Avg NGN ${Number(selectedDailyOpeningReport.pmsPrice || 0).toLocaleString()}/L`
+                      {(selectedDailyOpeningReport.priceBandsPMS || []).length > 1
+                        ? selectedDailyOpeningReport.priceBandsPMS.map((b) => `NGN ${Number(b.price || 0).toLocaleString()}`).join('/') + '/L'
                         : selectedDailyOpeningReport.pmsPrice}
                     </p>
                     {(selectedDailyOpeningReport.priceBandsPMS || []).length > 0 && (
@@ -2807,9 +2806,8 @@ const SupervisorDashboardPage = () => {
                   <div className="rounded-xl border border-white/5 bg-white/5 p-3">
                     <p className="text-xs uppercase text-slate-500">AGO Price</p>
                     <p className="font-medium text-white">
-                      {selectedDailyOpeningReport.multiPricing &&
-                      (selectedDailyOpeningReport.priceBandsAGO || []).length > 1
-                        ? `Avg NGN ${Number(selectedDailyOpeningReport.agoPrice || 0).toLocaleString()}/L`
+                      {(selectedDailyOpeningReport.priceBandsAGO || []).length > 1
+                        ? selectedDailyOpeningReport.priceBandsAGO.map((b) => `NGN ${Number(b.price || 0).toLocaleString()}`).join('/') + '/L'
                         : selectedDailyOpeningReport.agoPrice}
                     </p>
                     {(selectedDailyOpeningReport.priceBandsAGO || []).length > 0 && (

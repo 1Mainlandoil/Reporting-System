@@ -22,8 +22,6 @@ export const weightedAveragePrice = (bands, totalLiters) => {
   return computeSalesAmountFromBands(bands) / liters
 }
 
-const LITERS_TOLERANCE = 0.05
-
 export const validatePriceBandsForProduct = ({
   bands,
   totalSalesLiters,
@@ -42,13 +40,6 @@ export const validatePriceBandsForProduct = ({
       return {
         ok: false,
         message: `Add at least two ${productLabel} price lines when selling at more than one price.`,
-      }
-    }
-    const bandLiters = sumBandLiters(normalized)
-    if (Math.abs(bandLiters - totalLiters) > LITERS_TOLERANCE) {
-      return {
-        ok: false,
-        message: `${productLabel} price lines total ${bandLiters.toLocaleString()} L but computed sales are ${totalLiters.toLocaleString()} L. Adjust liters to match.`,
       }
     }
     return { ok: true, normalized }
