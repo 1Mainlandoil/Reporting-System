@@ -2581,6 +2581,28 @@ const SupervisorDashboardPage = () => {
                             </div>
                           </div>
                         </div>
+                        {Array.isArray(selectedDailyOpeningReport.eodAttachments) && selectedDailyOpeningReport.eodAttachments.length > 0 && (
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">EOD Documents</p>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {selectedDailyOpeningReport.eodAttachments.map((att, index) => (
+                                <a
+                                  key={`lpg-att-${index}`}
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm hover:border-[#a9cd39]/30 hover:bg-[#a9cd39]/5 transition"
+                                >
+                                  <span className="text-lg shrink-0">{att.fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? '🖼️' : '📄'}</span>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-semibold text-white">{att.fileName || att.label || 'Document'}</p>
+                                    <p className="text-xs text-slate-500">{att.category || 'EOD'} · {att.label}</p>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })()}
