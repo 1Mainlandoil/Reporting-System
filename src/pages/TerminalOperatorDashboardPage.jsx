@@ -31,6 +31,27 @@ const emptyDirectDraft = {
 
 const formatNaira = (value) => `NGN ${Number(value || 0).toLocaleString()}`
 const formatLiters = (value) => `${Math.round(Number(value || 0)).toLocaleString()} L`
+const formatDispatchDateTime = (value) => {
+  if (!value) return { date: '-', time: '-' }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return { date: '-', time: '-' }
+  return {
+    date: date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
+    time: date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+  }
+}
+const historyStatusStyle = (status) => {
+  const normalized = String(status || '').toLowerCase()
+  if (normalized.includes('received')) return 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+  if (normalized.includes('called') || normalized.includes('recall')) return 'border-amber-400/30 bg-amber-400/10 text-amber-300'
+  if (normalized.includes('declined') || normalized.includes('issue')) return 'border-rose-400/30 bg-rose-400/10 text-rose-300'
+  return 'border-lime-400/30 bg-lime-400/10 text-lime-300'
+}
+const getEffectiveDispatchStatus = (request) => (
+  request?.receivedAt || request?.receivedTankDip != null
+    ? 'received'
+    : request?.dispatchStatus
+)
 
 const DetailField = ({ label, value, className = '', valueClassName = 'text-slate-900 dark:text-white' }) => (
   <div className={className}>
@@ -113,10 +134,28 @@ const TerminalOperatorDashboardPage = () => {
   const [rerouteStationId, setRerouteStationId] = useState('')
   const [rerouteReason, setRerouteReason] = useState('')
   const [rerouteSubmitting, setRerouteSubmitting] = useState(false)
+  const detailRequestId = detailRequest?.id || ''
 
   const activeView = ['requests', 'direct', 'history', 'reviews', 'costing', 'stock', 'reports'].includes(searchParams.get('view'))
     ? searchParams.get('view')
     : 'dashboard'
+
+  useEffect(() => {
+    if (!detailRequestId) return
+    const freshRequest = productRequests.find((request) => request.id === detailRequestId)
+    if (freshRequest) {
+      const stationName = stations.find((station) => station.id === freshRequest.stationId)?.name || freshRequest.stationId
+      setDetailRequest((current) => ({
+        ...current,
+        ...freshRequest,
+        stationName,
+        createdDate: freshRequest.createdAt?.split('T')[0] || current?.createdDate || '-',
+        decidedDate: freshRequest.terminalReviewedAt?.split('T')[0] || current?.decidedDate || '-',
+        finalStatus: getDispatchStatusLabel(freshRequest),
+        reasonOrRemark: freshRequest.terminalRemark || freshRequest.managerRemark || current?.reasonOrRemark || '-',
+      }))
+    }
+  }, [detailRequestId, productRequests, stations])
 
   const pendingRows = useMemo(
     () =>
@@ -141,13 +180,13 @@ const TerminalOperatorDashboardPage = () => {
           createdDate: request.createdAt?.split('T')[0] || '-',
           decidedDate: request.terminalReviewedAt?.split('T')[0] || '-',
           finalStatus:
-            request.dispatchStatus === 'called_back'
+            getEffectiveDispatchStatus(request) === 'called_back'
               ? 'Called back'
-              : request.dispatchStatus === 'received'
+              : getEffectiveDispatchStatus(request) === 'received'
                 ? 'Received'
-                : request.dispatchStatus === 'issue_reported'
+                : getEffectiveDispatchStatus(request) === 'issue_reported'
                   ? 'Issue reported'
-                  : request.dispatchStatus === 'dispatched'
+                  : getEffectiveDispatchStatus(request) === 'dispatched'
                     ? 'Dispatched'
                     : request.status === 'declined'
                       ? 'Declined'
@@ -172,14 +211,14 @@ const TerminalOperatorDashboardPage = () => {
   }, [historyRange.from, historyRange.to, historyRows])
 
   const approvedDispatches = useMemo(
-    () => historyRows.filter((request) => request.status === 'approved' && request.dispatchStatus !== 'called_back'),
+    () => historyRows.filter((request) => request.status === 'approved' && getEffectiveDispatchStatus(request) !== 'called_back'),
     [historyRows],
   )
 
   const confirmedDeliveries = useMemo(
     () =>
       productRequests
-        .filter((request) => request.dispatchStatus === 'received')
+        .filter((request) => getEffectiveDispatchStatus(request) === 'received')
         .map((request) => ({
           ...request,
           stationName: stations.find((station) => station.id === request.stationId)?.name || request.stationId,
@@ -272,14 +311,14 @@ const TerminalOperatorDashboardPage = () => {
   }, [activeView])
 
   useEffect(() => {
-    if (detailRequest && !activeRows.some((request) => request.id === detailRequest.id)) {
+    if (detailRequestId && !activeRows.some((request) => request.id === detailRequestId)) {
       setDetailRequest(null)
     }
-  }, [activeRows, detailRequest])
+  }, [activeRows, detailRequestId])
 
   useEffect(() => {
     setDeclineRemark('')
-  }, [detailRequest?.id])
+  }, [detailRequestId])
 
   const openDetail = (request) => {
     setDetailRequest(request)
@@ -291,10 +330,11 @@ const TerminalOperatorDashboardPage = () => {
   }
 
   const getDispatchStatusLabel = (request) => {
-    if (request.dispatchStatus === 'called_back') return 'Called back'
-    if (request.dispatchStatus === 'received') return 'Received'
-    if (request.dispatchStatus === 'issue_reported') return 'Issue reported'
-    if (request.dispatchStatus === 'dispatched') return 'Dispatched'
+    const dispatchStatus = getEffectiveDispatchStatus(request)
+    if (dispatchStatus === 'called_back') return 'Called back'
+    if (dispatchStatus === 'received') return 'Received'
+    if (dispatchStatus === 'issue_reported') return 'Issue reported'
+    if (dispatchStatus === 'dispatched') return 'Dispatched'
     if (request.status === 'declined') return 'Declined'
     return request.managerStatusLabel || request.status || 'Requested'
   }
@@ -310,7 +350,7 @@ const TerminalOperatorDashboardPage = () => {
   }
 
   const getCallbackBlockReason = (request) => {
-    if (request.dispatchStatus !== 'dispatched') return 'Only active dispatched products can be called back.'
+    if (getEffectiveDispatchStatus(request) !== 'dispatched') return 'Only active dispatched products can be called back.'
     if (request.receivedAt || request.receivedTankDip != null) return 'Manager has already marked this product as received.'
     if (isDispatchUsedInReport(request)) return 'Station report already used received product for this dispatch period.'
     return ''
@@ -502,56 +542,94 @@ const TerminalOperatorDashboardPage = () => {
   }
 
   const renderRequestList = (rows) => (
-    <div className="mx-auto max-w-lg space-y-2">
-      {rows.map((request) => (
-        <div
-          key={request.id}
-          className={clsx(
-            'relative flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition hover:shadow-md',
-            detailRequest?.id === request.id
-              ? 'border-blue-500 bg-blue-50 shadow-sm dark:border-blue-400 dark:bg-blue-500/10'
-              : 'border-white/10 bg-slate-900 hover:border-lime-400/30 hover:bg-slate-800 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-slate-600',
-          )}
-        >
-          <button
-            type="button"
-            onClick={() => openDetail(request)}
-            className="min-w-0 flex-1 py-1 text-left"
+    <div className="mx-auto max-w-2xl space-y-2">
+      {rows.map((request) => {
+        const product = request.approvedProductType || request.requestedProductType || 'Product'
+        const liters = request.approvedLiters || request.requestedLiters || 0
+        const decidedAt = request.terminalReviewedAt || request.updatedAt || request.createdAt
+        const decidedTime = formatDispatchDateTime(decidedAt)
+        return (
+          <div
+            key={request.id}
+            className={clsx(
+              'relative flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition hover:shadow-md',
+              detailRequest?.id === request.id
+                ? 'border-blue-500 bg-blue-50 shadow-sm dark:border-blue-400 dark:bg-blue-500/10'
+                : 'border-white/10 bg-slate-900 hover:border-lime-400/30 hover:bg-slate-800 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-slate-600',
+            )}
           >
-            <p className="truncate text-base font-semibold text-white">{request.stationName}</p>
-          </button>
-          {activeView === 'history' ? (
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setActionMenuId((current) => (current === request.id ? '' : request.id))
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg font-black text-slate-200 transition hover:border-lime-400/30 hover:text-white"
-                aria-label="Dispatch actions"
-              >
-                ...
-              </button>
-              {actionMenuId === request.id ? (
-                <div className="absolute right-0 top-11 z-30 w-44 rounded-xl border border-white/10 bg-slate-950 p-1 shadow-2xl">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setDeleteTarget(request)
-                      setActionMenuId('')
-                    }}
-                    className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-rose-200 transition hover:bg-rose-500/15 hover:text-rose-100"
-                  >
-                    Delete dispatch
-                  </button>
+            <button
+              type="button"
+              onClick={() => openDetail(request)}
+              className="min-w-0 flex-1 py-1 text-left"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-black text-white">{request.stationName}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-300">
+                    {product} - {formatLiters(liters)}
+                  </p>
+                </div>
+                {activeView === 'history' ? (
+                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wide ${historyStatusStyle(request.finalStatus)}`}>
+                    {request.finalStatus}
+                  </span>
+                ) : null}
+              </div>
+              {activeView === 'history' ? (
+                <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                  <span>
+                    <span className="font-bold text-slate-500">Date:</span>{' '}
+                    <span className="text-slate-200">{decidedTime.date}</span>
+                  </span>
+                  <span>
+                    <span className="font-bold text-slate-500">Time:</span>{' '}
+                    <span className="text-slate-200">{decidedTime.time}</span>
+                  </span>
+                  <span className="truncate">
+                    <span className="font-bold text-slate-500">Truck:</span>{' '}
+                    <span className="text-slate-200">{request.truckNumber || '-'}</span>
+                  </span>
+                  <span className="truncate">
+                    <span className="font-bold text-slate-500">Driver:</span>{' '}
+                    <span className="text-slate-200">{request.truckDriver || '-'}</span>
+                  </span>
                 </div>
               ) : null}
-            </div>
-          ) : null}
-        </div>
-      ))}
+            </button>
+            {activeView === 'history' ? (
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setActionMenuId((current) => (current === request.id ? '' : request.id))
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg font-black text-slate-200 transition hover:border-lime-400/30 hover:text-white"
+                  aria-label="Dispatch actions"
+                >
+                  ...
+                </button>
+                {actionMenuId === request.id ? (
+                  <div className="absolute right-0 top-11 z-30 w-44 rounded-xl border border-white/10 bg-slate-950 p-1 shadow-2xl">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setDeleteTarget(request)
+                        setActionMenuId('')
+                      }}
+                      className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-rose-200 transition hover:bg-rose-500/15 hover:text-rose-100"
+                    >
+                      Delete dispatch
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 
@@ -678,13 +756,13 @@ const TerminalOperatorDashboardPage = () => {
             <DetailField label="Truck driver" value={request.truckDriver} />
             <DetailField label="Remark" value={request.reasonOrRemark} className="sm:col-span-2" />
           </div>
-          {request.dispatchStatus === 'called_back' ? (
+          {getEffectiveDispatchStatus(request) === 'called_back' ? (
             <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
               <DetailField label="Callback reason" value={request.callbackReason || '-'} />
               <DetailField label="Called back by" value={request.calledBackBy || '-'} className="mt-3" />
             </div>
           ) : null}
-          {request.dispatchStatus === 'dispatched' ? (
+          {getEffectiveDispatchStatus(request) === 'dispatched' ? (
             <div className="mt-4 space-y-3 border-t border-emerald-500/20 pt-4">
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1440,3 +1518,4 @@ const TerminalOperatorDashboardPage = () => {
 }
 
 export default TerminalOperatorDashboardPage
+

@@ -1218,7 +1218,12 @@ export const useAppStore = create(
         let syncedRequest = null
         set((currentState) => ({
           productRequests: currentState.productRequests.map((request) => {
-            if (request.id !== requestId || request.dispatchStatus !== 'dispatched') return request
+            if (
+              request.id !== requestId ||
+              request.dispatchStatus !== 'dispatched' ||
+              request.receivedAt ||
+              request.receivedTankDip != null
+            ) return request
             const nextRequest = {
               ...request,
               stationId: newStationId,
@@ -1245,7 +1250,12 @@ export const useAppStore = create(
         let syncedRequest = null
         set((currentState) => ({
           productRequests: currentState.productRequests.map((request) => {
-            if (request.id !== requestId || request.dispatchStatus !== 'dispatched') {
+            if (
+              request.id !== requestId ||
+              request.dispatchStatus !== 'dispatched' ||
+              request.receivedAt ||
+              request.receivedTankDip != null
+            ) {
               return request
             }
             const nextRequest = {
@@ -1277,7 +1287,12 @@ export const useAppStore = create(
         let syncedRequest = null
         set((currentState) => ({
           productRequests: currentState.productRequests.map((request) => {
-            if (request.id !== requestId || request.dispatchStatus !== 'dispatched') {
+            if (
+              request.id !== requestId ||
+              request.dispatchStatus !== 'dispatched' ||
+              request.receivedAt ||
+              request.receivedTankDip != null
+            ) {
               return request
             }
             const nextRequest = {

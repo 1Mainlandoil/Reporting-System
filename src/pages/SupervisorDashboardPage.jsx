@@ -68,6 +68,13 @@ const CriticalIcon = ({ className = '' }) => (
   </IconShell>
 )
 
+const SearchIcon = ({ className = '' }) => (
+  <IconShell className={className}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </IconShell>
+)
+
 const TrophyIcon = ({ className = '' }) => (
   <IconShell className={className}>
     <path d="M8 21h8" />
@@ -215,6 +222,16 @@ const formatKg = (value, digits = 2) => `${toFiniteNumber(value).toLocaleString(
 
 const formatMoney = (value) => `NGN ${Math.round(toFiniteNumber(value)).toLocaleString()}`
 
+const formatMoneyPrecise = (value) => `NGN ${toFiniteNumber(value).toLocaleString(undefined, {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+})}`
+
+const formatMoneyCompact = (value) => toFiniteNumber(value).toLocaleString(undefined, {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+})
+
 const differenceTone = (value) => {
   const gap = Math.abs(toFiniteNumber(value))
   if (gap <= 1) return 'text-[#a9cd39]'
@@ -262,6 +279,8 @@ const SupervisorDashboardPage = () => {
   const finalizeSupervisorMonthEndSummary = useAppStore((state) => state.finalizeSupervisorMonthEndSummary)
   const refreshFromSupabase = useAppStore((state) => state.refreshFromSupabase)
   const [statusFilter, setStatusFilter] = useState('all')
+  const [supervisorSearch, setSupervisorSearch] = useState('')
+  const [supervisorSearchOpen, setSupervisorSearchOpen] = useState(false)
   const [selectedDailyOpeningReport, setSelectedDailyOpeningReport] = useState(null)
   const [selectedReportView, setSelectedReportView] = useState('fuel')
   const [rangeSummaryReport, setRangeSummaryReport] = useState(null)
@@ -373,20 +392,57 @@ const SupervisorDashboardPage = () => {
     () => new Map(interventions.map((item) => [item.stationId, item])),
     [interventions],
   )
+  const today = getReportingDateIso()
 
   const portfolio = useMemo(() => {
     return stations.map((station) => {
       const stationReports = reports.filter((report) => report.stationId === station.id && (report.reportType || 'fuel') !== 'lpg')
-      return buildStationMetrics(station, stationReports, stockThresholds)
+      const todaysReports = reports.filter((report) => report.stationId === station.id && report.date === today)
+      const todaySummary = todaysReports.reduce(
+        (summary, report) => {
+          if (report.reportType === 'lpg') {
+            const lpg = report.lpgReport || {}
+            summary.salesLPG += Number(lpg.salesAmount || 0)
+            summary.quantityLPG += Number(lpg.quantitySoldKg || 0)
+            summary.hasReport = true
+            return summary
+          }
+          summary.salesPMS += Number(report.salesAmountPMS || 0)
+          summary.salesAGO += Number(report.salesAmountAGO || 0)
+          summary.quantityPMS += Number(report.pumpSalesLitersPMS ?? report.totalSalesLitersPMS ?? report.salesPMS ?? 0)
+          summary.quantityAGO += Number(report.pumpSalesLitersAGO ?? report.totalSalesLitersAGO ?? report.salesAGO ?? 0)
+          summary.hasReport = true
+          return summary
+        },
+        {
+          salesPMS: 0,
+          salesAGO: 0,
+          salesLPG: 0,
+          quantityPMS: 0,
+          quantityAGO: 0,
+          quantityLPG: 0,
+          hasReport: false,
+        },
+      )
+      return {
+        ...buildStationMetrics(station, stationReports, stockThresholds),
+        todaySummary,
+      }
     })
-  }, [reports, stations, stockThresholds])
+  }, [reports, stations, stockThresholds, today])
 
   const filteredPortfolio = useMemo(() => {
+    const search = supervisorSearch.trim().toLowerCase()
     const rows = statusFilter === 'all'
       ? portfolio
       : portfolio.filter((station) => station.status === statusFilter)
-    return [...rows].sort((a, b) => portfolioStatusRank(a.status) - portfolioStatusRank(b.status) || a.stationName.localeCompare(b.stationName))
-  }, [portfolio, statusFilter])
+    return [...rows]
+      .filter((row) => {
+        if (!search) return true
+        return [row.stationName, row.stationId, row.status].some((value) => String(value || '').toLowerCase().includes(search))
+      })
+      .sort((a, b) => portfolioStatusRank(a.status) - portfolioStatusRank(b.status) || a.stationName.localeCompare(b.stationName))
+  }, [portfolio, statusFilter, supervisorSearch])
 
   const topRisk = useMemo(
     () =>
@@ -403,7 +459,30 @@ const SupervisorDashboardPage = () => {
     () => new Map(portfolio.map((item) => [item.stationId, item])),
     [portfolio],
   )
-  const today = getReportingDateIso()
+  const dashboardTodayTotals = useMemo(() => {
+    const totals = {
+      salesPMS: 0,
+      salesAGO: 0,
+      salesLPG: 0,
+      quantityPMS: 0,
+      quantityAGO: 0,
+      quantityLPG: 0,
+    }
+    for (const report of reports) {
+      if (report.date !== today) continue
+      if (report.reportType === 'lpg') {
+        const lpg = report.lpgReport || {}
+        totals.salesLPG += Number(lpg.salesAmount || 0)
+        totals.quantityLPG += Number(lpg.quantitySoldKg || 0)
+        continue
+      }
+      totals.salesPMS += Number(report.salesAmountPMS || 0)
+      totals.salesAGO += Number(report.salesAmountAGO || 0)
+      totals.quantityPMS += Number(report.pumpSalesLitersPMS ?? report.totalSalesLitersPMS ?? report.salesPMS ?? 0)
+      totals.quantityAGO += Number(report.pumpSalesLitersAGO ?? report.totalSalesLitersAGO ?? report.salesAGO ?? 0)
+    }
+    return totals
+  }, [reports, today])
   const todayMonthKey = today.slice(0, 7)
   const [reportRangeFrom, setReportRangeFrom] = useState(today)
   const [reportRangeTo, setReportRangeTo] = useState(today)
@@ -607,9 +686,13 @@ const SupervisorDashboardPage = () => {
   }, [isSingleReportDate, reportDatesByStation, reportRange.end, reportRange.start, reportRangeDates, reportRangeLabel, reports, stations, today, users])
 
   const filteredDailyOpeningQueueRows = useMemo(
-    () =>
-      dailyOpeningQueueRows
+    () => {
+      const search = supervisorSearch.trim().toLowerCase()
+      return dailyOpeningQueueRows
         .filter((row) => {
+          if (search && ![row.stationName, row.managerName, row.reportStatus, row.stationId].some((value) => String(value || '').toLowerCase().includes(search))) {
+            return false
+          }
           if (!matchesStationMultiFilter(row.stationId, dailyQueueFilters)) {
             return false
           }
@@ -618,8 +701,9 @@ const SupervisorDashboardPage = () => {
           }
           return true
         })
-        .sort((a, b) => reportStatusRank(a.reportStatus) - reportStatusRank(b.reportStatus) || a.stationName.localeCompare(b.stationName)),
-    [dailyOpeningQueueRows, dailyQueueFilters],
+        .sort((a, b) => reportStatusRank(a.reportStatus) - reportStatusRank(b.reportStatus) || a.stationName.localeCompare(b.stationName))
+    },
+    [dailyOpeningQueueRows, dailyQueueFilters, supervisorSearch],
   )
   const totalBankDepositsToday = useMemo(
     () =>
@@ -2091,7 +2175,40 @@ const SupervisorDashboardPage = () => {
                 {label}
               </button>
             ))}
-            <div className="ml-auto">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {supervisorSearchOpen || supervisorSearch ? (
+                <label className="relative block">
+                  <span className="sr-only">Search stations</span>
+                  <input
+                    type="search"
+                    autoFocus
+                    value={supervisorSearch}
+                    onChange={(event) => setSupervisorSearch(event.target.value)}
+                    placeholder="Search station..."
+                    className="h-10 w-52 rounded-xl border border-white/10 bg-white/5 px-3 pr-9 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-[#a9cd39]/40 focus:bg-white/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupervisorSearch('')
+                      setSupervisorSearchOpen(false)
+                    }}
+                    className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Close search"
+                  >
+                    x
+                  </button>
+                </label>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSupervisorSearchOpen(true)}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:border-[#a9cd39]/40 hover:bg-white/10 hover:text-white"
+                  aria-label="Search stations"
+                >
+                  <SearchIcon className="h-4 w-4" />
+                </button>
+              )}
               <DateRangePicker
                 from={reportRangeFrom}
                 to={reportRangeTo}
@@ -2113,25 +2230,103 @@ const SupervisorDashboardPage = () => {
 
       {activeDashboard === 'dashboard' && (
         <>
-        {/* Stat bar */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Card className="py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dashboard</p>
+            {supervisorSearchOpen || supervisorSearch ? (
+              <label className="relative block">
+                <span className="sr-only">Search stations</span>
+                <input
+                  type="search"
+                  autoFocus
+                  value={supervisorSearch}
+                  onChange={(event) => setSupervisorSearch(event.target.value)}
+                  placeholder="Search station..."
+                  className="h-10 w-56 rounded-xl border border-white/10 bg-white/5 px-3 pr-9 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-[#a9cd39]/40 focus:bg-white/10"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSupervisorSearch('')
+                    setSupervisorSearchOpen(false)
+                  }}
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Close search"
+                >
+                  x
+                </button>
+              </label>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSupervisorSearchOpen(true)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:border-[#a9cd39]/40 hover:bg-white/10 hover:text-white"
+                aria-label="Search stations"
+              >
+                <SearchIcon className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <Card className="border-[#a9cd39]/15 bg-[#a9cd39]/5">
+            <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Total Sales Today</p>
+            <p className="mt-2 text-3xl font-black text-white">
+              {formatMoneyPrecise(dashboardTodayTotals.salesPMS + dashboardTodayTotals.salesAGO + dashboardTodayTotals.salesLPG)}
+            </p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[
+                ['PMS', formatMoneyPrecise(dashboardTodayTotals.salesPMS), 'text-[#a9cd39]'],
+                ['AGO', formatMoneyPrecise(dashboardTodayTotals.salesAGO), 'text-blue-300'],
+                ['LPG', formatMoneyPrecise(dashboardTodayTotals.salesLPG), 'text-amber-300'],
+              ].map(([label, value, color]) => (
+                <div key={label} className="rounded-xl border border-white/8 bg-black/20 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                  <p className={`mt-1 text-sm font-black ${color}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="border-blue-400/15 bg-blue-400/5">
+            <p className="text-xs font-black uppercase tracking-widest text-blue-300">Quantity Sold Today</p>
+            <p className="mt-2 text-3xl font-black text-white">
+              {formatLiters(dashboardTodayTotals.quantityPMS + dashboardTodayTotals.quantityAGO, 2)}
+            </p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[
+                ['PMS', formatLiters(dashboardTodayTotals.quantityPMS, 2), 'text-[#a9cd39]'],
+                ['AGO', formatLiters(dashboardTodayTotals.quantityAGO, 2), 'text-blue-300'],
+                ['LPG', formatKg(dashboardTodayTotals.quantityLPG), 'text-amber-300'],
+              ].map(([label, value, color]) => (
+                <div key={label} className="rounded-xl border border-white/8 bg-black/20 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                  <p className={`mt-1 text-sm font-black ${color}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2">
           {[
-            { label: 'Stations', value: portfolio.length, color: 'text-white', accent: 'border-white/10', icon: <StationIcon /> },
-            { label: 'Safe', value: portfolio.filter(p => p.status === 'safe').length, color: 'text-[#a9cd39]', accent: 'border-[#a9cd39]/20', icon: <SafeIcon /> },
-            { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: <WarningIcon /> },
-            { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: <CriticalIcon /> },
+            { label: 'Stations', value: portfolio.length, color: 'text-white', accent: 'border-white/10', icon: <StationIcon className="h-4 w-4" /> },
+            { label: 'Safe', value: portfolio.filter(p => p.status === 'safe').length, color: 'text-[#a9cd39]', accent: 'border-[#a9cd39]/20', icon: <SafeIcon className="h-4 w-4" /> },
+            { label: 'Warning', value: warningCount, color: 'text-amber-400', accent: 'border-amber-500/20', icon: <WarningIcon className="h-4 w-4" /> },
+            { label: 'Critical', value: criticalCount, color: 'text-rose-400', accent: 'border-rose-500/20', icon: <CriticalIcon className="h-4 w-4" /> },
           ].map(({ label, value, color, accent, icon }) => (
             <button
               key={label}
               type="button"
               onClick={() => setStatusFilter(label === 'Stations' ? 'all' : label.toLowerCase())}
-              className={`rounded-2xl border ${statusFilter === (label === 'Stations' ? 'all' : label.toLowerCase()) ? accent : 'border-white/8'} bg-white/5 p-4 text-left transition hover:scale-[1.01] hover:bg-white/10`}
+              className={`rounded-xl border ${statusFilter === (label === 'Stations' ? 'all' : label.toLowerCase()) ? accent : 'border-white/8'} bg-white/5 p-3 text-left transition hover:bg-white/10`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
-                <span className={`flex items-center justify-center ${color}`}>{icon}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
+                <span className={`shrink-0 ${color}`}>{icon}</span>
               </div>
-              <p className={`text-3xl font-bold ${color}`}>{value}</p>
+              <p className={`mt-1 text-xl font-black ${color}`}>{value}</p>
             </button>
           ))}
         </div>
@@ -2181,6 +2376,30 @@ const SupervisorDashboardPage = () => {
                         <div className={`h-full rounded-full transition-all ${isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-400' : 'bg-[#a9cd39]'}`} style={{ width: `${pct}%` }} />
                       </div>
                       <p className="text-xs text-slate-500">~{row.daysRemaining.toFixed(0)} days remaining</p>
+                      {row.todaySummary?.hasReport ? (
+                        <div className="mt-3 space-y-2 rounded-xl border border-white/8 bg-black/20 p-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Total sales</p>
+                            <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] font-black">
+                              <span className="truncate text-[#a9cd39]">PMS {formatMoneyCompact(row.todaySummary.salesPMS)}</span>
+                              <span className="truncate text-blue-300">AGO {formatMoneyCompact(row.todaySummary.salesAGO)}</span>
+                              <span className="truncate text-amber-300">LPG {formatMoneyCompact(row.todaySummary.salesLPG)}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Quantity sold</p>
+                            <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] font-black">
+                              <span className="truncate text-[#a9cd39]">PMS {formatLiters(row.todaySummary.quantityPMS, 2)}</span>
+                              <span className="truncate text-blue-300">AGO {formatLiters(row.todaySummary.quantityAGO, 2)}</span>
+                              <span className="truncate text-amber-300">LPG {formatKg(row.todaySummary.quantityLPG)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-xs font-semibold text-slate-500">
+                          No sales report yet
+                        </p>
+                      )}
                     </div>
                   </button>
                 )
@@ -4123,6 +4342,3 @@ const SupervisorDashboardPage = () => {
 }
 
 export default SupervisorDashboardPage
-
-
-
