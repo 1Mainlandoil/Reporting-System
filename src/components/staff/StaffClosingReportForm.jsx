@@ -1397,10 +1397,6 @@ const StaffClosingReportForm = ({
                 window.alert(`Enter a valid opening reading for ${effectiveLabel}.`)
                 return
               }
-              if (numericValue < Number(priorPump.closing)) {
-                window.alert(`Opening reading can't be lower than yesterday's closing of ${priorPump.closing}. Meters don't go backwards.`)
-                return
-              }
               setPumpOpeningStates((prev) => ({ ...prev, [historyKey]: { ...pumpState, overrideValue: val } }))
             }
             if (!priorPump || !effectiveLabel) return null
