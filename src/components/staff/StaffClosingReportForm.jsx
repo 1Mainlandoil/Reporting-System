@@ -221,7 +221,7 @@ const StaffClosingReportForm = ({
       return pumps.reduce((sum, p) => {
         const opening = p.opening != null ? Number(p.opening) : 0
         const closing = Number(p.closing || 0)
-        return sum + Math.max(0, closing - opening)
+        return sum + (closing < opening ? closing : closing - opening)
       }, 0)
     }
     const pmsPumpsTotal = calcProduct('PMS')
@@ -401,7 +401,7 @@ const StaffClosingReportForm = ({
       const invalidPumpLine = pumpReadings.find((item) => {
         const opening = item.opening != null && item.opening !== '' ? Number(item.opening) : Number.NaN
         const closing = item.closing != null && item.closing !== '' ? Number(item.closing) : Number.NaN
-        return !Number.isFinite(opening) || !Number.isFinite(closing) || closing < opening
+        return !Number.isFinite(opening) || !Number.isFinite(closing)
       })
       if (invalidPumpLine) {
         const msg = `Fix ${invalidPumpLine.label || 'pump'}: every pump line needs a valid opening and closing reading.`
@@ -446,7 +446,11 @@ const StaffClosingReportForm = ({
     const calcPumpSales = (productType) => {
       const pumps = normalizedPumpReadings.filter((p) => p.productType === productType)
       if (!pumps.length) return null
-      return pumps.reduce((sum, p) => sum + Math.max(0, Number(p.closing || 0) - Number(p.opening || 0)), 0)
+      return pumps.reduce((sum, p) => {
+        const o = Number(p.opening || 0)
+        const c = Number(p.closing || 0)
+        return sum + (c < o ? c : c - o)
+      }, 0)
     }
     const pumpSalesPMS = calcPumpSales('PMS')
     const pumpSalesAGO = calcPumpSales('AGO')
