@@ -2021,6 +2021,25 @@ const SupervisorDashboardPage = () => {
     ) || null
   }, [reports, selectedDailyOpeningReport])
 
+  const selectedRawLpgReport = useMemo(() => {
+    if (!selectedDailyOpeningReport) return null
+    const lpgReports = Array.isArray(selectedDailyOpeningReport.lpgReports)
+      ? selectedDailyOpeningReport.lpgReports
+      : []
+    if (lpgReports.length > 0) return lpgReports.at(-1)
+    return reports.find(
+      (report) =>
+        report.stationId === selectedDailyOpeningReport.stationId &&
+        report.date === selectedDailyOpeningReport.reportDate &&
+        report.reportType === 'lpg',
+    ) || null
+  }, [reports, selectedDailyOpeningReport])
+
+  const selectedLpgEodAttachments = useMemo(
+    () => Array.isArray(selectedRawLpgReport?.eodAttachments) ? selectedRawLpgReport.eodAttachments : [],
+    [selectedRawLpgReport],
+  )
+
   const selectedRangeRawReports = useMemo(() => {
     if (!selectedDailyOpeningReport || selectedRawReport) return []
     return reports
@@ -2800,11 +2819,11 @@ const SupervisorDashboardPage = () => {
                             </div>
                           </div>
                         </div>
-                        {Array.isArray(selectedDailyOpeningReport.eodAttachments) && selectedDailyOpeningReport.eodAttachments.length > 0 && (
+                        {selectedLpgEodAttachments.length > 0 && (
                           <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                             <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">EOD Documents</p>
                             <div className="grid gap-2 sm:grid-cols-2">
-                              {selectedDailyOpeningReport.eodAttachments.map((att, index) => (
+                              {selectedLpgEodAttachments.map((att, index) => (
                                 <a
                                   key={`lpg-att-${index}`}
                                   href={att.url}
@@ -3320,7 +3339,8 @@ const SupervisorDashboardPage = () => {
                   </>
                 )}
                 {(() => {
-                  const report = selectedReportView === 'fuel' ? selectedRawReport : null
+                  const report = selectedReportView === 'fuel' ? selectedRawReport : selectedRawLpgReport
+                  const isLpgReport = selectedReportView === 'lpg'
                   const alreadyReviewed = report?.supervisorReview?.status === 'Reviewed'
                   const alreadyFinalised = report?.finalizationStatus === 'finalized'
                   return (
@@ -3363,18 +3383,20 @@ const SupervisorDashboardPage = () => {
                       )}
                       {report && (
                         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <button
-                            type="button"
-                            disabled={alreadyFinalised}
-                            onClick={() => {
-                              setCorrectionDraft(buildCorrectionDraft(report))
-                              setCorrectionReason('')
-                              setCorrectionOpen(true)
-                            }}
-                            className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm font-bold text-amber-300 transition hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            Correct Report
-                          </button>
+                          {!isLpgReport && (
+                            <button
+                              type="button"
+                              disabled={alreadyFinalised}
+                              onClick={() => {
+                                setCorrectionDraft(buildCorrectionDraft(report))
+                                setCorrectionReason('')
+                                setCorrectionOpen(true)
+                              }}
+                              className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm font-bold text-amber-300 transition hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Correct Report
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={alreadyFinalised}
