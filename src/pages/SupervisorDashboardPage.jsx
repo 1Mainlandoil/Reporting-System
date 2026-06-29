@@ -253,6 +253,46 @@ const portfolioStatusRank = (status) => {
   return 3
 }
 
+const ScorecardCard = ({ row, medal, borderCls, StatsPanel }) => {
+  const [open, setOpen] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => setOpen((p) => !p)}
+      className={`w-full rounded-2xl border p-5 text-left transition hover:brightness-110 ${borderCls}`}
+    >
+      <div className="flex flex-col items-center text-center gap-2">
+        <span className="text-4xl">{medal}</span>
+        <p className="text-base font-black text-white leading-tight">{row.stationName}</p>
+        <p className="text-xs text-slate-400">{row.managerName}</p>
+        <p className="mt-1 text-xs text-slate-500">{open ? 'Tap to hide' : 'Tap to see stats'}</p>
+      </div>
+      {open && <StatsPanel row={row} />}
+    </button>
+  )
+}
+
+const ScorecardRow = ({ row, rank, StatsPanel }) => {
+  const [open, setOpen] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => setOpen((p) => !p)}
+      className="w-full rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-left transition hover:bg-white/5"
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-black text-slate-500 w-6 shrink-0">#{rank}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-white truncate">{row.stationName}</p>
+          <p className="text-xs text-slate-500">{row.managerName}</p>
+        </div>
+        <span className="text-xs text-slate-600 shrink-0">{open ? '▲' : '▼'}</span>
+      </div>
+      {open && <StatsPanel row={row} />}
+    </button>
+  )
+}
+
 const SupervisorDashboardPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -417,6 +457,7 @@ const SupervisorDashboardPage = () => {
     return days
   }, [scorecardWeek, today])
   const scorecardData = useMemo(() => {
+    const staffByStation = new Map(users.filter((u) => u.role === 'staff').map((u) => [u.stationId, u]))
     return stations
       .map((station) => {
         const stationReports = reports.filter(
@@ -430,9 +471,11 @@ const SupervisorDashboardPage = () => {
         const accuracyRate = submitted > 0 ? stationReports.filter((r) => !r.hasDiscrepancy).length / submitted : 0
         const reviewRate = submitted > 0 ? stationReports.filter((r) => r.reportStatus === 'reviewed' || r.reportStatus === 'finalised').length / submitted : 0
         const overall = Math.round(((submissionRate + eodRate + accuracyRate + reviewRate) / 4) * 100)
+        const manager = staffByStation.get(station.id)
         return {
           stationId: station.id,
           stationName: station.name || station.stationName || 'Unknown',
+          managerName: manager?.name || 'Unassigned',
           overall,
           submissionRate: Math.round(submissionRate * 100),
           eodRate: Math.round(eodRate * 100),
@@ -443,7 +486,7 @@ const SupervisorDashboardPage = () => {
         }
       })
       .sort((a, b) => b.overall - a.overall)
-  }, [stations, reports, scorecardWeek, scorecardWeekDays])
+  }, [stations, reports, scorecardWeek, scorecardWeekDays, users])
   const [reportRangeFrom, setReportRangeFrom] = useState(today)
   const [reportRangeTo, setReportRangeTo] = useState(today)
   const reportRange = useMemo(() => normalizeDateRange(reportRangeFrom || today, reportRangeTo || reportRangeFrom || today), [reportRangeFrom, reportRangeTo, today])
@@ -4442,12 +4485,37 @@ const SupervisorDashboardPage = () => {
           const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
           return `${fmt(s)} – ${fmt(e)}`
         })()
-        const avgScore = scorecardData.length ? Math.round(scorecardData.reduce((s, r) => s + r.overall, 0) / scorecardData.length) : 0
-        const fullyCompliant = scorecardData.filter((r) => r.overall >= 80).length
-        const atRisk = scorecardData.filter((r) => r.overall < 50).length
         const scoreTone = (val) => val >= 80 ? 'text-[#a9cd39]' : val >= 50 ? 'text-amber-300' : 'text-red-400'
         const barColor = (val) => val >= 80 ? 'bg-[#a9cd39]' : val >= 50 ? 'bg-amber-400' : 'bg-red-400'
-        const rankBadge = (i) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`
+        const top3 = scorecardData.slice(0, 3)
+        const rest = scorecardData.slice(3)
+        const medals = ['🥇', '🥈', '🥉']
+        const medalBorder = ['border-yellow-400/30 bg-yellow-400/5', 'border-slate-400/30 bg-slate-400/5', 'border-amber-700/30 bg-amber-700/5']
+
+        const StatsPanel = ({ row }) => (
+          <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {[
+                ['Submission', row.submissionRate],
+                ['EOD Uploads', row.eodRate],
+                ['Accuracy', row.accuracyRate],
+                ['Reviewed', row.reviewRate],
+              ].map(([label, val]) => (
+                <div key={label}>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-xs text-slate-500">{label}</span>
+                    <span className={`text-xs font-bold ${scoreTone(val)}`}>{val}%</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-white/10">
+                    <div className={`h-1.5 rounded-full ${barColor(val)} transition-all`} style={{ width: `${val}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-600">{row.submitted} report{row.submitted !== 1 ? 's' : ''} submitted · {row.dueDays} day{row.dueDays !== 1 ? 's' : ''} due</p>
+          </div>
+        )
+
         return (
           <div className="space-y-5">
             <div>
@@ -4466,59 +4534,29 @@ const SupervisorDashboardPage = () => {
               <button type="button" onClick={() => setScorecardWeekOffset((p) => Math.min(0, p + 1))} disabled={scorecardWeekOffset >= 0} className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/10 transition disabled:opacity-30">Next →</button>
             </div>
 
-            {/* Summary row */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ['Avg Score', `${avgScore}%`, avgScore >= 80 ? 'text-[#a9cd39]' : avgScore >= 50 ? 'text-amber-300' : 'text-red-400'],
-                ['Stations', scorecardData.length, 'text-white'],
-                ['High (≥80%)', fullyCompliant, 'text-[#a9cd39]'],
-                ['At Risk (<50%)', atRisk, 'text-red-400'],
-              ].map(([label, value, color]) => (
-                <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4 text-center">
-                  <p className="text-xs text-slate-500 uppercase tracking-widest">{label}</p>
-                  <p className={`mt-1 text-2xl font-black ${color}`}>{value}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Leaderboard */}
             {scorecardData.length === 0 ? (
               <EmptyState title="No reports this week" message="Stations that submit reports will appear here." />
             ) : (
-              <div className="space-y-3">
-                {scorecardData.map((row, i) => (
-                  <div key={row.stationId} className={`rounded-2xl border p-4 ${i === 0 ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : i === 1 ? 'border-slate-400/20 bg-white/[0.03]' : i === 2 ? 'border-amber-700/20 bg-white/[0.03]' : 'border-white/5 bg-white/[0.02]'}`}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl w-8 text-center shrink-0">{rankBadge(i)}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <p className="font-bold text-white truncate">{row.stationName}</p>
-                          <span className={`text-xl font-black shrink-0 ${scoreTone(row.overall)}`}>{row.overall}%</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-                          {[
-                            ['Submission', row.submissionRate],
-                            ['EOD Uploads', row.eodRate],
-                            ['Accuracy', row.accuracyRate],
-                            ['Reviewed', row.reviewRate],
-                          ].map(([label, val]) => (
-                            <div key={label}>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-xs text-slate-500">{label}</span>
-                                <span className={`text-xs font-bold ${scoreTone(val)}`}>{val}%</span>
-                              </div>
-                              <div className="h-1.5 w-full rounded-full bg-white/10">
-                                <div className={`h-1.5 rounded-full ${barColor(val)} transition-all`} style={{ width: `${val}%` }} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <p className="mt-2 text-xs text-slate-600">{row.submitted} report{row.submitted !== 1 ? 's' : ''} submitted · {row.dueDays} day{row.dueDays !== 1 ? 's' : ''} due</p>
-                      </div>
-                    </div>
+              <>
+                {/* Top 3 medal cards */}
+                {top3.length > 0 && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {top3.map((row, i) => (
+                      <ScorecardCard key={row.stationId} row={row} medal={medals[i]} borderCls={medalBorder[i]} StatsPanel={StatsPanel} />
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+
+                {/* Rest of stations */}
+                {rest.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500 px-1">Other stations</p>
+                    {rest.map((row, i) => (
+                      <ScorecardRow key={row.stationId} row={row} rank={i + 4} StatsPanel={StatsPanel} />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )
