@@ -14,7 +14,6 @@ import AdminProductRequestsPage from './pages/AdminProductRequestsPage'
 import StationsPage from './pages/StationsPage'
 import StationDetailsPage from './pages/StationDetailsPage'
 import StationReportHistoryPage from './pages/StationReportHistoryPage'
-import ReconciliationDashboardPage from './pages/ReconciliationDashboardPage'
 import AlertsPage from './pages/AlertsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import UsersPage from './pages/UsersPage'
@@ -119,7 +118,6 @@ const App = () => (
       <Route path="/stations" element={<StationsPage />} />
       <Route path="/stations/:stationId" element={<StationDetailsPage />} />
       <Route path="/stations/:stationId/history" element={<StationReportHistoryPage />} />
-      <Route path="/reconciliation" element={<ReconciliationDashboardPage />} />
       <Route path="/alerts" element={<AlertsPage />} />
       <Route path="/analytics" element={<AnalyticsPage />} />
       <Route path="/users" element={<UsersPage />} />

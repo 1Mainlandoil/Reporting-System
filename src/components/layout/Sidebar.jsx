@@ -55,7 +55,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
         { label: 'Dashboard', icon: 'dashboard', path: role === 'staff' ? '/staff' : linkMap.dashboard },
         { label: 'Reports', icon: 'reports', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
         ...(role === 'supervisor' ? [{ label: 'Month-End Summary', icon: 'summary', path: '/supervisor?view=month-end-summary' }] : []),
-        { label: 'Reconciliation', icon: 'reconciliation', path: linkMap.reconciliation },
+        { label: 'Station Scorecard', icon: 'analytics', path: '/supervisor?view=scorecard' },
         { label: 'Product Requests', icon: 'product', path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
         { label: 'History', icon: 'history', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
         { label: 'Alerts', icon: 'alerts', path: linkMap.alerts },
