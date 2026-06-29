@@ -359,7 +359,7 @@ const SupervisorDashboardPage = () => {
     if (nextView === 'daily-openings') {
       return 'stock-flow'
     }
-    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'product-requests', 'history'].includes(nextView)) {
+    if (['dashboard', 'stock-flow', 'cash-flow', 'expense-monitor', 'month-end-summary', 'product-requests', 'history', 'scorecard'].includes(nextView)) {
       return nextView
     }
     return 'dashboard'
@@ -393,12 +393,74 @@ const SupervisorDashboardPage = () => {
     [interventions],
   )
   const today = getReportingDateIso()
+  const [scorecardWeekOffset, setScorecardWeekOffset] = useState(0)
+  const scorecardWeek = useMemo(() => {
+    const now = new Date()
+    const day = now.getDay()
+    const mondayOffset = day === 0 ? -6 : 1 - day
+    const monday = new Date(now)
+    monday.setDate(now.getDate() + mondayOffset + scorecardWeekOffset * 7)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    const fmt = (d) => d.toISOString().slice(0, 10)
+    return { start: fmt(monday), end: fmt(sunday) }
+  }, [scorecardWeekOffset])
+  const scorecardWeekDays = useMemo(() => {
+    const days = []
+    const cur = new Date(scorecardWeek.start)
+    const end = new Date(scorecardWeek.end)
+    while (cur <= end) {
+      const d = cur.toISOString().slice(0, 10)
+      if (d <= today) days.push(d)
+      cur.setDate(cur.getDate() + 1)
+    }
+    return days
+  }, [scorecardWeek, today])
+  const scorecardData = useMemo(() => {
+    return stations
+      .map((station) => {
+        const stationReports = reports.filter(
+          (r) => r.stationId === station.id && (r.reportType || 'fuel') !== 'lpg' && r.date >= scorecardWeek.start && r.date <= scorecardWeek.end,
+        )
+        const dueDays = scorecardWeekDays.length
+        const submittedDays = new Set(stationReports.map((r) => r.date)).size
+        const submissionRate = dueDays > 0 ? submittedDays / dueDays : 0
+        const submitted = stationReports.length
+        const eodRate = submitted > 0 ? stationReports.filter((r) => Array.isArray(r.eodAttachments) && r.eodAttachments.length > 0).length / submitted : 0
+        const accuracyRate = submitted > 0 ? stationReports.filter((r) => !r.hasDiscrepancy).length / submitted : 0
+        const reviewRate = submitted > 0 ? stationReports.filter((r) => r.reportStatus === 'reviewed' || r.reportStatus === 'finalised').length / submitted : 0
+        const overall = Math.round(((submissionRate + eodRate + accuracyRate + reviewRate) / 4) * 100)
+        return {
+          stationId: station.id,
+          stationName: station.name || station.stationName || 'Unknown',
+          overall,
+          submissionRate: Math.round(submissionRate * 100),
+          eodRate: Math.round(eodRate * 100),
+          accuracyRate: Math.round(accuracyRate * 100),
+          reviewRate: Math.round(reviewRate * 100),
+          submitted,
+          dueDays,
+        }
+      })
+      .sort((a, b) => b.overall - a.overall)
+  }, [stations, reports, scorecardWeek, scorecardWeekDays])
+  const [reportRangeFrom, setReportRangeFrom] = useState(today)
+  const [reportRangeTo, setReportRangeTo] = useState(today)
+  const reportRange = useMemo(() => normalizeDateRange(reportRangeFrom || today, reportRangeTo || reportRangeFrom || today), [reportRangeFrom, reportRangeTo, today])
+  const reportRangeDates = useMemo(() => eachDateInRange(reportRange.start, reportRange.end), [reportRange.start, reportRange.end])
+  const reportRangeLabel = useMemo(() => formatDateRangeLabel(reportRange.start, reportRange.end), [reportRange.start, reportRange.end])
+  const isSingleReportDate = reportRange.start === reportRange.end
 
   const portfolio = useMemo(() => {
     return stations.map((station) => {
       const stationReports = reports.filter((report) => report.stationId === station.id && (report.reportType || 'fuel') !== 'lpg')
-      const todaysReports = reports.filter((report) => report.stationId === station.id && report.date === today)
-      const todaySummary = todaysReports.reduce(
+      const rangeReports = reports.filter(
+        (report) =>
+          report.stationId === station.id &&
+          report.date >= reportRange.start &&
+          report.date <= reportRange.end,
+      )
+      const rangeSummary = rangeReports.reduce(
         (summary, report) => {
           if (report.reportType === 'lpg') {
             const lpg = report.lpgReport || {}
@@ -426,10 +488,10 @@ const SupervisorDashboardPage = () => {
       )
       return {
         ...buildStationMetrics(station, stationReports, stockThresholds),
-        todaySummary,
+        rangeSummary,
       }
     })
-  }, [reports, stations, stockThresholds, today])
+  }, [reportRange.end, reportRange.start, reports, stations, stockThresholds])
 
   const filteredPortfolio = useMemo(() => {
     const search = supervisorSearch.trim().toLowerCase()
@@ -459,7 +521,7 @@ const SupervisorDashboardPage = () => {
     () => new Map(portfolio.map((item) => [item.stationId, item])),
     [portfolio],
   )
-  const dashboardTodayTotals = useMemo(() => {
+  const dashboardRangeTotals = useMemo(() => {
     const totals = {
       salesPMS: 0,
       salesAGO: 0,
@@ -469,7 +531,7 @@ const SupervisorDashboardPage = () => {
       quantityLPG: 0,
     }
     for (const report of reports) {
-      if (report.date !== today) continue
+      if (report.date < reportRange.start || report.date > reportRange.end) continue
       if (report.reportType === 'lpg') {
         const lpg = report.lpgReport || {}
         totals.salesLPG += Number(lpg.salesAmount || 0)
@@ -482,14 +544,8 @@ const SupervisorDashboardPage = () => {
       totals.quantityAGO += Number(report.pumpSalesLitersAGO ?? report.totalSalesLitersAGO ?? report.salesAGO ?? 0)
     }
     return totals
-  }, [reports, today])
+  }, [reportRange.end, reportRange.start, reports])
   const todayMonthKey = today.slice(0, 7)
-  const [reportRangeFrom, setReportRangeFrom] = useState(today)
-  const [reportRangeTo, setReportRangeTo] = useState(today)
-  const reportRange = useMemo(() => normalizeDateRange(reportRangeFrom || today, reportRangeTo || reportRangeFrom || today), [reportRangeFrom, reportRangeTo, today])
-  const reportRangeDates = useMemo(() => eachDateInRange(reportRange.start, reportRange.end), [reportRange.start, reportRange.end])
-  const reportRangeLabel = useMemo(() => formatDateRangeLabel(reportRange.start, reportRange.end), [reportRange.start, reportRange.end])
-  const isSingleReportDate = reportRange.start === reportRange.end
   const monthEndMonthOptions = useMemo(() => {
     const options = []
     const base = new Date()
@@ -2285,20 +2341,36 @@ const SupervisorDashboardPage = () => {
                 <SearchIcon className="h-4 w-4" />
               </button>
             )}
+            <DateRangePicker
+              from={reportRangeFrom}
+              to={reportRangeTo}
+              maxDate={today}
+              label="Dashboard date"
+              emptyLabel="Select date"
+              allowClear={false}
+              onChange={({ from, to }) => {
+                const nextFrom = from || today
+                const nextTo = to || nextFrom
+                setReportRangeFrom(nextFrom)
+                setReportRangeTo(nextTo)
+              }}
+            />
           </div>
         </Card>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Card className="border-[#a9cd39]/15 bg-[#a9cd39]/5">
-            <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Total Sales Today</p>
+            <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">
+              {isSingleReportDate ? 'Total Sales' : 'Total Sales in Range'}
+            </p>
             <p className="mt-2 text-3xl font-black text-white">
-              {formatMoneyPrecise(dashboardTodayTotals.salesPMS + dashboardTodayTotals.salesAGO + dashboardTodayTotals.salesLPG)}
+              {formatMoneyPrecise(dashboardRangeTotals.salesPMS + dashboardRangeTotals.salesAGO + dashboardRangeTotals.salesLPG)}
             </p>
             <div className="mt-4 grid grid-cols-3 gap-2">
               {[
-                ['PMS', formatMoneyPrecise(dashboardTodayTotals.salesPMS), 'text-[#a9cd39]'],
-                ['AGO', formatMoneyPrecise(dashboardTodayTotals.salesAGO), 'text-blue-300'],
-                ['LPG', formatMoneyPrecise(dashboardTodayTotals.salesLPG), 'text-amber-300'],
+                ['PMS', formatMoneyPrecise(dashboardRangeTotals.salesPMS), 'text-[#a9cd39]'],
+                ['AGO', formatMoneyPrecise(dashboardRangeTotals.salesAGO), 'text-blue-300'],
+                ['LPG', formatMoneyPrecise(dashboardRangeTotals.salesLPG), 'text-amber-300'],
               ].map(([label, value, color]) => (
                 <div key={label} className="rounded-xl border border-white/8 bg-black/20 p-3">
                   <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
@@ -2309,15 +2381,17 @@ const SupervisorDashboardPage = () => {
           </Card>
 
           <Card className="border-blue-400/15 bg-blue-400/5">
-            <p className="text-xs font-black uppercase tracking-widest text-blue-300">Quantity Sold Today</p>
+            <p className="text-xs font-black uppercase tracking-widest text-blue-300">
+              {isSingleReportDate ? 'Quantity Sold' : 'Quantity Sold in Range'}
+            </p>
             <p className="mt-2 text-3xl font-black text-white">
-              {formatLiters(dashboardTodayTotals.quantityPMS + dashboardTodayTotals.quantityAGO, 2)}
+              {formatLiters(dashboardRangeTotals.quantityPMS + dashboardRangeTotals.quantityAGO, 2)}
             </p>
             <div className="mt-4 grid grid-cols-3 gap-2">
               {[
-                ['PMS', formatLiters(dashboardTodayTotals.quantityPMS, 2), 'text-[#a9cd39]'],
-                ['AGO', formatLiters(dashboardTodayTotals.quantityAGO, 2), 'text-blue-300'],
-                ['LPG', formatKg(dashboardTodayTotals.quantityLPG), 'text-amber-300'],
+                ['PMS', formatLiters(dashboardRangeTotals.quantityPMS, 2), 'text-[#a9cd39]'],
+                ['AGO', formatLiters(dashboardRangeTotals.quantityAGO, 2), 'text-blue-300'],
+                ['LPG', formatKg(dashboardRangeTotals.quantityLPG), 'text-amber-300'],
               ].map(([label, value, color]) => (
                 <div key={label} className="rounded-xl border border-white/8 bg-black/20 p-3">
                   <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
@@ -2356,6 +2430,7 @@ const SupervisorDashboardPage = () => {
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-[#a9cd39]">Stock Portfolio</p>
               <h3 className="text-lg font-bold text-white">Station Inventory Status</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">Sales: {reportRangeLabel}</p>
             </div>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-300">
               {statusFilter === 'all' ? 'All stations' : statusFilter}
@@ -2395,28 +2470,28 @@ const SupervisorDashboardPage = () => {
                         <div className={`h-full rounded-full transition-all ${isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-400' : 'bg-[#a9cd39]'}`} style={{ width: `${pct}%` }} />
                       </div>
                       <p className="text-xs text-slate-500">~{row.daysRemaining.toFixed(0)} days remaining</p>
-                      {row.todaySummary?.hasReport ? (
+                      {row.rangeSummary?.hasReport ? (
                         <div className="mt-3 space-y-2 rounded-xl border border-white/8 bg-black/20 p-3">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Total sales</p>
                             <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] font-black">
-                              <span className="truncate text-[#a9cd39]">PMS {formatMoneyCompact(row.todaySummary.salesPMS)}</span>
-                              <span className="truncate text-blue-300">AGO {formatMoneyCompact(row.todaySummary.salesAGO)}</span>
-                              <span className="truncate text-amber-300">LPG {formatMoneyCompact(row.todaySummary.salesLPG)}</span>
+                              <span className="truncate text-[#a9cd39]">PMS {formatMoneyCompact(row.rangeSummary.salesPMS)}</span>
+                              <span className="truncate text-blue-300">AGO {formatMoneyCompact(row.rangeSummary.salesAGO)}</span>
+                              <span className="truncate text-amber-300">LPG {formatMoneyCompact(row.rangeSummary.salesLPG)}</span>
                             </div>
                           </div>
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Quantity sold</p>
                             <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] font-black">
-                              <span className="truncate text-[#a9cd39]">PMS {formatLiters(row.todaySummary.quantityPMS, 2)}</span>
-                              <span className="truncate text-blue-300">AGO {formatLiters(row.todaySummary.quantityAGO, 2)}</span>
-                              <span className="truncate text-amber-300">LPG {formatKg(row.todaySummary.quantityLPG)}</span>
+                              <span className="truncate text-[#a9cd39]">PMS {formatLiters(row.rangeSummary.quantityPMS, 2)}</span>
+                              <span className="truncate text-blue-300">AGO {formatLiters(row.rangeSummary.quantityAGO, 2)}</span>
+                              <span className="truncate text-amber-300">LPG {formatKg(row.rangeSummary.quantityLPG)}</span>
                             </div>
                           </div>
                         </div>
                       ) : (
                         <p className="mt-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-xs font-semibold text-slate-500">
-                          No sales report yet
+                          No sales report for this date
                         </p>
                       )}
                     </div>
@@ -4359,6 +4434,95 @@ const SupervisorDashboardPage = () => {
           )}
         </div>
       )}
+
+      {activeDashboard === 'scorecard' && (() => {
+        const weekLabel = (() => {
+          const s = new Date(scorecardWeek.start)
+          const e = new Date(scorecardWeek.end)
+          const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+          return `${fmt(s)} – ${fmt(e)}`
+        })()
+        const avgScore = scorecardData.length ? Math.round(scorecardData.reduce((s, r) => s + r.overall, 0) / scorecardData.length) : 0
+        const fullyCompliant = scorecardData.filter((r) => r.overall >= 80).length
+        const atRisk = scorecardData.filter((r) => r.overall < 50).length
+        const scoreTone = (val) => val >= 80 ? 'text-[#a9cd39]' : val >= 50 ? 'text-amber-300' : 'text-red-400'
+        const barColor = (val) => val >= 80 ? 'bg-[#a9cd39]' : val >= 50 ? 'bg-amber-400' : 'bg-red-400'
+        const rankBadge = (i) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`
+        return (
+          <div className="space-y-5">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Compliance</p>
+              <h3 className="text-xl font-bold text-white">Station Scorecard</h3>
+              <p className="mt-1 text-sm text-slate-400">Ranked by reporting behaviour — submissions, evidence, accuracy and reviews.</p>
+            </div>
+
+            {/* Week navigation */}
+            <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
+              <button type="button" onClick={() => setScorecardWeekOffset((p) => p - 1)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/10 transition">← Prev</button>
+              <div className="text-center">
+                <p className="text-xs text-slate-500 uppercase tracking-widest">Week</p>
+                <p className="text-sm font-bold text-white">{weekLabel}</p>
+              </div>
+              <button type="button" onClick={() => setScorecardWeekOffset((p) => Math.min(0, p + 1))} disabled={scorecardWeekOffset >= 0} className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/10 transition disabled:opacity-30">Next →</button>
+            </div>
+
+            {/* Summary row */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                ['Avg Score', `${avgScore}%`, avgScore >= 80 ? 'text-[#a9cd39]' : avgScore >= 50 ? 'text-amber-300' : 'text-red-400'],
+                ['Stations', scorecardData.length, 'text-white'],
+                ['High (≥80%)', fullyCompliant, 'text-[#a9cd39]'],
+                ['At Risk (<50%)', atRisk, 'text-red-400'],
+              ].map(([label, value, color]) => (
+                <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4 text-center">
+                  <p className="text-xs text-slate-500 uppercase tracking-widest">{label}</p>
+                  <p className={`mt-1 text-2xl font-black ${color}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Leaderboard */}
+            {scorecardData.length === 0 ? (
+              <EmptyState title="No reports this week" message="Stations that submit reports will appear here." />
+            ) : (
+              <div className="space-y-3">
+                {scorecardData.map((row, i) => (
+                  <div key={row.stationId} className={`rounded-2xl border p-4 ${i === 0 ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : i === 1 ? 'border-slate-400/20 bg-white/[0.03]' : i === 2 ? 'border-amber-700/20 bg-white/[0.03]' : 'border-white/5 bg-white/[0.02]'}`}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl w-8 text-center shrink-0">{rankBadge(i)}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <p className="font-bold text-white truncate">{row.stationName}</p>
+                          <span className={`text-xl font-black shrink-0 ${scoreTone(row.overall)}`}>{row.overall}%</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                          {[
+                            ['Submission', row.submissionRate],
+                            ['EOD Uploads', row.eodRate],
+                            ['Accuracy', row.accuracyRate],
+                            ['Reviewed', row.reviewRate],
+                          ].map(([label, val]) => (
+                            <div key={label}>
+                              <div className="flex justify-between mb-1">
+                                <span className="text-xs text-slate-500">{label}</span>
+                                <span className={`text-xs font-bold ${scoreTone(val)}`}>{val}%</span>
+                              </div>
+                              <div className="h-1.5 w-full rounded-full bg-white/10">
+                                <div className={`h-1.5 rounded-full ${barColor(val)} transition-all`} style={{ width: `${val}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs text-slate-600">{row.submitted} report{row.submitted !== 1 ? 's' : ''} submitted · {row.dueDays} day{row.dueDays !== 1 ? 's' : ''} due</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }

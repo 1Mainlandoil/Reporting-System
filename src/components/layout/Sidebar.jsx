@@ -117,14 +117,15 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 const isSupervisorMonthEnd = role === 'supervisor' && item.label === 'Month-End Summary' && location.pathname === '/supervisor' && currentView === 'month-end-summary'
                 const isSupervisorProductRequests = role === 'supervisor' && item.label === 'Product Requests' && location.pathname === '/supervisor' && currentView === 'product-requests'
                 const isSupervisorHistory = role === 'supervisor' && item.label === 'History' && location.pathname === '/supervisor' && currentView === 'history'
+                const isSupervisorScorecard = role === 'supervisor' && item.label === 'Station Scorecard' && location.pathname === '/supervisor' && currentView === 'scorecard'
                 const isTerminalActive = role === 'terminal_operator' && item.path === currentPathWithSearch
                 const isAdminActive = role === 'admin' && item.path === location.pathname
                 const isCustomActive = role === 'terminal_operator'
                   ? isTerminalActive
                   : role === 'admin'
                     ? isAdminActive
-                  : role === 'supervisor' && ['Dashboard','Reports','Month-End Summary','Product Requests','History'].includes(item.label)
-                    ? isSupervisorDashboard || isSupervisorReports || isSupervisorMonthEnd || isSupervisorProductRequests || isSupervisorHistory
+                  : role === 'supervisor' && ['Dashboard','Reports','Month-End Summary','Product Requests','History','Station Scorecard'].includes(item.label)
+                    ? isSupervisorDashboard || isSupervisorReports || isSupervisorMonthEnd || isSupervisorProductRequests || isSupervisorHistory || isSupervisorScorecard
                     : isActive
                 return `flex items-center gap-3 rounded-xl border px-3 py-3 text-sm font-medium transition ${
                   isCustomActive

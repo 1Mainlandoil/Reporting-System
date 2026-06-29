@@ -16,7 +16,7 @@ export const linksByRole = {
     { label: 'Visitation Report', path: '/supervisor?view=inspector-visits' },
     { label: 'History', path: '/supervisor?view=history' },
     { label: 'Stations', path: '/stations' },
-    { label: 'Reconciliation', path: '/reconciliation' },
+    { label: 'Station Scorecard', path: '/supervisor?view=scorecard' },
     { label: 'Alerts', path: '/alerts' },
     { label: 'Analytics', path: '/analytics' },
     { label: 'Users', path: '/users' },

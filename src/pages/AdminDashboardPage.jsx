@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import Card from '../components/ui/Card'
 import DataTable from '../components/ui/DataTable'
@@ -6,6 +6,8 @@ import StatusBadge from '../components/ui/StatusBadge'
 import FilterBar from '../components/ui/FilterBar'
 import EmptyState from '../components/ui/EmptyState'
 import ColumnPicker from '../components/ui/ColumnPicker'
+import CustomSelect from '../components/ui/CustomSelect'
+import DateRangePicker from '../components/ui/DateRangePicker'
 import { exportAdminDailyReviewToExcel, exportStationsToExcel } from '../utils/exportExcel'
 import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics } from '../utils/stock'
@@ -74,6 +76,12 @@ const AdminDashboardPage = () => {
   const [inventoryVisibleKeys, setInventoryVisibleKeys] = useState(
     () => new Set(['stationName', 'stockRemaining', 'daysRemaining', 'status']),
   )
+  const [costingSearch, setCostingSearch] = useState('')
+  const [costingProduct, setCostingProduct] = useState('all')
+  const [costingStation, setCostingStation] = useState('all')
+  const [costingReadiness, setCostingReadiness] = useState('all')
+  const [costingDateFrom, setCostingDateFrom] = useState('')
+  const [costingDateTo, setCostingDateTo] = useState('')
 
   const metrics = useMemo(
     () =>
@@ -124,6 +132,13 @@ const AdminDashboardPage = () => {
             Number(request.landingCostPerLiter || 0) ||
             Number(request.costPricePerLiter || 0) + Number(request.transportCostPerLiter || 0)
           const totalLandingCost = Number(request.totalLandingCost || 0) || approvedLiters * landingCostPerLiter
+          const costPricePerLiter = Number(request.costPricePerLiter || 0)
+          const transportCostPerLiter = Number(request.transportCostPerLiter || 0)
+          const readiness = costPricePerLiter <= 0
+            ? 'missing-cost'
+            : transportCostPerLiter <= 0
+              ? 'transport-pending'
+              : 'costed'
           return {
             id: request.id,
             date: String(request.terminalReviewedAt || request.updatedAt || request.createdAt || '').slice(0, 10) || '-',
@@ -131,8 +146,9 @@ const AdminDashboardPage = () => {
             stationName,
             product: request.approvedProductType || request.requestedProductType || 'PMS',
             approvedLiters,
-            costPricePerLiter: Number(request.costPricePerLiter || 0),
-            transportCostPerLiter: Number(request.transportCostPerLiter || 0),
+            costPricePerLiter,
+            transportCostPerLiter,
+            readiness,
             landingCostPerLiter,
             totalLandingCost,
             status: request.dispatchStatus || request.status || '-',
@@ -142,6 +158,57 @@ const AdminDashboardPage = () => {
     [productRequests, stations],
   )
 
+  const costingStationOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All stations' },
+      ...[...new Map(costingRows.map((row) => [row.stationId, row.stationName])).entries()]
+        .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+        .map(([value, label]) => ({ value, label })),
+    ],
+    [costingRows],
+  )
+
+  const filteredCostingRows = useMemo(() => {
+    const search = costingSearch.trim().toLowerCase()
+    return costingRows.filter((row) => {
+      if (costingProduct !== 'all' && row.product !== costingProduct) return false
+      if (costingStation !== 'all' && row.stationId !== costingStation) return false
+      if (costingReadiness !== 'all' && row.readiness !== costingReadiness) return false
+      if (costingDateFrom && row.date < costingDateFrom) return false
+      if (costingDateTo && row.date > costingDateTo) return false
+      if (search && ![row.stationName, row.product, row.status, row.date].some((value) => String(value || '').toLowerCase().includes(search))) return false
+      return true
+    })
+  }, [costingDateFrom, costingDateTo, costingProduct, costingReadiness, costingRows, costingSearch, costingStation])
+
+  const costingSummary = useMemo(() => {
+    const totalLiters = filteredCostingRows.reduce((sum, row) => sum + Number(row.approvedLiters || 0), 0)
+    const totalLandingCost = filteredCostingRows.reduce((sum, row) => sum + Number(row.totalLandingCost || 0), 0)
+    return {
+      totalLiters,
+      totalLandingCost,
+      weightedLandingCost: totalLiters ? totalLandingCost / totalLiters : 0,
+      costed: filteredCostingRows.filter((row) => row.readiness === 'costed').length,
+      missingCost: filteredCostingRows.filter((row) => row.readiness === 'missing-cost').length,
+      transportPending: filteredCostingRows.filter((row) => row.readiness === 'transport-pending').length,
+    }
+  }, [filteredCostingRows])
+
+  const costingProductSummary = useMemo(
+    () => ['PMS', 'AGO'].map((product) => {
+      const rowsForProduct = filteredCostingRows.filter((row) => row.product === product)
+      const totalLiters = rowsForProduct.reduce((sum, row) => sum + Number(row.approvedLiters || 0), 0)
+      const totalLandingCost = rowsForProduct.reduce((sum, row) => sum + Number(row.totalLandingCost || 0), 0)
+      return {
+        product,
+        records: rowsForProduct.length,
+        totalLiters,
+        totalLandingCost,
+        averageLandingCost: totalLiters ? totalLandingCost / totalLiters : 0,
+      }
+    }),
+    [filteredCostingRows],
+  )
   const averageLandingCostByProduct = useMemo(() => {
     const byProduct = new Map()
     for (const row of costingRows) {
@@ -1175,7 +1242,25 @@ const AdminDashboardPage = () => {
     { key: 'transportCostPerLiter', header: 'Transport/L', minWidth: 130, render: (row) => money(row.transportCostPerLiter) },
     { key: 'landingCostPerLiter', header: 'Landing/L', minWidth: 130, render: (row) => money(row.landingCostPerLiter) },
     { key: 'totalLandingCost', header: 'Total Landed Cost', minWidth: 180, render: (row) => money(row.totalLandingCost) },
-    { key: 'status', header: 'Status', minWidth: 120 },
+    {
+      key: 'readiness',
+      header: 'Cost check',
+      minWidth: 160,
+      render: (row) => {
+        const meta = row.readiness === 'costed'
+          ? { label: 'Costed', classes: 'bg-[#a9cd39]/15 text-[#a9cd39]' }
+          : row.readiness === 'transport-pending'
+            ? { label: 'Transport pending', classes: 'bg-amber-500/15 text-amber-300' }
+            : { label: 'Missing product cost', classes: 'bg-rose-500/15 text-rose-300' }
+        return <span className={`rounded-full px-3 py-1 text-xs font-bold ${meta.classes}`}>{meta.label}</span>
+      },
+    },
+    {
+      key: 'status',
+      header: 'Dispatch',
+      minWidth: 120,
+      render: (row) => <span className="capitalize text-slate-300">{String(row.status || '-').replaceAll('-', ' ')}</span>,
+    },
   ]
   const activeProfitRows =
     adminView === 'profit-loss/daily'
@@ -1292,7 +1377,9 @@ const AdminDashboardPage = () => {
           <Card className="overflow-hidden border border-[#a9cd39]/15 bg-[#0b111d] text-white">
             <div className="flex flex-wrap items-start justify-between gap-4 border-l-4 border-l-[#a9cd39] pl-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#a9cd39]">Profit and Loss</p>
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#a9cd39]">
+                  {adminView === 'profit-loss/costing' ? 'Cost Control' : 'Profit and Loss'}
+                </p>
                 <h2 className="mt-2 text-2xl font-black">{activeProfitLossView.title}</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-400">{activeProfitLossView.subtitle}</p>
               </div>
@@ -1305,15 +1392,33 @@ const AdminDashboardPage = () => {
             </div>
 
             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                ['Revenue', money(profitSummary.revenue), 'Sales value from reports'],
-                ['COGS', money(profitSummary.cogs), 'Liters sold x landing cost'],
-                ['Expenses', money(profitSummary.expense), 'Manager expense lines'],
-                ['Net P/L', money(profitSummary.netProfit), `${profitSummary.margin.toFixed(1)}% margin`],
-              ].map(([label, value, hint]) => (
+              {(adminView === 'profit-loss/costing'
+                ? [
+                    ['Dispatch volume', liters(costingSummary.totalLiters), `${filteredCostingRows.length} filtered records`],
+                    ['Landed stock value', money(costingSummary.totalLandingCost), 'Quantity x landing cost'],
+                    ['Weighted landing/L', money(costingSummary.weightedLandingCost), 'Across filtered dispatches'],
+                    ['Needs costing', String(costingSummary.missingCost + costingSummary.transportPending), `${costingSummary.costed} fully costed`],
+                  ]
+                : [
+                    ['Revenue', money(profitSummary.revenue), 'Sales value from reports'],
+                    ['COGS', money(profitSummary.cogs), 'Liters sold x landing cost'],
+                    ['Expenses', money(profitSummary.expense), 'Manager expense lines'],
+                    ['Net P/L', money(profitSummary.netProfit), `${profitSummary.margin.toFixed(1)}% margin`],
+                  ]
+              ).map(([label, value, hint]) => (
                 <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                   <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</p>
-                  <p className={`mt-2 text-xl font-black ${label === 'Net P/L' && profitSummary.netProfit < 0 ? 'text-rose-400' : 'text-white'}`}>{value}</p>
+                  <p
+                    className={`mt-2 text-xl font-black ${
+                      label === 'Net P/L' && profitSummary.netProfit < 0
+                        ? 'text-rose-400'
+                        : label === 'Needs costing' && value !== '0'
+                          ? 'text-amber-300'
+                          : 'text-white'
+                    }`}
+                  >
+                    {value}
+                  </p>
                   <p className="mt-1 text-xs text-slate-500">{hint}</p>
                 </div>
               ))}
@@ -1356,18 +1461,149 @@ const AdminDashboardPage = () => {
           )}
 
           {adminView === 'profit-loss/costing' ? (
-            <Card className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            <Card className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Dispatch Cost Register</p>
                   <h3 className="text-xl font-bold">Costing Ledger</h3>
-                  <p className="text-sm text-slate-500">Terminal dispatch costs used as P/L landing cost basis.</p>
+                  <p className="text-sm text-slate-500">Every landed product cost feeding reconciliation and P/L.</p>
                 </div>
                 <span className="rounded-full bg-[#a9cd39]/15 px-3 py-1 text-sm font-bold text-[#a9cd39]">
-                  {costingRows.length} dispatch record{costingRows.length === 1 ? '' : 's'}
+                  {filteredCostingRows.length} of {costingRows.length} records
                 </span>
               </div>
-              {costingRows.length ? (
-                <DataTable columns={costingColumns} rows={costingRows} tableClassName="min-w-[1280px]" />
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                {costingProductSummary.map((summary) => (
+                  <div
+                    key={summary.product}
+                    className={`border-l-4 px-4 py-3 ${
+                      summary.product === 'PMS'
+                        ? 'border-l-[#a9cd39] bg-[#a9cd39]/[0.04]'
+                        : 'border-l-blue-400 bg-blue-400/[0.04]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-black text-white">{summary.product}</p>
+                      <p className="text-xs font-semibold text-slate-500">
+                        {summary.records} dispatch{summary.records === 1 ? '' : 'es'}
+                      </p>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Quantity</p>
+                        <p className="mt-1 text-sm font-black text-white">{liters(summary.totalLiters)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Average/L</p>
+                        <p className="mt-1 text-sm font-black text-white">{money(summary.averageLandingCost)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Stock value</p>
+                        <p className="mt-1 text-sm font-black text-white">{money(summary.totalLandingCost)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['Costed', costingSummary.costed, 'text-[#a9cd39]'],
+                  ['Transport pending', costingSummary.transportPending, 'text-amber-300'],
+                  ['Missing cost', costingSummary.missingCost, 'text-rose-300'],
+                ].map(([label, value, color]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setCostingReadiness(label === 'Costed' ? 'costed' : label === 'Missing cost' ? 'missing-cost' : 'transport-pending')}
+                    className="border-t border-white/10 bg-white/[0.025] px-3 py-3 text-left transition hover:bg-white/[0.06]"
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                    <p className={`mt-1 text-xl font-black ${color}`}>{value}</p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid gap-2 border-y border-white/8 py-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_170px_150px_190px_auto]">
+                <label className="relative block">
+                  <span className="sr-only">Search costing records</span>
+                  <input
+                    type="search"
+                    value={costingSearch}
+                    onChange={(event) => setCostingSearch(event.target.value)}
+                    placeholder="Search station, product or status"
+                    className="h-12 w-full rounded-xl border border-white/10 bg-[#131929] px-4 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-[#a9cd39]/40"
+                  />
+                </label>
+                <CustomSelect
+                  value={costingStation}
+                  onChange={setCostingStation}
+                  options={costingStationOptions}
+                  placeholder="All stations"
+                />
+                <CustomSelect
+                  value={costingProduct}
+                  onChange={setCostingProduct}
+                  options={[
+                    { value: 'all', label: 'All products' },
+                    { value: 'PMS', label: 'PMS' },
+                    { value: 'AGO', label: 'AGO' },
+                  ]}
+                />
+                <CustomSelect
+                  value={costingReadiness}
+                  onChange={setCostingReadiness}
+                  options={[
+                    { value: 'all', label: 'All cost checks' },
+                    { value: 'costed', label: 'Costed' },
+                    { value: 'transport-pending', label: 'Transport pending' },
+                    { value: 'missing-cost', label: 'Missing product cost' },
+                  ]}
+                />
+                <DateRangePicker
+                  from={costingDateFrom}
+                  to={costingDateTo}
+                  label="Costing dates"
+                  emptyLabel="All dates"
+                  align="right"
+                  onChange={({ from, to }) => {
+                    setCostingDateFrom(from)
+                    setCostingDateTo(to)
+                  }}
+                />
+              </div>
+
+              {(costingSearch || costingProduct !== 'all' || costingStation !== 'all' || costingReadiness !== 'all' || costingDateFrom || costingDateTo) && (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-slate-500">
+                    Showing {filteredCostingRows.length} matching cost record{filteredCostingRows.length === 1 ? '' : 's'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCostingSearch('')
+                      setCostingProduct('all')
+                      setCostingStation('all')
+                      setCostingReadiness('all')
+                      setCostingDateFrom('')
+                      setCostingDateTo('')
+                    }}
+                    className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-[#a9cd39]/30 hover:text-[#a9cd39]"
+                  >
+                    Reset filters
+                  </button>
+                </div>
+              )}
+
+              {filteredCostingRows.length ? (
+                <DataTable
+                  columns={costingColumns}
+                  rows={filteredCostingRows}
+                  tableClassName="min-w-[1380px]"
+                />
+              ) : costingRows.length ? (
+                <EmptyState title="No matching costing records" message="Change the current station, product, date or cost-check filter." />
               ) : (
                 <EmptyState title="No costing records yet" message="Terminal dispatches with cost price and transport price will appear here." />
               )}
