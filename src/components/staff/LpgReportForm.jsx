@@ -1,17 +1,14 @@
 import { useMemo, useState } from 'react'
 import { supabase, hasSupabaseEnv } from '../../lib/supabaseClient'
 
-const emptyMeter = { label: 'P1', opening: '', closing: '' }
-const emptyBank = { channel: '', amount: '' }
-const emptyPos = { terminal: '', amount: '' }
+const n = (v) => Number(v || 0)
+const money = (v) => `NGN ${Math.round(n(v)).toLocaleString()}`
+const kg = (v) => `${n(v).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg`
 
-const numberValue = (value) => Number(value || 0)
-const money = (value) => `NGN ${Math.round(numberValue(value)).toLocaleString()}`
-const kg = (value) => `${numberValue(value).toLocaleString(undefined, { maximumFractionDigits: 2 })} kg`
-
-const Field = ({ label, value, onChange, type = 'text', placeholder = '' }) => (
-  <label className="space-y-2">
+const Field = ({ label, value, onChange, type = 'text', placeholder = '', hint = '' }) => (
+  <label className="space-y-1.5">
     <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{label}</span>
+    {hint && <p className="text-xs text-slate-500">{hint}</p>}
     <input
       type={type}
       min={type === 'number' ? '0' : undefined}
@@ -24,56 +21,77 @@ const Field = ({ label, value, onChange, type = 'text', placeholder = '' }) => (
   </label>
 )
 
-const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => {
-  const [form, setForm] = useState({
-    openingStockKg: '',
-    closingStockKg: '',
-    unitPrice: '',
-    cashBf: '',
-    cashSales: '',
-    closingBalance: '',
-  })
-  const [bankDraft, setBankDraft] = useState(emptyBank)
-  const [bankLines, setBankLines] = useState([])
-  const [posDraft, setPosDraft] = useState(emptyPos)
-  const [posLines, setPosLines] = useState([])
-  const [meterDraft, setMeterDraft] = useState(emptyMeter)
+const StepHeader = ({ step, total, label }) => (
+  <div className="mb-4">
+    <div className="flex items-center justify-between mb-2">
+      <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">Step {step} of {total}</p>
+      <p className="text-xs text-slate-500">{label}</p>
+    </div>
+    <div className="h-1 w-full rounded-full bg-white/10">
+      <div className="h-1 rounded-full bg-[#a9cd39] transition-all" style={{ width: `${(step / total) * 100}%` }} />
+    </div>
+  </div>
+)
+
+const NavButtons = ({ onBack, onNext, nextLabel = 'Next →', nextDisabled = false, onBackLabel = '← Back' }) => (
+  <div className="mt-6 flex gap-3">
+    {onBack && (
+      <button type="button" onClick={onBack} className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/10">
+        {onBackLabel}
+      </button>
+    )}
+    <button type="button" onClick={onNext} disabled={nextDisabled} className="flex-1 rounded-2xl bg-[#a9cd39] py-3 text-sm font-black text-black transition hover:bg-[#bde14d] disabled:opacity-40">
+      {nextLabel}
+    </button>
+  </div>
+)
+
+const STEPS = ['No Sales?', 'Stock & Price', 'Meter Readings', 'Bank & POS', 'Cash Flow', 'EOD Docs', 'Review & Submit']
+const TOTAL_STEPS = 6
+
+const LpgReportForm = ({
+  stationId, reportDate, submitReport, onSubmitted,
+  carriedOpeningKg = 0, carriedCashBf = 0, carriedMeterClosings = {},
+}) => {
+  const [step, setStep] = useState(0)
+  const [isNoSales, setIsNoSales] = useState(null)
+  const [noSalesReason, setNoSalesReason] = useState('')
+
+  const [openingStockKg, setOpeningStockKg] = useState(String(carriedOpeningKg || ''))
+  const [closingStockKg, setClosingStockKg] = useState('')
+  const [unitPrice, setUnitPrice] = useState('')
+
   const [meterLines, setMeterLines] = useState([])
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+  const [meterDraft, setMeterDraft] = useState({ label: 'P1', opening: '', closing: '' })
+  const [meterOpeningStates, setMeterOpeningStates] = useState({})
+
+  const [bankLines, setBankLines] = useState([])
+  const [bankDraft, setBankDraft] = useState({ channel: '', amount: '' })
+  const [posLines, setPosLines] = useState([])
+  const [posDraft, setPosDraft] = useState({ terminal: '', amount: '' })
+
+  const [cashBf, setCashBf] = useState(carriedCashBf > 0 ? String(carriedCashBf) : '')
+  const [cashSales, setCashSales] = useState('')
+  const [closingBalance, setClosingBalance] = useState('')
+
   const [eodUploads, setEodUploads] = useState([])
   const [eodInputKeys, setEodInputKeys] = useState({})
   const [extraSlotIds, setExtraSlotIds] = useState([])
 
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
   const totals = useMemo(() => {
-    const stockSoldKg = numberValue(form.openingStockKg) - numberValue(form.closingStockKg)
-    const meterSoldKg = meterLines.reduce((sum, line) => sum + Math.max(0, numberValue(line.closing) - numberValue(line.opening)), 0)
+    const stockSoldKg = n(openingStockKg) - n(closingStockKg)
+    const meterSoldKg = meterLines.reduce((sum, l) => sum + Math.max(0, n(l.closing) - n(l.opening)), 0)
     const quantitySoldKg = meterSoldKg || stockSoldKg
-    const salesAmount = quantitySoldKg * numberValue(form.unitPrice)
-    const bankTotal = bankLines.reduce((sum, line) => sum + numberValue(line.amount), 0)
-    const posTotal = posLines.reduce((sum, line) => sum + numberValue(line.amount), 0)
-    const totalAmount = numberValue(form.cashBf) + numberValue(form.cashSales)
-    const variance = totalAmount - bankTotal - posTotal - numberValue(form.closingBalance)
+    const salesAmount = quantitySoldKg * n(unitPrice)
+    const bankTotal = bankLines.reduce((sum, l) => sum + n(l.amount), 0)
+    const posTotal = posLines.reduce((sum, l) => sum + n(l.amount), 0)
+    const totalAmount = n(cashBf) + n(cashSales)
+    const variance = totalAmount - bankTotal - posTotal - n(closingBalance)
     return { stockSoldKg, meterSoldKg, quantitySoldKg, salesAmount, bankTotal, posTotal, totalAmount, variance }
-  }, [bankLines, form.cashBf, form.cashSales, form.closingBalance, form.closingStockKg, form.openingStockKg, form.unitPrice, meterLines, posLines])
-
-  const addBankLine = () => {
-    if (!bankDraft.channel.trim() || numberValue(bankDraft.amount) <= 0) return
-    setBankLines((prev) => [...prev, { id: `lpg-bank-${Date.now()}`, ...bankDraft, amount: numberValue(bankDraft.amount) }])
-    setBankDraft(emptyBank)
-  }
-
-  const addPosLine = () => {
-    if (!posDraft.terminal.trim() || numberValue(posDraft.amount) <= 0) return
-    setPosLines((prev) => [...prev, { id: `lpg-pos-${Date.now()}`, ...posDraft, amount: numberValue(posDraft.amount) }])
-    setPosDraft(emptyPos)
-  }
-
-  const addMeterLine = () => {
-    if (!meterDraft.label.trim() || meterDraft.opening === '' || meterDraft.closing === '') return
-    setMeterLines((prev) => [...prev, { id: `lpg-meter-${Date.now()}`, ...meterDraft, opening: numberValue(meterDraft.opening), closing: numberValue(meterDraft.closing) }])
-    setMeterDraft({ ...emptyMeter, label: `P${meterLines.length + 2}` })
-  }
+  }, [openingStockKg, closingStockKg, unitPrice, meterLines, bankLines, posLines, cashBf, cashSales, closingBalance])
 
   const uploadEodFile = async (fileId, file) => {
     if (!hasSupabaseEnv || !supabase) {
@@ -89,8 +107,7 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
       return
     }
     const { data } = supabase.storage.from('eod-uploads').getPublicUrl(path)
-    const url = data?.publicUrl || ''
-    setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'done', url } : u))
+    setEodUploads((prev) => prev.map((u) => u.fileId === fileId ? { ...u, status: 'done', url: data?.publicUrl || '' } : u))
   }
 
   const addEodFile = async (slotId, slotLabel, category, file) => {
@@ -105,53 +122,40 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
 
   const handleSubmit = async () => {
     setError('')
-    if (!reportDate) {
-      setError('No report date is available.')
-      return
-    }
-    if (form.openingStockKg === '' || form.closingStockKg === '' || form.unitPrice === '') {
-      setError('Enter opening stock, closing stock and LPG unit price.')
-      return
-    }
-    if (eodUploads.some((u) => u.status === 'uploading')) {
-      setError('Please wait — files are still uploading.')
-      return
-    }
+    if (!reportDate) { setError('No report date available.'); return }
+    if (eodUploads.some((u) => u.status === 'uploading')) { setError('Please wait — files are still uploading.'); return }
     setSubmitting(true)
     try {
-      const outcome = await submitReport({
-        reportType: 'lpg',
-        stationId,
-        reportDate,
-        cashBf: numberValue(form.cashBf),
-        cashSales: numberValue(form.cashSales),
-        posValue: totals.posTotal,
-        totalPaymentDeposits: totals.bankTotal,
-        closingBalance: numberValue(form.closingBalance),
-        totalAmount: totals.totalAmount,
-        lpgReport: {
-          openingStockKg: numberValue(form.openingStockKg),
-          closingStockKg: numberValue(form.closingStockKg),
-          stockSoldKg: totals.stockSoldKg,
-          meterSoldKg: totals.meterSoldKg,
-          quantitySoldKg: totals.quantitySoldKg,
-          unitPrice: numberValue(form.unitPrice),
-          salesAmount: totals.salesAmount,
-          bankLines,
-          posLines,
-          meterLines,
-          cashBf: numberValue(form.cashBf),
-          cashSales: numberValue(form.cashSales),
-          totalAmount: totals.totalAmount,
-          bankTotal: totals.bankTotal,
-          posTotal: totals.posTotal,
-          closingBalance: numberValue(form.closingBalance),
-          variance: totals.variance,
-        },
-        eodAttachments: eodUploads.filter((u) => u.status === 'done').map((u) => ({ label: u.slotLabel, category: u.category, url: u.url, fileName: u.file?.name || '' })),
-      })
+      const outcome = await submitReport(
+        isNoSales
+          ? {
+              reportType: 'lpg', stationId, reportDate,
+              noSalesDay: true, noSalesReason: noSalesReason.trim(),
+              cashBf: 0, cashSales: 0, posValue: 0, totalPaymentDeposits: 0,
+              closingBalance: 0, totalAmount: 0,
+              lpgReport: { noSalesDay: true, noSalesReason: noSalesReason.trim(), quantitySoldKg: 0, salesAmount: 0 },
+              eodAttachments: [],
+            }
+          : {
+              reportType: 'lpg', stationId, reportDate,
+              cashBf: n(cashBf), cashSales: n(cashSales),
+              posValue: totals.posTotal, totalPaymentDeposits: totals.bankTotal,
+              closingBalance: n(closingBalance), totalAmount: totals.totalAmount,
+              lpgReport: {
+                openingStockKg: n(openingStockKg), closingStockKg: n(closingStockKg),
+                stockSoldKg: totals.stockSoldKg, meterSoldKg: totals.meterSoldKg,
+                quantitySoldKg: totals.quantitySoldKg, unitPrice: n(unitPrice),
+                salesAmount: totals.salesAmount, bankLines, posLines, meterLines,
+                cashBf: n(cashBf), cashSales: n(cashSales),
+                totalAmount: totals.totalAmount, bankTotal: totals.bankTotal,
+                posTotal: totals.posTotal, closingBalance: n(closingBalance),
+                variance: totals.variance,
+              },
+              eodAttachments: eodUploads.filter((u) => u.status === 'done').map((u) => ({ label: u.slotLabel, category: u.category, url: u.url, fileName: u.file?.name || '' })),
+            },
+      )
       if (!outcome?.ok) {
-        setError(outcome?.message || (outcome?.error === 'duplicate_date' ? 'LPG report already submitted for this date.' : 'Could not submit LPG report.'))
+        setError(outcome?.error === 'duplicate_date' ? 'LPG report already submitted for this date.' : outcome?.message || 'Could not submit LPG report.')
         return
       }
       await Promise.resolve(onSubmitted?.(outcome))
@@ -160,87 +164,217 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
     }
   }
 
-  return (
+  // ─── Step 0: No Sales Check ───────────────────────────────────────────────
+  if (step === 0) return (
     <div className="space-y-5">
       <div>
         <p className="text-xs font-black uppercase tracking-[0.24em] text-[#a9cd39]">LPG Reporting</p>
         <h2 className="mt-2 text-2xl font-black text-white">Daily LPG Report</h2>
-        <p className="mt-1 text-sm text-slate-400">KG stock, meter readings, bank, POS and cash movement.</p>
+        <p className="mt-1 text-sm text-slate-400">{reportDate}</p>
       </div>
-
       {error && <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-300">{error}</div>}
-
-      <section className="rounded-3xl border border-white/8 bg-white/[0.04] p-4">
-        <p className="mb-4 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Stock and price</p>
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field type="number" label="Opening stock (KG)" value={form.openingStockKg} onChange={(e) => setForm((prev) => ({ ...prev, openingStockKg: e.target.value }))} />
-          <Field type="number" label="Closing stock (KG)" value={form.closingStockKg} onChange={(e) => setForm((prev) => ({ ...prev, closingStockKg: e.target.value }))} />
-          <Field type="number" label="Unit price / KG" value={form.unitPrice} onChange={(e) => setForm((prev) => ({ ...prev, unitPrice: e.target.value }))} />
+      <div className="rounded-3xl border border-white/8 bg-white/[0.04] p-5 space-y-4">
+        <p className="text-sm font-bold text-white">Did you sell LPG today?</p>
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={() => { setIsNoSales(false); setStep(1) }}
+            className={`rounded-2xl border py-4 text-sm font-black transition ${isNoSales === false ? 'border-[#a9cd39] bg-[#a9cd39]/15 text-[#a9cd39]' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+            ✓ Yes, I sold LPG
+          </button>
+          <button type="button" onClick={() => setIsNoSales(true)}
+            className={`rounded-2xl border py-4 text-sm font-black transition ${isNoSales === true ? 'border-red-400/40 bg-red-400/10 text-red-300' : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+            ✗ No LPG sales today
+          </button>
         </div>
-      </section>
+        {isNoSales === true && (
+          <div className="space-y-3">
+            <Field label="Reason (required)" value={noSalesReason} onChange={(e) => setNoSalesReason(e.target.value)} placeholder="e.g. Out of stock, no customers..." />
+            <button type="button" disabled={!noSalesReason.trim() || submitting} onClick={handleSubmit}
+              className="w-full rounded-2xl bg-[#a9cd39] py-4 text-sm font-black text-black disabled:opacity-40">
+              {submitting ? 'Submitting...' : 'Submit No-Sales Report'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
-      <section className="rounded-3xl border border-white/8 bg-white/[0.04] p-4">
-        <p className="mb-4 text-xs font-black uppercase tracking-widest text-[#a9cd39]">LPG meter reading</p>
-        <div className="grid gap-3 md:grid-cols-[0.7fr_1fr_1fr_auto] md:items-end">
-          <Field label="Meter" value={meterDraft.label} onChange={(e) => setMeterDraft((prev) => ({ ...prev, label: e.target.value }))} />
-          <Field type="number" label="Opening" value={meterDraft.opening} onChange={(e) => setMeterDraft((prev) => ({ ...prev, opening: e.target.value }))} />
-          <Field type="number" label="Closing" value={meterDraft.closing} onChange={(e) => setMeterDraft((prev) => ({ ...prev, closing: e.target.value }))} />
-          <button type="button" onClick={addMeterLine} className="rounded-2xl bg-[#a9cd39] px-5 py-3 text-sm font-black text-black">Add</button>
+  // ─── Step 1: Stock & Price ────────────────────────────────────────────────
+  if (step === 1) return (
+    <div className="space-y-5">
+      <StepHeader step={1} total={TOTAL_STEPS} label={STEPS[1]} />
+      <h2 className="text-2xl font-black text-white">Stock & Price</h2>
+      {carriedOpeningKg > 0 && (
+        <div className="rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-4 py-3 text-xs text-[#a9cd39]">
+          Opening stock carried from last report: <span className="font-black">{kg(carriedOpeningKg)}</span>
         </div>
-        <div className="mt-3 space-y-2">
-          {meterLines.map((line) => (
-            <div key={line.id} className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm text-slate-200">
-              <span>{line.label}: {kg(line.opening)} to {kg(line.closing)}</span>
-              <button type="button" onClick={() => setMeterLines((prev) => prev.filter((item) => item.id !== line.id))} className="font-bold text-rose-400">x</button>
+      )}
+      <div className="space-y-4">
+        <Field type="number" label="Opening Stock (KG)" value={openingStockKg} onChange={(e) => setOpeningStockKg(e.target.value)} hint={carriedOpeningKg > 0 ? `Yesterday's closing: ${kg(carriedOpeningKg)}` : ''} />
+        <Field type="number" label="Closing Stock (KG)" value={closingStockKg} onChange={(e) => setClosingStockKg(e.target.value)} />
+        <Field type="number" label="Unit Price / KG (₦)" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+      </div>
+      {n(openingStockKg) > 0 && n(closingStockKg) >= 0 && (
+        <div className="rounded-xl border border-white/8 bg-white/5 px-4 py-3 text-sm text-slate-300">
+          Stock sold: <span className="font-black text-white">{kg(n(openingStockKg) - n(closingStockKg))}</span>
+          {n(unitPrice) > 0 && <> · Est. value: <span className="font-black text-[#a9cd39]">{money((n(openingStockKg) - n(closingStockKg)) * n(unitPrice))}</span></>}
+        </div>
+      )}
+      <NavButtons onBack={() => setStep(0)} onNext={() => {
+        if (!openingStockKg || !closingStockKg || !unitPrice) { setError('Fill in opening stock, closing stock and unit price.'); return }
+        setError(''); setStep(2)
+      }} />
+      {error && <p className="text-sm text-rose-400">{error}</p>}
+    </div>
+  )
+
+  // ─── Step 2: Meter Readings ───────────────────────────────────────────────
+  if (step === 2) {
+    const addMeter = () => {
+      if (!meterDraft.label.trim() || meterDraft.closing === '') { setError('Enter meter label and closing reading.'); return }
+      const priorClosing = meterOpeningStates[meterDraft.label] ?? carriedMeterClosings[meterDraft.label]
+      const opening = priorClosing != null ? priorClosing : n(meterDraft.opening)
+      setMeterLines((prev) => [...prev, { id: `lpg-m-${Date.now()}`, label: meterDraft.label.trim(), opening, closing: n(meterDraft.closing) }])
+      const nextNum = meterLines.length + 2
+      setMeterDraft({ label: `P${nextNum}`, opening: '', closing: '' })
+      setError('')
+    }
+    return (
+      <div className="space-y-5">
+        <StepHeader step={2} total={TOTAL_STEPS} label={STEPS[2]} />
+        <h2 className="text-2xl font-black text-white">Meter Readings</h2>
+        <p className="text-sm text-slate-400">Add each LPG meter. Opening is auto-filled from yesterday if available.</p>
+        <div className="space-y-3 rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+          <Field label="Meter label" value={meterDraft.label} onChange={(e) => setMeterDraft((p) => ({ ...p, label: e.target.value }))} />
+          {carriedMeterClosings[meterDraft.label] != null ? (
+            <div className="rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-3 py-2 text-xs text-[#a9cd39]">
+              Opening (from yesterday): <span className="font-black">{kg(carriedMeterClosings[meterDraft.label])}</span>
+            </div>
+          ) : (
+            <Field type="number" label="Opening reading (KG)" value={meterDraft.opening} onChange={(e) => setMeterDraft((p) => ({ ...p, opening: e.target.value }))} />
+          )}
+          <Field type="number" label="Closing reading (KG)" value={meterDraft.closing} onChange={(e) => setMeterDraft((p) => ({ ...p, closing: e.target.value }))} />
+          <button type="button" onClick={addMeter} className="w-full rounded-2xl bg-white/10 py-3 text-sm font-bold text-white hover:bg-white/15 transition">+ Add Meter</button>
+          {error && <p className="text-xs text-rose-400">{error}</p>}
+        </div>
+        {meterLines.length > 0 && (
+          <div className="space-y-2">
+            {meterLines.map((l) => (
+              <div key={l.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm">
+                <div>
+                  <p className="font-semibold text-white">{l.label}</p>
+                  <p className="text-xs text-slate-400">{kg(l.opening)} → {kg(l.closing)} · <span className="text-[#a9cd39] font-bold">{kg(l.closing - l.opening)} sold</span></p>
+                </div>
+                <button type="button" onClick={() => setMeterLines((p) => p.filter((x) => x.id !== l.id))} className="text-rose-400 font-bold text-xs">Remove</button>
+              </div>
+            ))}
+            <div className="rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm">
+              <span className="text-slate-400">Total meter sold: </span>
+              <span className="font-black text-white">{kg(meterLines.reduce((s, l) => s + (l.closing - l.opening), 0))}</span>
+            </div>
+          </div>
+        )}
+        <NavButtons onBack={() => setStep(1)} onNext={() => { setError(''); setStep(3) }} nextLabel={meterLines.length === 0 ? 'Skip →' : 'Next →'} />
+      </div>
+    )
+  }
+
+  // ─── Step 3: Bank & POS ───────────────────────────────────────────────────
+  if (step === 3) {
+    const addBank = () => {
+      if (!bankDraft.channel.trim() || n(bankDraft.amount) <= 0) { setError('Enter bank channel and amount.'); return }
+      setBankLines((p) => [...p, { id: `lpg-b-${Date.now()}`, channel: bankDraft.channel.trim(), amount: n(bankDraft.amount) }])
+      setBankDraft({ channel: '', amount: '' }); setError('')
+    }
+    const addPos = () => {
+      if (!posDraft.terminal.trim() || n(posDraft.amount) <= 0) { setError('Enter POS terminal and amount.'); return }
+      setPosLines((p) => [...p, { id: `lpg-p-${Date.now()}`, terminal: posDraft.terminal.trim(), amount: n(posDraft.amount) }])
+      setPosDraft({ terminal: '', amount: '' }); setError('')
+    }
+    return (
+      <div className="space-y-5">
+        <StepHeader step={3} total={TOTAL_STEPS} label={STEPS[3]} />
+        <h2 className="text-2xl font-black text-white">Bank & POS</h2>
+        <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4 space-y-3">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Bank lodgements</p>
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+            <Field label="Channel" value={bankDraft.channel} onChange={(e) => setBankDraft((p) => ({ ...p, channel: e.target.value }))} placeholder="e.g. GTBank" />
+            <Field type="number" label="Amount (₦)" value={bankDraft.amount} onChange={(e) => setBankDraft((p) => ({ ...p, amount: e.target.value }))} />
+            <button type="button" onClick={addBank} className="rounded-2xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-4 py-3 text-sm font-bold text-[#a9cd39]">Add</button>
+          </div>
+          {bankLines.map((l) => (
+            <div key={l.id} className="flex justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm">
+              <span className="text-slate-300">{l.channel}</span>
+              <div className="flex gap-3 items-center">
+                <span className="font-bold text-white">{money(l.amount)}</span>
+                <button type="button" onClick={() => setBankLines((p) => p.filter((x) => x.id !== l.id))} className="text-rose-400 font-bold text-xs">✕</button>
+              </div>
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="rounded-3xl border border-white/8 bg-white/[0.04] p-4">
-        <p className="mb-4 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Bank and POS</p>
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-          <Field label="Bank / Channel" value={bankDraft.channel} onChange={(e) => setBankDraft((prev) => ({ ...prev, channel: e.target.value }))} />
-          <Field type="number" label="Bank amount" value={bankDraft.amount} onChange={(e) => setBankDraft((prev) => ({ ...prev, amount: e.target.value }))} />
-          <button type="button" onClick={addBankLine} className="rounded-2xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-5 py-3 text-sm font-black text-[#a9cd39]">Add bank</button>
+        <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4 space-y-3">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">POS terminals</p>
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+            <Field label="Terminal" value={posDraft.terminal} onChange={(e) => setPosDraft((p) => ({ ...p, terminal: e.target.value }))} placeholder="e.g. POS 1" />
+            <Field type="number" label="Amount (₦)" value={posDraft.amount} onChange={(e) => setPosDraft((p) => ({ ...p, amount: e.target.value }))} />
+            <button type="button" onClick={addPos} className="rounded-2xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-4 py-3 text-sm font-bold text-[#a9cd39]">Add</button>
+          </div>
+          {posLines.map((l) => (
+            <div key={l.id} className="flex justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm">
+              <span className="text-slate-300">{l.terminal}</span>
+              <div className="flex gap-3 items-center">
+                <span className="font-bold text-white">{money(l.amount)}</span>
+                <button type="button" onClick={() => setPosLines((p) => p.filter((x) => x.id !== l.id))} className="text-rose-400 font-bold text-xs">✕</button>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-          <Field label="POS terminal" value={posDraft.terminal} onChange={(e) => setPosDraft((prev) => ({ ...prev, terminal: e.target.value }))} />
-          <Field type="number" label="POS amount" value={posDraft.amount} onChange={(e) => setPosDraft((prev) => ({ ...prev, amount: e.target.value }))} />
-          <button type="button" onClick={addPosLine} className="rounded-2xl border border-[#a9cd39]/25 bg-[#a9cd39]/10 px-5 py-3 text-sm font-black text-[#a9cd39]">Add POS</button>
-        </div>
-      </section>
+        {error && <p className="text-sm text-rose-400">{error}</p>}
+        <NavButtons onBack={() => setStep(2)} onNext={() => { setError(''); setStep(4) }} nextLabel={bankLines.length === 0 && posLines.length === 0 ? 'Skip →' : 'Next →'} />
+      </div>
+    )
+  }
 
-      <section className="rounded-3xl border border-white/8 bg-white/[0.04] p-4">
-        <p className="mb-4 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Cash flow</p>
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field type="number" label="Cash B/F" value={form.cashBf} onChange={(e) => setForm((prev) => ({ ...prev, cashBf: e.target.value }))} />
-          <Field type="number" label="Cash sales" value={form.cashSales} onChange={(e) => setForm((prev) => ({ ...prev, cashSales: e.target.value }))} />
-          <Field type="number" label="Closing balance" value={form.closingBalance} onChange={(e) => setForm((prev) => ({ ...prev, closingBalance: e.target.value }))} />
+  // ─── Step 4: Cash Flow ────────────────────────────────────────────────────
+  if (step === 4) return (
+    <div className="space-y-5">
+      <StepHeader step={4} total={TOTAL_STEPS} label={STEPS[4]} />
+      <h2 className="text-2xl font-black text-white">Cash Flow</h2>
+      {carriedCashBf > 0 && (
+        <div className="rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 px-4 py-3 text-xs text-[#a9cd39]">
+          Cash B/F carried from last report: <span className="font-black">{money(carriedCashBf)}</span>
         </div>
-      </section>
-
-      <section className="rounded-3xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-4">
-        <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Review</p>
-        <div className="mt-3 grid gap-2 md:grid-cols-4">
-          <div><p className="text-xs text-slate-400">Qty sold</p><p className="font-black text-white">{kg(totals.quantitySoldKg)}</p></div>
-          <div><p className="text-xs text-slate-400">Sales value</p><p className="font-black text-white">{money(totals.salesAmount)}</p></div>
-          <div><p className="text-xs text-slate-400">Bank + POS</p><p className="font-black text-white">{money(totals.bankTotal + totals.posTotal)}</p></div>
-          <div><p className="text-xs text-slate-400">Variance</p><p className={`font-black ${Math.abs(totals.variance) > 0.5 ? 'text-amber-300' : 'text-[#a9cd39]'}`}>{money(totals.variance)}</p></div>
+      )}
+      <div className="space-y-4">
+        <Field type="number" label="Cash B/F (₦)" value={cashBf} onChange={(e) => setCashBf(e.target.value)} hint={carriedCashBf > 0 ? `Yesterday's closing balance: ${money(carriedCashBf)}` : ''} />
+        <Field type="number" label="Cash sales (₦)" value={cashSales} onChange={(e) => setCashSales(e.target.value)} />
+        <Field type="number" label="Closing balance (₦)" value={closingBalance} onChange={(e) => setClosingBalance(e.target.value)} />
+      </div>
+      {(n(cashBf) > 0 || n(cashSales) > 0) && (
+        <div className="rounded-xl border border-white/8 bg-white/5 px-4 py-3 space-y-1 text-sm">
+          <div className="flex justify-between"><span className="text-slate-400">Total in hand</span><span className="font-bold text-white">{money(totals.totalAmount)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">Bank + POS</span><span className="font-bold text-white">{money(totals.bankTotal + totals.posTotal)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">Variance</span><span className={`font-black ${Math.abs(totals.variance) > 0.5 ? 'text-amber-300' : 'text-[#a9cd39]'}`}>{money(totals.variance)}</span></div>
         </div>
-      </section>
+      )}
+      <NavButtons onBack={() => setStep(3)} onNext={() => { setError(''); setStep(5) }} />
+    </div>
+  )
 
-      <section className="rounded-3xl border border-white/8 bg-white/[0.04] p-4">
-        <p className="mb-1 text-xs font-black uppercase tracking-widest text-[#a9cd39]">EOD Documents</p>
-        <p className="mb-4 text-xs text-slate-500">Upload bank slips, POS receipts or any supporting documents</p>
+  // ─── Step 5: EOD Documents ────────────────────────────────────────────────
+  if (step === 5) {
+    const eodSlots = [
+      ...bankLines.map((l) => ({ slotId: `lpg-bank-${l.id}`, slotLabel: l.channel, category: 'Bank' })),
+      ...posLines.map((l) => ({ slotId: `lpg-pos-${l.id}`, slotLabel: l.terminal, category: 'POS' })),
+      ...extraSlotIds.map((sid) => ({ slotId: sid, slotLabel: 'Extra Document', category: 'Extra' })),
+    ]
+    return (
+      <div className="space-y-5">
+        <StepHeader step={5} total={TOTAL_STEPS} label={STEPS[5]} />
+        <h2 className="text-2xl font-black text-white">EOD Documents</h2>
+        <p className="text-sm text-slate-400">Upload bank slips, POS receipts or any supporting documents.</p>
         <div className="space-y-3">
-          {[
-            ...bankLines.map((line) => ({ slotId: `lpg-bank-${line.id}`, slotLabel: line.channel, category: 'Bank' })),
-            ...posLines.map((line) => ({ slotId: `lpg-pos-${line.id}`, slotLabel: line.terminal, category: 'POS' })),
-            ...extraSlotIds.map((sid) => ({ slotId: sid, slotLabel: 'Extra Document', category: 'Extra' })),
-          ].map(({ slotId, slotLabel, category }) => {
+          {eodSlots.map(({ slotId, slotLabel, category }) => {
             const files = eodUploads.filter((u) => u.slotId === slotId)
-            const inputId = `eod-${slotId}`
             const inputKey = eodInputKeys[slotId] || slotId
             const anyUploading = files.some((f) => f.status === 'uploading')
             const badgeCls = category === 'Bank' ? 'bg-blue-500/15 text-blue-400' : category === 'POS' ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-white/10 text-slate-400'
@@ -262,30 +396,73 @@ const LpgReportForm = ({ stationId, reportDate, submitReport, onSubmitted }) => 
                         {f.status === 'error' && <p className="text-xs text-rose-400">{f.error}</p>}
                       </div>
                     </div>
-                    <button type="button" onClick={() => removeEodFile(f.fileId)} className="ml-2 shrink-0 text-slate-500 hover:text-rose-400 transition text-sm">✕</button>
+                    <button type="button" onClick={() => removeEodFile(f.fileId)} className="ml-2 text-slate-500 hover:text-rose-400 text-sm">✕</button>
                   </div>
                 ))}
-                <label htmlFor={inputId} className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm transition ${anyUploading ? 'border-white/10 text-slate-600 cursor-not-allowed' : 'border-white/20 text-slate-400 hover:border-[#a9cd39]/40 hover:text-[#a9cd39]'}`}>
-                  <span>📎</span>
-                  <span>{files.length === 0 ? 'Tap to upload' : '+ Add another file'}</span>
+                <label htmlFor={`eod-${slotId}`} className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm transition ${anyUploading ? 'border-white/10 text-slate-600 cursor-not-allowed' : 'border-white/20 text-slate-400 hover:border-[#a9cd39]/40 hover:text-[#a9cd39]'}`}>
+                  <span>📎</span><span>{files.length === 0 ? 'Tap to upload' : '+ Add another'}</span>
                 </label>
-                <input id={inputId} key={inputKey} type="file" accept="image/*,application/pdf" disabled={anyUploading} onChange={(e) => addEodFile(slotId, slotLabel, category, e.target.files?.[0])} className="hidden" />
+                <input id={`eod-${slotId}`} key={inputKey} type="file" accept="image/*,application/pdf" disabled={anyUploading} onChange={(e) => addEodFile(slotId, slotLabel, category, e.target.files?.[0])} className="hidden" />
               </div>
             )
           })}
-          <button
-            type="button"
-            onClick={() => setExtraSlotIds((prev) => [...prev, `lpg-extra-${Date.now()}`])}
-            className="w-full rounded-xl border border-dashed border-white/10 py-3 text-sm font-medium text-slate-400 hover:border-[#a9cd39]/30 hover:text-[#a9cd39] transition"
-          >
+          <button type="button" onClick={() => setExtraSlotIds((p) => [...p, `lpg-extra-${Date.now()}`])}
+            className="w-full rounded-xl border border-dashed border-white/10 py-3 text-sm font-medium text-slate-400 hover:border-[#a9cd39]/30 hover:text-[#a9cd39] transition">
             + Add Document Slot
           </button>
         </div>
-      </section>
+        <NavButtons onBack={() => setStep(4)} onNext={() => { setError(''); setStep(6) }} nextLabel={eodSlots.length === 0 ? 'Skip →' : 'Next →'} />
+      </div>
+    )
+  }
 
-      <button type="button" disabled={submitting} onClick={handleSubmit} className="w-full rounded-2xl bg-[#a9cd39] px-5 py-4 text-sm font-black text-black disabled:opacity-50">
-        {submitting ? 'Submitting LPG report...' : 'Submit LPG Report'}
-      </button>
+  // ─── Step 6: Review & Submit ──────────────────────────────────────────────
+  return (
+    <div className="space-y-5">
+      <StepHeader step={6} total={TOTAL_STEPS} label={STEPS[6]} />
+      <h2 className="text-2xl font-black text-white">Review & Submit</h2>
+      {error && <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-300">{error}</div>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4 space-y-2">
+          <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Stock</p>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between"><span className="text-slate-400">Opening</span><span className="font-bold text-white">{kg(openingStockKg)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Closing</span><span className="font-bold text-white">{kg(closingStockKg)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Sold (stock)</span><span className="font-bold text-white">{kg(totals.stockSoldKg)}</span></div>
+            {totals.meterSoldKg > 0 && <div className="flex justify-between"><span className="text-slate-400">Sold (meter)</span><span className="font-bold text-[#a9cd39]">{kg(totals.meterSoldKg)}</span></div>}
+            <div className="flex justify-between"><span className="text-slate-400">Unit price</span><span className="font-bold text-white">{money(unitPrice)}/kg</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Sales value</span><span className="font-bold text-[#a9cd39]">{money(totals.salesAmount)}</span></div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4 space-y-2">
+          <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Cash flow</p>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between"><span className="text-slate-400">Cash B/F</span><span className="font-bold text-white">{money(cashBf)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Cash sales</span><span className="font-bold text-white">{money(cashSales)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Bank</span><span className="font-bold text-white">{money(totals.bankTotal)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">POS</span><span className="font-bold text-white">{money(totals.posTotal)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Closing balance</span><span className="font-bold text-white">{money(closingBalance)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Variance</span><span className={`font-black ${Math.abs(totals.variance) > 0.5 ? 'text-amber-300' : 'text-[#a9cd39]'}`}>{money(totals.variance)}</span></div>
+          </div>
+        </div>
+      </div>
+      {meterLines.length > 0 && (
+        <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4 space-y-2">
+          <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">Meter readings</p>
+          {meterLines.map((l) => (
+            <div key={l.id} className="flex justify-between text-sm">
+              <span className="text-slate-400">{l.label}</span>
+              <span className="text-white">{kg(l.opening)} → {kg(l.closing)} · <span className="font-bold text-[#a9cd39]">{kg(l.closing - l.opening)} sold</span></span>
+            </div>
+          ))}
+        </div>
+      )}
+      <NavButtons
+        onBack={() => setStep(5)}
+        onNext={handleSubmit}
+        nextLabel={submitting ? 'Submitting...' : 'Submit LPG Report'}
+        nextDisabled={submitting}
+      />
     </div>
   )
 }

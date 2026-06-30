@@ -230,6 +230,25 @@ const StaffDashboardPage = () => {
       .sort((a, b) => b.date.localeCompare(a.date))[0] || null
   }, [activeReportDate, reports, currentUser?.stationId])
 
+  const lpgPriorReport = useMemo(() => {
+    const sid = currentUser?.stationId
+    if (!sid) return null
+    return [...reports]
+      .filter((r) => r.stationId === sid && r.date < activeReportDate && r.reportType === 'lpg')
+      .sort((a, b) => b.date.localeCompare(a.date))[0] || null
+  }, [activeReportDate, reports, currentUser?.stationId])
+
+  const lpgCarriedOpeningKg = useMemo(() => Number(lpgPriorReport?.lpgReport?.closingStockKg || 0), [lpgPriorReport])
+  const lpgCarriedCashBf = useMemo(() => Number(lpgPriorReport?.closingBalance || lpgPriorReport?.lpgReport?.closingBalance || 0), [lpgPriorReport])
+  const lpgCarriedMeterClosings = useMemo(() => {
+    const meterLines = lpgPriorReport?.lpgReport?.meterLines || []
+    const map = {}
+    for (const line of meterLines) {
+      if (line?.label && line.closing != null) map[line.label] = Number(line.closing)
+    }
+    return map
+  }, [lpgPriorReport])
+
   const carriedOpening = useMemo(() => {
     if (!priorReport) return { pms: 0, ago: 0 }
     return { pms: getClosingForProduct(priorReport, 'pms'), ago: getClosingForProduct(priorReport, 'ago') }
@@ -524,6 +543,9 @@ const StaffDashboardPage = () => {
             reportDate={activeReportDate}
             submitReport={submitReport}
             onSubmitted={() => refreshFromSupabase()}
+            carriedOpeningKg={lpgCarriedOpeningKg}
+            carriedCashBf={lpgCarriedCashBf}
+            carriedMeterClosings={lpgCarriedMeterClosings}
           />
         ) : (
           <StaffClosingReportForm
