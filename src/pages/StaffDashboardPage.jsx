@@ -21,6 +21,7 @@ const StaffDashboardPage = () => {
   const markReceivedDispatchesReported = useAppStore((state) => state.markReceivedDispatchesReported)
   const reportingConfiguration = useAppStore((state) => state.appSettings.reportingConfiguration)
   const rejectedReports = useAppStore((state) => state.rejectedReports)
+  const submitSectionCorrection = useAppStore((state) => state.submitSectionCorrection)
 
   const todayIso = getReportingDateIso()
 
@@ -366,6 +367,10 @@ const StaffDashboardPage = () => {
     (r) => r.stationId === currentUser?.stationId && !stationReportDates.has(r.date),
   )
 
+  const pendingCorrectionRequests = reports.filter(
+    (r) => r.stationId === currentUser?.stationId && r.correctionRequest?.status === 'pending',
+  )
+
   return (
     <div className="mx-auto flex min-h-[calc(100vh-96px)] max-w-3xl flex-col space-y-3">
       {pendingRejections.map((rej) => (
@@ -378,6 +383,25 @@ const StaffDashboardPage = () => {
             <p className="mt-1 text-sm text-slate-300">Reason: {rej.reason}</p>
           )}
           <p className="mt-2 text-xs text-slate-400">Please fill and resubmit your report for this date.</p>
+        </div>
+      ))}
+      {pendingCorrectionRequests.map((report) => (
+        <div key={report.id} className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-4 space-y-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-widest text-amber-300 mb-1">Correction Requested</p>
+            <p className="text-sm font-semibold text-white">
+              Your report for <span className="text-amber-300">{report.date}</span> needs correction — requested by {report.correctionRequest?.requestedBy || 'your supervisor'}
+            </p>
+            {report.correctionRequest?.reason && (
+              <p className="mt-1 text-sm text-slate-300">"{report.correctionRequest.reason}"</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(report.correctionRequest?.sections || []).map((sec) => (
+              <span key={sec} className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-300">{sec}</span>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400">Only the sections above are unlocked for editing. Open the report below to make corrections.</p>
         </div>
       ))}
       {!currentUser?.stationId && (
@@ -563,6 +587,9 @@ const StaffDashboardPage = () => {
             reportDate={activeReportDate}
             reportingConfiguration={reportingConfiguration}
             submitReport={submitReport}
+            correctionRequest={pendingCorrectionRequests.find((r) => r.date === activeReportDate)?.correctionRequest || null}
+            correctionReportId={pendingCorrectionRequests.find((r) => r.date === activeReportDate)?.id || null}
+            submitSectionCorrection={submitSectionCorrection}
             formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled || !activeReportDate}
             onSubmitted={(result) => {
               if (result?.reportId && receivedDispatchesForReport.length) {

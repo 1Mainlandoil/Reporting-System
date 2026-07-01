@@ -310,6 +310,7 @@ const SupervisorDashboardPage = () => {
   const correctReportBySupervisor = useAppStore((state) => state.correctReportBySupervisor)
   const finalizeReportBySupervisor = useAppStore((state) => state.finalizeReportBySupervisor)
   const rejectReport = useAppStore((state) => state.rejectReport)
+  const requestSectionCorrection = useAppStore((state) => state.requestSectionCorrection)
 
   const productRequests = useAppStore((state) => state.productRequests)
   const reviewProductRequestBySupervisor = useAppStore((state) => state.reviewProductRequestBySupervisor)
@@ -328,6 +329,11 @@ const SupervisorDashboardPage = () => {
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectSubmitting, setRejectSubmitting] = useState(false)
+  const [correctionReqOpen, setCorrectionReqOpen] = useState(false)
+  const [correctionReqSections, setCorrectionReqSections] = useState([])
+  const [correctionReqReason, setCorrectionReqReason] = useState('')
+  const [correctionReqSubmitting, setCorrectionReqSubmitting] = useState(false)
+  const CORRECTION_SECTIONS = ['Stock', 'Sales Quantity', 'Pricing', 'Expenses', 'Cash', 'POS Terminals', 'Payments', 'Pump Readings']
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [correctionReason, setCorrectionReason] = useState('')
   const [correctionDraft, setCorrectionDraft] = useState(null)
@@ -3556,7 +3562,41 @@ const SupervisorDashboardPage = () => {
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          {rejectOpen ? (
+                          {correctionReqOpen ? (
+                            <>
+                              <p className="text-sm font-bold text-white">Request correction from manager</p>
+                              <p className="text-xs text-slate-400">Select which sections the manager should fix. Everything else stays locked.</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {CORRECTION_SECTIONS.map((sec) => (
+                                  <button key={sec} type="button"
+                                    onClick={() => setCorrectionReqSections((p) => p.includes(sec) ? p.filter((s) => s !== sec) : [...p, sec])}
+                                    className={`rounded-xl border px-3 py-2 text-xs font-bold text-left transition ${correctionReqSections.includes(sec) ? 'border-amber-400/40 bg-amber-400/10 text-amber-300' : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'}`}>
+                                    {correctionReqSections.includes(sec) ? '✓ ' : ''}{sec}
+                                  </button>
+                                ))}
+                              </div>
+                              <textarea value={correctionReqReason} onChange={(e) => setCorrectionReqReason(e.target.value)}
+                                placeholder="Explain what needs to be corrected..." rows={2}
+                                className="w-full rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-amber-400/50 focus:outline-none resize-none" />
+                              <div className="flex gap-3">
+                                <button type="button" onClick={() => { setCorrectionReqOpen(false); setCorrectionReqSections([]); setCorrectionReqReason('') }}
+                                  className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-semibold text-slate-400 hover:bg-white/5 transition">← Back</button>
+                                <button type="button"
+                                  disabled={correctionReqSections.length === 0 || !correctionReqReason.trim() || correctionReqSubmitting}
+                                  onClick={async () => {
+                                    if (!report?.id) return
+                                    setCorrectionReqSubmitting(true)
+                                    requestSectionCorrection({ reportId: report.id, sections: correctionReqSections, reason: correctionReqReason.trim() })
+                                    setCorrectionReqSubmitting(false)
+                                    setCorrectionReqOpen(false); setCorrectionReqSections([]); setCorrectionReqReason('')
+                                    closeDailyOpeningModal()
+                                  }}
+                                  className="flex-1 rounded-xl bg-amber-400 py-3 text-sm font-bold text-black hover:bg-amber-300 disabled:opacity-40 transition">
+                                  {correctionReqSubmitting ? 'Sending...' : 'Send Correction Request'}
+                                </button>
+                              </div>
+                            </>
+                          ) : rejectOpen ? (
                             <>
                               <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
                                 <p className="text-sm font-bold text-red-400 mb-1">Reject this report?</p>
@@ -3611,10 +3651,17 @@ const SupervisorDashboardPage = () => {
                               <div className="flex gap-3">
                                 <button
                                   type="button"
+                                  onClick={() => setCorrectionReqOpen(true)}
+                                  className="flex-1 rounded-xl border border-amber-400/30 bg-amber-400/10 py-3 text-sm font-semibold text-amber-300 hover:bg-amber-400/20 transition"
+                                >
+                                  Request Correction
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => setRejectOpen(true)}
                                   className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 py-3 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition"
                                 >
-                                  Reject Report
+                                  Reject
                                 </button>
                                 <button
                                   type="button"

@@ -11,6 +11,7 @@ import DateRangePicker from '../components/ui/DateRangePicker'
 import { exportAdminDailyReviewToExcel, exportStationsToExcel } from '../utils/exportExcel'
 import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics } from '../utils/stock'
+import { buildBatches, computeFifoCogs } from '../utils/batchCosting'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
@@ -76,6 +77,13 @@ const AdminDashboardPage = () => {
   const [inventoryVisibleKeys, setInventoryVisibleKeys] = useState(
     () => new Set(['stationName', 'stockRemaining', 'daysRemaining', 'status']),
   )
+  const [plCostingTab, setPlCostingTab] = useState('costed')
+  const [plDate, setPlDate] = useState(() => getReportingDateIso())
+  const [plMonth, setPlMonth] = useState(() => getReportingDateIso().slice(0, 7))
+  const [plYear, setPlYear] = useState(() => getReportingDateIso().slice(0, 4))
+  const [plWeek, setPlWeek] = useState('')
+  const [plExpandedStation, setPlExpandedStation] = useState(null)
+  const [plSelectedStation, setPlSelectedStation] = useState('all')
   const [costingSearch, setCostingSearch] = useState('')
   const [costingProduct, setCostingProduct] = useState('all')
   const [costingStation, setCostingStation] = useState('all')
@@ -209,22 +217,17 @@ const AdminDashboardPage = () => {
     }),
     [filteredCostingRows],
   )
-  const averageLandingCostByProduct = useMemo(() => {
-    const byProduct = new Map()
-    for (const row of costingRows) {
-      const product = row.product === 'AGO' ? 'AGO' : 'PMS'
-      const current = byProduct.get(product) || { liters: 0, cost: 0 }
-      current.liters += Number(row.approvedLiters || 0)
-      current.cost += Number(row.totalLandingCost || 0)
-      byProduct.set(product, current)
+  const fifoCogs = useMemo(() => {
+    try {
+      const batches = buildBatches(productRequests)
+      return computeFifoCogs(batches, reports)
+    } catch (e) {
+      console.error('FIFO costing error:', e)
+      return {}
     }
-    return {
-      PMS: byProduct.get('PMS')?.liters ? byProduct.get('PMS').cost / byProduct.get('PMS').liters : 0,
-      AGO: byProduct.get('AGO')?.liters ? byProduct.get('AGO').cost / byProduct.get('AGO').liters : 0,
-    }
-  }, [costingRows])
+  }, [productRequests, reports])
 
-  const profitRows = useMemo(
+  const allProfitRows = useMemo(
     () =>
       reports
         .filter((report) => report.date && (report.reportType || 'fuel') !== 'lpg')
@@ -235,9 +238,8 @@ const AdminDashboardPage = () => {
           const pmsRevenue = getReportRevenue(report, 'PMS')
           const agoRevenue = getReportRevenue(report, 'AGO')
           const revenue = pmsRevenue + agoRevenue
-          const pmsCost = pmsLiters * averageLandingCostByProduct.PMS
-          const agoCost = agoLiters * averageLandingCostByProduct.AGO
-          const cogs = pmsCost + agoCost
+          const fifo = fifoCogs[report.id] || { cogs: 0, costingStatus: 'uncosted' }
+          const cogs = fifo.cogs
           const expense = Number(report.expenseAmount || 0)
           const grossProfit = revenue - cogs
           const netProfit = grossProfit - expense
@@ -260,11 +262,19 @@ const AdminDashboardPage = () => {
             grossProfit,
             netProfit,
             margin: revenue ? (netProfit / revenue) * 100 : 0,
+            costingStatus: fifo.costingStatus,
             sourceStatus: report.supervisorReview?.status || report.reviewStatus || 'Submitted',
           }
         })
         .sort((a, b) => String(b.date).localeCompare(String(a.date))),
-    [averageLandingCostByProduct.AGO, averageLandingCostByProduct.PMS, reports, stations],
+    [fifoCogs, reports, stations],
+  )
+
+  const profitRows = useMemo(
+    () => plCostingTab === 'yet-to-cost'
+      ? allProfitRows.filter((r) => r.costingStatus !== 'costed')
+      : allProfitRows.filter((r) => r.costingStatus === 'costed' || r.costingStatus === 'partial'),
+    [allProfitRows, plCostingTab],
   )
 
   const summarizeProfitRows = (rowsToSummarize, keyGetter, labelGetter = keyGetter) => {
@@ -312,11 +322,32 @@ const AdminDashboardPage = () => {
     }
   }, [profitRows])
 
-  const dailyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.date), [profitRows])
-  const weeklyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.week), [profitRows])
-  const monthlyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.month), [profitRows])
-  const yearlyProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.year), [profitRows])
-  const stationProfitRows = useMemo(() => summarizeProfitRows(profitRows, (row) => row.stationId, (row) => row.stationName), [profitRows])
+  const currentWeek = getWeekKey(today)
+  const currentMonth = today.slice(0, 7)
+  const currentYear = today.slice(0, 4)
+  const yesterday = useMemo(() => {
+    const d = new Date(`${today}T00:00:00`)
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().slice(0, 10)
+  }, [today])
+  const prevWeek = useMemo(() => getWeekKey(yesterday), [yesterday])
+  const prevMonth = useMemo(() => {
+    const d = new Date(`${today.slice(0, 7)}-01T00:00:00`)
+    d.setMonth(d.getMonth() - 1)
+    return d.toISOString().slice(0, 7)
+  }, [today])
+  const prevYear = String(Number(currentYear) - 1)
+
+  const dailyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.date === today), (row) => row.date), [profitRows, today])
+  const prevDailyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.date === yesterday), (row) => row.date), [profitRows, yesterday])
+  const weeklyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.week === currentWeek), (row) => row.date), [profitRows, currentWeek])
+  const prevWeeklyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.week === prevWeek), (row) => row.date), [profitRows, prevWeek])
+  const monthlyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.month === currentMonth), (row) => row.date), [profitRows, currentMonth])
+  const prevMonthlyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.month === prevMonth), (row) => row.date), [profitRows, prevMonth])
+  const yearlyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.year === currentYear), (row) => row.month), [profitRows, currentYear])
+  const prevYearlyProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.year === prevYear), (row) => row.month), [profitRows, prevYear])
+  const stationProfitRows = useMemo(() => summarizeProfitRows(profitRows.filter((r) => r.month === currentMonth), (row) => row.stationId, (row) => row.stationName), [profitRows, currentMonth])
+
   const reportDatesByStation = useMemo(() => {
     const byStation = new Map()
     for (const report of reports) {
@@ -1207,6 +1238,65 @@ const AdminDashboardPage = () => {
     },
   }
   const activeProfitLossView = profitLossViewMeta[adminView]
+
+  const periodSummary = useMemo(() => {
+    const calc = (rows) => {
+      const revenue = rows.reduce((s, r) => s + r.revenue, 0)
+      const cogs = rows.reduce((s, r) => s + r.cogs, 0)
+      const expense = rows.reduce((s, r) => s + r.expense, 0)
+      const grossProfit = revenue - cogs
+      const netProfit = grossProfit - expense
+      return { revenue, cogs, expense, grossProfit, netProfit, margin: revenue ? (netProfit / revenue) * 100 : 0, reports: rows.length }
+    }
+    const curr =
+      adminView === 'profit-loss/daily' ? calc(profitRows.filter((r) => r.date === today))
+      : adminView === 'profit-loss/weekly' ? calc(profitRows.filter((r) => r.week === currentWeek))
+      : adminView === 'profit-loss/monthly' ? calc(profitRows.filter((r) => r.month === currentMonth))
+      : adminView === 'profit-loss/yearly' ? calc(profitRows.filter((r) => r.year === currentYear))
+      : null
+    const prev =
+      adminView === 'profit-loss/daily' ? calc(profitRows.filter((r) => r.date === yesterday))
+      : adminView === 'profit-loss/weekly' ? calc(profitRows.filter((r) => r.week === prevWeek))
+      : adminView === 'profit-loss/monthly' ? calc(profitRows.filter((r) => r.month === prevMonth))
+      : adminView === 'profit-loss/yearly' ? calc(profitRows.filter((r) => r.year === prevYear))
+      : null
+    return { curr, prev }
+  }, [adminView, profitRows, today, yesterday, currentWeek, prevWeek, currentMonth, prevMonth, currentYear, prevYear])
+
+  const plStationCards = useMemo(() => {
+    let filtered = profitRows
+    if (adminView === 'profit-loss/daily') filtered = profitRows.filter((r) => r.date === plDate)
+    else if (adminView === 'profit-loss/weekly') filtered = profitRows.filter((r) => plWeek ? r.week === plWeek : r.week === currentWeek)
+    else if (adminView === 'profit-loss/monthly') filtered = profitRows.filter((r) => r.month === plMonth)
+    else if (adminView === 'profit-loss/yearly') filtered = profitRows.filter((r) => r.year === plYear)
+    else if (adminView === 'profit-loss/stations') {
+      filtered = profitRows.filter((r) => r.month === plMonth && (plSelectedStation === 'all' || r.stationId === plSelectedStation))
+    }
+    const map = new Map()
+    for (const r of filtered) {
+      const existing = map.get(r.stationId) || {
+        stationId: r.stationId, stationName: r.stationName,
+        managerName: stationManagerById.get(r.stationId) || 'Unassigned',
+        pmsLiters: 0, agoLiters: 0, litersSold: 0,
+        revenue: 0, cogs: 0, expense: 0, grossProfit: 0, netProfit: 0,
+        reports: 0, rows: [],
+      }
+      existing.pmsLiters += r.pmsLiters
+      existing.agoLiters += r.agoLiters
+      existing.litersSold += r.litersSold
+      existing.revenue += r.revenue
+      existing.cogs += r.cogs
+      existing.expense += r.expense
+      existing.grossProfit += r.grossProfit
+      existing.netProfit += r.netProfit
+      existing.reports += 1
+      existing.rows.push(r)
+      map.set(r.stationId, existing)
+    }
+    return [...map.values()]
+      .map((s) => ({ ...s, margin: s.revenue ? (s.netProfit / s.revenue) * 100 : 0 }))
+      .sort((a, b) => b.netProfit - a.netProfit)
+  }, [adminView, profitRows, plDate, plWeek, plMonth, plYear, plSelectedStation, currentWeek, stationManagerById])
   const profitColumns = [
     { key: 'label', header: 'Period / Station', minWidth: 160 },
     { key: 'reports', header: 'Reports', minWidth: 90, render: (row) => Number(row.reports || 0).toLocaleString() },
@@ -1331,45 +1421,82 @@ const AdminDashboardPage = () => {
       )}
 
       {isDashboardView && (
-        <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Card>
-              <p className="text-sm text-slate-500">Critical Stations</p>
-              <p className="text-2xl font-bold text-red-600">{alerts.critical.length}</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-slate-500">Warning Stations</p>
-              <p className="text-2xl font-bold text-yellow-600">{alerts.warning.length}</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-slate-500">Total Retail Stations</p>
-              <p className="text-2xl font-bold">{stations.length}</p>
-            </Card>
+        <Card className="space-y-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <input type="date" value={plDate} max={today} onChange={(e) => { setPlDate(e.target.value); setPlExpandedStation(null) }}
+              className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+            <div className="flex gap-3 ml-auto text-xs text-slate-400">
+              <span>Submitted: <span className="font-bold text-[#a9cd39]">{submittedTodayCount}</span></span>
+              <span>Pending: <span className="font-bold text-amber-300">{pendingTodayCount}</span></span>
+              <span>Stations: <span className="font-bold text-white">{stations.length}</span></span>
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-            <Card>
-              <p className="text-sm text-slate-500">Submitted Today</p>
-              <p className="text-2xl font-bold text-emerald-600">{submittedTodayCount}</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-slate-500">Pending Today</p>
-              <p className="text-2xl font-bold text-amber-600">{pendingTodayCount}</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-slate-500">Total Sales Today (L)</p>
-              <p className="text-2xl font-bold">{Math.round(totalSalesToday).toLocaleString()}</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-slate-500">Total Expense Today (NGN)</p>
-              <p className="text-2xl font-bold">{Math.round(totalExpenseToday).toLocaleString()}</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-slate-500">Total Cash Today (NGN)</p>
-              <p className="text-2xl font-bold">{Math.round(totalCashToday).toLocaleString()}</p>
-            </Card>
-          </div>
-        </>
+          {(() => {
+            const dayCards = profitRows.filter((r) => r.date === plDate)
+            const grouped = new Map()
+            for (const r of dayCards) {
+              const existing = grouped.get(r.stationId) || {
+                stationId: r.stationId, stationName: r.stationName,
+                managerName: stationManagerById.get(r.stationId) || 'Unassigned',
+                pmsLiters: 0, agoLiters: 0, litersSold: 0,
+                revenue: 0, cogs: 0, expense: 0, grossProfit: 0, netProfit: 0, reports: 0, rows: [],
+              }
+              existing.pmsLiters += r.pmsLiters; existing.agoLiters += r.agoLiters
+              existing.litersSold += r.litersSold; existing.revenue += r.revenue
+              existing.cogs += r.cogs; existing.expense += r.expense
+              existing.grossProfit += r.grossProfit; existing.netProfit += r.netProfit
+              existing.reports += 1; existing.rows.push(r)
+              grouped.set(r.stationId, existing)
+            }
+            const cards = [...grouped.values()]
+              .map((s) => ({ ...s, margin: s.revenue ? (s.netProfit / s.revenue) * 100 : 0 }))
+              .sort((a, b) => b.netProfit - a.netProfit)
+            if (cards.length === 0) return <EmptyState title={`No P/L data for ${plDate}`} message="No costed reports submitted for this date yet." />
+            return (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {cards.map((s) => {
+                  const isOpen = plExpandedStation === s.stationId
+                  const profitColor = s.netProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'
+                  const marginBg = s.margin >= 20 ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : s.margin >= 5 ? 'bg-amber-400/15 text-amber-300' : 'bg-rose-400/15 text-rose-300'
+                  return (
+                    <button key={s.stationId} type="button" onClick={() => setPlExpandedStation(isOpen ? null : s.stationId)}
+                      className={`rounded-2xl border text-left transition hover:brightness-110 ${isOpen ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}>
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-black text-white text-base leading-tight">{s.stationName}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{s.managerName}</p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${marginBg}`}>{s.margin.toFixed(1)}%</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Litres</p><p className="text-sm font-bold text-white">{Math.round(s.litersSold).toLocaleString()}</p></div>
+                          <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Revenue</p><p className="text-sm font-bold text-white">{money(s.revenue)}</p></div>
+                          <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Net P/L</p><p className={`text-sm font-black ${profitColor}`}>{money(s.netProfit)}</p></div>
+                        </div>
+                        <p className="text-[10px] text-slate-600 text-right">{isOpen ? '▲ Hide' : '▼ Details'}</p>
+                      </div>
+                      {isOpen && (
+                        <div className="border-t border-white/8 p-4 space-y-2" onClick={(e) => e.stopPropagation()}>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {[['PMS Litres', `${Math.round(s.pmsLiters).toLocaleString()} L`], ['AGO Litres', `${Math.round(s.agoLiters).toLocaleString()} L`],
+                              ['Revenue', money(s.revenue)], ['COGS', money(s.cogs)], ['Gross Profit', money(s.grossProfit)], ['Expenses', money(s.expense)], ['Net P/L', money(s.netProfit)]
+                            ].map(([label, value]) => (
+                              <div key={label} className="flex justify-between gap-2">
+                                <span className="text-slate-400">{label}</span>
+                                <span className="font-semibold text-white text-right">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })()}
+        </Card>
       )}
 
       {activeProfitLossView && (
@@ -1383,12 +1510,30 @@ const AdminDashboardPage = () => {
                 <h2 className="mt-2 text-2xl font-black">{activeProfitLossView.title}</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-400">{activeProfitLossView.subtitle}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-right">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cost basis</p>
-                <p className="mt-1 text-sm text-slate-200">
-                  PMS {money(averageLandingCostByProduct.PMS)}/L · AGO {money(averageLandingCostByProduct.AGO)}/L
-                </p>
-              </div>
+              {adminView !== 'profit-loss/costing' && (
+                <div className="flex gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+                  {[
+                    { key: 'costed', label: 'Costed', color: 'text-[#a9cd39]', activeBg: 'bg-[#a9cd39]/15 border-[#a9cd39]/30' },
+                    { key: 'yet-to-cost', label: 'Yet to Cost', color: 'text-amber-300', activeBg: 'bg-amber-300/10 border-amber-300/30' },
+                  ].map(({ key, label, color, activeBg }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setPlCostingTab(key)}
+                      className={`flex-1 rounded-xl border px-3 py-2 text-xs font-black transition ${
+                        plCostingTab === key ? `${activeBg} ${color}` : 'border-transparent text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      {label}
+                      <span className="ml-1.5 text-[10px] opacity-60">
+                        {key === 'costed'
+                          ? allProfitRows.filter((r) => r.costingStatus === 'costed' || r.costingStatus === 'partial').length
+                          : allProfitRows.filter((r) => r.costingStatus === 'uncosted').length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1399,18 +1544,25 @@ const AdminDashboardPage = () => {
                     ['Weighted landing/L', money(costingSummary.weightedLandingCost), 'Across filtered dispatches'],
                     ['Needs costing', String(costingSummary.missingCost + costingSummary.transportPending), `${costingSummary.costed} fully costed`],
                   ]
-                : [
-                    ['Revenue', money(profitSummary.revenue), 'Sales value from reports'],
-                    ['COGS', money(profitSummary.cogs), 'Liters sold x landing cost'],
-                    ['Expenses', money(profitSummary.expense), 'Manager expense lines'],
-                    ['Net P/L', money(profitSummary.netProfit), `${profitSummary.margin.toFixed(1)}% margin`],
-                  ]
+                : periodSummary.curr
+                  ? [
+                      ['Revenue', money(periodSummary.curr.revenue), periodSummary.prev ? `vs prev: ${money(periodSummary.prev.revenue)}` : 'Sales value from reports'],
+                      ['COGS', money(periodSummary.curr.cogs), 'Liters sold x landing cost'],
+                      ['Expenses', money(periodSummary.curr.expense), 'Manager expense lines'],
+                      ['Net P/L', money(periodSummary.curr.netProfit), `${periodSummary.curr.margin.toFixed(1)}% margin${periodSummary.prev ? ` · prev: ${money(periodSummary.prev.netProfit)}` : ''}`],
+                    ]
+                  : [
+                      ['Revenue', money(profitSummary.revenue), 'Sales value from reports'],
+                      ['COGS', money(profitSummary.cogs), 'Liters sold x landing cost'],
+                      ['Expenses', money(profitSummary.expense), 'Manager expense lines'],
+                      ['Net P/L', money(profitSummary.netProfit), `${profitSummary.margin.toFixed(1)}% margin`],
+                    ]
               ).map(([label, value, hint]) => (
                 <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                   <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</p>
                   <p
                     className={`mt-2 text-xl font-black ${
-                      label === 'Net P/L' && profitSummary.netProfit < 0
+                      label === 'Net P/L' && (periodSummary.curr ? periodSummary.curr.netProfit : profitSummary.netProfit) < 0
                         ? 'text-rose-400'
                         : label === 'Needs costing' && value !== '0'
                           ? 'text-amber-300'
@@ -1609,24 +1761,109 @@ const AdminDashboardPage = () => {
               )}
             </Card>
           ) : adminView !== 'profit-loss' ? (
-            <Card className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-xl font-bold">{activeProfitLossView.title} Breakdown</h3>
-                  <p className="text-sm text-slate-500">Revenue - COGS - expenses, using current landing cost basis.</p>
-                </div>
-                <span className="rounded-full bg-[#a9cd39]/15 px-3 py-1 text-sm font-bold text-[#a9cd39]">
-                  {activeProfitRows.length} row{activeProfitRows.length === 1 ? '' : 's'}
-                </span>
+            <Card className="space-y-5">
+              {/* Period picker */}
+              <div className="flex flex-wrap items-center gap-3">
+                {adminView === 'profit-loss/daily' && (
+                  <input type="date" value={plDate} max={today} onChange={(e) => { setPlDate(e.target.value); setPlExpandedStation(null) }}
+                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+                )}
+                {adminView === 'profit-loss/weekly' && (
+                  <input type="week" value={plWeek || `${currentYear}-W${String(Number(currentWeek.split('W')[1])).padStart(2,'0')}`}
+                    onChange={(e) => { setPlWeek(e.target.value.replace('-W', ' W').replace(/^(\d{4}) W0?(\d+)$/, (_, y, w) => `${y} W${w.padStart(2,'0')}`)); setPlExpandedStation(null) }}
+                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+                )}
+                {(adminView === 'profit-loss/monthly' || adminView === 'profit-loss/stations') && (
+                  <input type="month" value={plMonth} onChange={(e) => { setPlMonth(e.target.value); setPlExpandedStation(null) }}
+                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+                )}
+                {adminView === 'profit-loss/yearly' && (
+                  <select value={plYear} onChange={(e) => { setPlYear(e.target.value); setPlExpandedStation(null) }}
+                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
+                    {Array.from({ length: 5 }, (_, i) => String(Number(today.slice(0,4)) - i)).map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                )}
+                {adminView === 'profit-loss/stations' && (
+                  <select value={plSelectedStation} onChange={(e) => { setPlSelectedStation(e.target.value); setPlExpandedStation(null) }}
+                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
+                    <option value="all">All stations</option>
+                    {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                )}
+                <span className="ml-auto text-xs text-slate-500">{plStationCards.length} station{plStationCards.length !== 1 ? 's' : ''}</span>
               </div>
-              {activeProfitRows.length ? (
-                <DataTable
-                  columns={adminView === 'profit-loss/daily' ? dailyColumns : profitColumns}
-                  rows={activeProfitRows}
-                  tableClassName="min-w-[1180px]"
-                />
+
+              {/* Station cards */}
+              {plStationCards.length === 0 ? (
+                <EmptyState title="No data for this period" message="No costed reports found for the selected period." />
               ) : (
-                <EmptyState title="No P/L data yet" message="Finalised/ submitted reports with sales, prices, expenses and costing will appear here." />
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {plStationCards.map((s) => {
+                    const isOpen = plExpandedStation === s.stationId
+                    const profitColor = s.netProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'
+                    const marginBg = s.margin >= 20 ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : s.margin >= 5 ? 'bg-amber-400/15 text-amber-300' : 'bg-rose-400/15 text-rose-300'
+                    return (
+                      <button
+                        key={s.stationId}
+                        type="button"
+                        onClick={() => setPlExpandedStation(isOpen ? null : s.stationId)}
+                        className={`rounded-2xl border text-left transition hover:brightness-110 ${isOpen ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}
+                      >
+                        <div className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-black text-white text-base leading-tight">{s.stationName}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{s.managerName}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${marginBg}`}>{s.margin.toFixed(1)}%</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div>
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Litres</p>
+                              <p className="text-sm font-bold text-white">{Math.round(s.litersSold).toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Revenue</p>
+                              <p className="text-sm font-bold text-white">{money(s.revenue)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Net P/L</p>
+                              <p className={`text-sm font-black ${profitColor}`}>{money(s.netProfit)}</p>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-slate-600 text-right">{isOpen ? '▲ Hide' : '▼ Details'}</p>
+                        </div>
+
+                        {isOpen && (
+                          <div className="border-t border-white/8 p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              {[
+                                ['PMS Litres', `${Math.round(s.pmsLiters).toLocaleString()} L`],
+                                ['AGO Litres', `${Math.round(s.agoLiters).toLocaleString()} L`],
+                                ['Revenue', money(s.revenue)],
+                                ['COGS', money(s.cogs)],
+                                ['Gross Profit', money(s.grossProfit)],
+                                ['Expenses', money(s.expense)],
+                                ['Net P/L', money(s.netProfit)],
+                                ['Reports', String(s.reports)],
+                              ].map(([label, value]) => (
+                                <div key={label} className="flex justify-between gap-2">
+                                  <span className="text-slate-400 text-xs">{label}</span>
+                                  <span className="font-semibold text-white text-xs text-right">{value}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {adminView === 'profit-loss/daily' && s.rows.length > 0 && s.rows[0].sourceStatus && (
+                              <p className="text-xs text-slate-500">Status: {s.rows[0].sourceStatus}</p>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
               )}
             </Card>
           ) : null}

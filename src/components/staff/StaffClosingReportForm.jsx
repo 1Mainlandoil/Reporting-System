@@ -104,7 +104,34 @@ const StaffClosingReportForm = ({
   priorPrices = { pms: 0, ago: 0, date: '' },
   pumpLastClosings = {}, // { [label::productType]: { closing, date, productType } }
   receivedDispatches = [],
+  correctionRequest = null,
+  correctionReportId = null,
+  submitSectionCorrection = null,
 }) => {
+  const isCorrectionMode = !!correctionRequest && correctionRequest.status === 'pending'
+  const unlockedSections = correctionRequest?.sections || []
+
+  // Map section names to step indices for skipping in correction mode
+  const SECTION_STEP_MAP = {
+    'Stock': 1, 'Sales Quantity': 2, 'Pricing': 3, 'Received': 4,
+    'Expenses': 5, 'Cash': 6, 'POS Terminals': 7, 'Payments': 8,
+    'Pump Readings': 10,
+  }
+  const allowedSteps = isCorrectionMode
+    ? new Set([0, ...unlockedSections.map((s) => SECTION_STEP_MAP[s]).filter(Boolean), 11])
+    : null
+
+  const goToStep = (n) => {
+    if (!allowedSteps) { setStep(n); return }
+    // In correction mode, find the nearest allowed step in the direction of travel
+    if (allowedSteps.has(n)) { setStep(n); return }
+    const dir = n > step ? 1 : -1
+    let target = n + dir
+    while (target >= 0 && target <= 11) {
+      if (allowedSteps.has(target)) { setStep(target); return }
+      target += dir
+    }
+  }
   const receivedDispatchTotals = receivedDispatches.reduce(
     (totals, dispatch) => {
       const productType = dispatch.approvedProductType || dispatch.requestedProductType
@@ -383,6 +410,26 @@ const StaffClosingReportForm = ({
     if (event?.preventDefault) event.preventDefault()
     setSubmitError('')
     if (!stationId) { window.alert('Your account is not linked to a station.'); return }
+
+    // Correction mode — submit only the unlocked section patches
+    if (isCorrectionMode && correctionReportId && submitSectionCorrection) {
+      setSubmitting(true)
+      try {
+        const patch = {}
+        if (unlockedSections.includes('Stock')) { patch.closingStockPMS = Number(formData.closingStockPMS || 0); patch.closingStockAGO = Number(formData.closingStockAGO || 0) }
+        if (unlockedSections.includes('Sales Quantity')) { patch.managerSalesPMS = Number(formData.managerSalesPMS || 0); patch.managerSalesAGO = Number(formData.managerSalesAGO || 0) }
+        if (unlockedSections.includes('Pricing')) { patch.pmsPrice = Number(formData.pmsPrice || 0); patch.agoPrice = Number(formData.agoPrice || 0) }
+        if (unlockedSections.includes('Expenses')) { patch.expenseItems = expenseItems; patch.expenseAmount = expenseItems.reduce((s, i) => s + Number(i.amount || 0), 0) }
+        if (unlockedSections.includes('Cash')) { patch.cashBf = Number(effectiveCashBf || 0); patch.cashSales = Number(formData.cashSales || 0); patch.closingBalance = Number(formData.closingBalanceOverride || effectiveClosingBalance || 0) }
+        if (unlockedSections.includes('POS Terminals')) { patch.posTerminalBreakdown = assignedPosTerminals.map((t) => ({ terminalId: t.id, name: t.name, amount: Number(posTerminalAmounts[t.id] || 0) })) }
+        if (unlockedSections.includes('Payments')) { patch.paymentBreakdown = paymentBreakdown }
+        if (unlockedSections.includes('Pump Readings')) { patch.pumpReadings = pumpReadings }
+        submitSectionCorrection({ reportId: correctionReportId, patch })
+        setStep(0); setSuccess(true)
+      } finally { setSubmitting(false) }
+      return
+    }
+
     if (formDisabled || !reportingConfiguration.dailyOpeningStockFormatEnabled) { window.alert('Daily reporting is disabled.'); return }
 
     if (!isNoSalesDay) {
@@ -1794,6 +1841,13 @@ const StaffClosingReportForm = ({
 
   return (
     <form onSubmit={(e) => e.preventDefault()} noValidate>
+      {isCorrectionMode && (
+        <div className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 space-y-2">
+          <p className="text-xs font-black uppercase tracking-widest text-amber-300">Correction Mode</p>
+          <p className="text-sm text-slate-300">Only unlocked sections are editable: <span className="font-bold text-amber-300">{unlockedSections.join(', ')}</span></p>
+          {correctionRequest?.reason && <p className="text-xs text-slate-400">"{correctionRequest.reason}"</p>}
+        </div>
+      )}
       {!reportingConfiguration.dailyOpeningStockFormatEnabled && (
         <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           Daily reporting is currently disabled in settings.

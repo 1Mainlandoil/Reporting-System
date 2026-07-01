@@ -558,6 +558,60 @@ export const useAppStore = create(
         })
         return { ok: true }
       },
+      requestSectionCorrection: ({ reportId, sections, reason }) =>
+        set((state) => {
+          const report = state.reports.find((r) => r.id === reportId)
+          if (!report) return { reports: state.reports }
+          const now = new Date().toISOString()
+          const updated = {
+            ...report,
+            correctionRequest: {
+              sections,
+              reason: String(reason || '').trim(),
+              requestedBy: state.currentUser?.name || 'Supervisor',
+              requestedByUserId: state.currentUser?.id || null,
+              requestedAt: now,
+              status: 'pending',
+            },
+            supervisorReview: {
+              status: 'Needs Correction',
+              remark: String(reason || '').trim(),
+              reviewedBy: state.currentUser?.name || 'Supervisor',
+              reviewedAt: now,
+            },
+          }
+          insertReport(updated).catch(() => {})
+          return { reports: state.reports.map((r) => r.id === reportId ? updated : r) }
+        }),
+      submitSectionCorrection: ({ reportId, patch }) =>
+        set((state) => {
+          const report = state.reports.find((r) => r.id === reportId)
+          if (!report) return { reports: state.reports }
+          const now = new Date().toISOString()
+          const updated = {
+            ...report,
+            ...patch,
+            correctionRequest: { ...report.correctionRequest, status: 'corrected', correctedAt: now },
+            supervisorCorrectionHistory: [
+              ...(Array.isArray(report.supervisorCorrectionHistory) ? report.supervisorCorrectionHistory : []),
+              {
+                correctedBy: state.currentUser?.name || 'Manager',
+                correctedByUserId: state.currentUser?.id || null,
+                correctedAt: now,
+                reason: `Manager correction — sections: ${(report.correctionRequest?.sections || []).join(', ')}`,
+                type: 'manager_correction',
+                sections: report.correctionRequest?.sections || [],
+              },
+            ],
+            supervisorReview: {
+              ...report.supervisorReview,
+              status: 'Pending Review',
+              remark: 'Manager submitted corrections — awaiting supervisor review',
+            },
+          }
+          insertReport(updated).catch(() => {})
+          return { reports: state.reports.map((r) => r.id === reportId ? updated : r) }
+        }),
       updateReportSupervisorReview: ({ reportId, status, remark }) =>
         set((state) => ({
           reports: state.reports.map((report) =>
