@@ -2,8 +2,6 @@ export const linksByRole = {
   admin: [
     { label: 'Dashboard', path: '/admin/profit-loss' },
     { label: 'Costing', path: '/admin/profit-loss/costing' },
-    { label: 'Weekly P/L', path: '/admin/profit-loss/weekly' },
-    { label: 'Monthly P/L', path: '/admin/profit-loss/monthly' },
     { label: 'Yearly P/L', path: '/admin/profit-loss/yearly' },
     { label: 'Station P/L', path: '/admin/profit-loss/stations' },
     { label: 'Finalised Report', path: '/admin/reports' },

@@ -90,7 +90,7 @@ const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) =
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-[#0d1220]/95 backdrop-blur-md">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-[#0d1220]">
         <div className="flex h-16 items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-3">
             {onToggleSidebar ? (
@@ -103,11 +103,7 @@ const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) =
                 <MenuIcon />
               </button>
             ) : null}
-            <img src={MAINLAND_LOGO_SRC} alt="Mainland Oil" className="h-7 w-auto" />
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-white leading-none">Mainland Oil</p>
-              <p className="mt-0.5 text-xs uppercase leading-none tracking-widest text-[#a9cd39]">{roleLabel}</p>
-            </div>
+            <img src={MAINLAND_LOGO_SRC} alt="MEST" className="h-20 w-auto" />
           </div>
 
           <div className="flex items-center gap-2">
@@ -188,11 +184,8 @@ const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) =
       >
         <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
           <div className="flex items-center gap-3">
-            <img src={MAINLAND_LOGO_SRC} alt="" className="h-7 w-auto" />
-            <div>
-              <p className="text-sm font-bold text-white">Menu</p>
-              <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{roleLabel}</p>
-            </div>
+            <img src={MAINLAND_LOGO_SRC} alt="MEST" className="h-20 w-auto" />
+            <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{roleLabel}</p>
           </div>
           <button
             type="button"

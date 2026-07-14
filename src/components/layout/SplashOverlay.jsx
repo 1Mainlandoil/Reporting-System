@@ -1,41 +1,50 @@
-import { useEffect, useState } from 'react'
-import { MAINLAND_LOGO_SRC } from '../../constants/brandLogo'
+import { useEffect, useRef, useState } from 'react'
 
-const SPLASH_MS = 3000
-const FADE_MS = 400
-
-/** Facebook-style branded splash on cold load (full page refresh). */
 export default function SplashOverlay() {
   const [phase, setPhase] = useState('show')
+  const videoRef = useRef(null)
 
   useEffect(() => {
-    const fadeTimer = window.setTimeout(() => setPhase('fade'), SPLASH_MS - FADE_MS)
-    const hideTimer = window.setTimeout(() => setPhase('hidden'), SPLASH_MS)
+    const video = videoRef.current
+    if (!video) return
+
+    const onEnded = () => setPhase('fade')
+    video.addEventListener('ended', onEnded)
+
+    // Fallback: if video fails to load or play, hide after 5s
+    const fallback = window.setTimeout(() => setPhase('fade'), 8000)
+
+    video.play().catch(() => setPhase('fade'))
+
     return () => {
-      window.clearTimeout(fadeTimer)
-      window.clearTimeout(hideTimer)
+      video.removeEventListener('ended', onEnded)
+      window.clearTimeout(fallback)
     }
   }, [])
 
-  if (phase === 'hidden') {
-    return null
-  }
+  useEffect(() => {
+    if (phase === 'fade') {
+      const t = window.setTimeout(() => setPhase('hidden'), 400)
+      return () => window.clearTimeout(t)
+    }
+  }, [phase])
+
+  if (phase === 'hidden') return null
 
   return (
     <div
-      className={`fixed inset-0 z-[200] flex flex-col items-center justify-center gap-5 bg-[#000000] px-6 transition-opacity duration-300 ease-out ${
+      className={`fixed inset-0 z-[200] bg-black transition-opacity duration-400 ease-out ${
         phase === 'fade' ? 'pointer-events-none opacity-0' : 'opacity-100'
       }`}
       aria-hidden="true"
     >
-      <img
-        src={MAINLAND_LOGO_SRC}
-        alt=""
-        className="h-16 w-auto max-w-[min(280px,85vw)] object-contain brightness-110 contrast-105 drop-shadow-[0_2px_12px_rgba(0,0,0,0.5)]"
+      <video
+        ref={videoRef}
+        src="/splash.mp4"
+        muted
+        playsInline
+        className="h-full w-full object-cover"
       />
-      <p className="text-center font-serif text-lg font-extrabold uppercase tracking-[0.18em] text-white md:text-xl">
-        Mainland Reporting System
-      </p>
     </div>
   )
 }

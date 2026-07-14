@@ -167,10 +167,8 @@ const AdminDashboardPage = () => {
     () => new Set(['stationName', 'stockRemaining', 'daysRemaining', 'status']),
   )
   const [plCostingTab, setPlCostingTab] = useState('costed')
-  const [plDate, setPlDate] = useState(() => getReportingDateIso())
-  const [plMonth, setPlMonth] = useState(() => getReportingDateIso().slice(0, 7))
-  const [plYear, setPlYear] = useState(() => getReportingDateIso().slice(0, 4))
-  const [plWeek, setPlWeek] = useState('')
+  const [plDateFrom, setPlDateFrom] = useState(() => getReportingDateIso())
+  const [plDateTo, setPlDateTo] = useState(() => getReportingDateIso())
   const [plExpandedStation, setPlExpandedStation] = useState(null)
   const [plSelectedStation, setPlSelectedStation] = useState('all')
   const [costingSearch, setCostingSearch] = useState('')
@@ -1291,17 +1289,7 @@ const AdminDashboardPage = () => {
       subtitle: 'Profit and loss by report date from finalised reports.',
       focus: ['Daily sales revenue', 'Cost of goods sold', 'Expenses', 'Net profit'],
     },
-    'profit-loss/weekly': {
-      title: 'Weekly P/L',
-      subtitle: 'Weekly profit and loss movement across stations.',
-      focus: ['Weekly revenue', 'Weekly COGS', 'Expense trend', 'Station ranking'],
-    },
-    'profit-loss/monthly': {
-      title: 'Monthly P/L',
-      subtitle: 'Month-to-date station ranking and profit movement.',
-      focus: ['Station ranking', 'Product contribution', 'Expense weight', 'Cash/POS/bank checks'],
-    },
-    'profit-loss/yearly': {
+'profit-loss/yearly': {
       title: 'Yearly P/L',
       subtitle: 'Year-to-date company and station performance.',
       focus: ['Monthly comparison', 'Year trend', 'Station contribution', 'Product contribution'],
@@ -1338,29 +1326,22 @@ const AdminDashboardPage = () => {
       const netProfit = grossProfit - expense
       return { revenue, cogs, expense, grossProfit, netProfit, margin: revenue ? (netProfit / revenue) * 100 : 0, reports: rows.length }
     }
-    const curr =
-      adminView === 'profit-loss/daily' ? calc(profitRows.filter((r) => r.date === today))
-      : adminView === 'profit-loss/weekly' ? calc(profitRows.filter((r) => r.week === currentWeek))
-      : adminView === 'profit-loss/monthly' ? calc(profitRows.filter((r) => r.month === currentMonth))
-      : adminView === 'profit-loss/yearly' ? calc(profitRows.filter((r) => r.year === currentYear))
+    const isPL = adminView && adminView.startsWith('profit-loss')
+    const curr = isPL && plDateFrom && plDateTo
+      ? calc(profitRows.filter((r) => r.date >= plDateFrom && r.date <= plDateTo))
       : null
-    const prev =
-      adminView === 'profit-loss/daily' ? calc(profitRows.filter((r) => r.date === yesterday))
-      : adminView === 'profit-loss/weekly' ? calc(profitRows.filter((r) => r.week === prevWeek))
-      : adminView === 'profit-loss/monthly' ? calc(profitRows.filter((r) => r.month === prevMonth))
-      : adminView === 'profit-loss/yearly' ? calc(profitRows.filter((r) => r.year === prevYear))
-      : null
-    return { curr, prev }
-  }, [adminView, profitRows, today, yesterday, currentWeek, prevWeek, currentMonth, prevMonth, currentYear, prevYear])
+    return { curr, prev: null }
+  }, [adminView, profitRows, plDateFrom, plDateTo])
 
   const plStationCards = useMemo(() => {
     let filtered = profitRows
-    if (adminView === 'profit-loss' || adminView === 'profit-loss/daily') filtered = profitRows.filter((r) => r.date === plDate)
-    else if (adminView === 'profit-loss/weekly') filtered = profitRows.filter((r) => plWeek ? r.week === plWeek : r.week === currentWeek)
-    else if (adminView === 'profit-loss/monthly') filtered = profitRows.filter((r) => r.month === plMonth)
-    else if (adminView === 'profit-loss/yearly') filtered = profitRows.filter((r) => r.year === plYear)
-    else if (adminView === 'profit-loss/stations') {
-      filtered = profitRows.filter((r) => r.month === plMonth && (plSelectedStation === 'all' || r.stationId === plSelectedStation))
+    if (plDateFrom && plDateTo) {
+      filtered = profitRows.filter((r) => r.date >= plDateFrom && r.date <= plDateTo)
+    } else if (plDateFrom) {
+      filtered = profitRows.filter((r) => r.date === plDateFrom)
+    }
+    if (adminView === 'profit-loss/stations' && plSelectedStation !== 'all') {
+      filtered = filtered.filter((r) => r.stationId === plSelectedStation)
     }
     const map = new Map()
     for (const r of filtered) {
@@ -1390,7 +1371,7 @@ const AdminDashboardPage = () => {
     return [...map.values()]
       .map((s) => ({ ...s, margin: s.revenue ? (s.netProfit / s.revenue) * 100 : 0 }))
       .sort((a, b) => b.netProfit - a.netProfit)
-  }, [adminView, profitRows, plDate, plWeek, plMonth, plYear, plSelectedStation, currentWeek, stationManagerById])
+  }, [adminView, profitRows, plDateFrom, plDateTo, plSelectedStation, stationManagerById])
 
   const stationSparklines = useMemo(() => {
     const last7 = Array.from({ length: 7 }, (_, i) => {
@@ -1479,17 +1460,11 @@ const AdminDashboardPage = () => {
     },
   ]
   const activeProfitRows =
-    adminView === 'profit-loss/daily'
-      ? profitRows
-      : adminView === 'profit-loss/weekly'
-        ? weeklyProfitRows
-        : adminView === 'profit-loss/monthly'
-          ? monthlyProfitRows
-          : adminView === 'profit-loss/yearly'
-            ? yearlyProfitRows
-            : adminView === 'profit-loss/stations'
-              ? stationProfitRows
-              : dailyProfitRows
+    adminView === 'profit-loss/yearly'
+      ? yearlyProfitRows
+      : adminView === 'profit-loss/stations'
+        ? stationProfitRows
+        : dailyProfitRows
 
   const downloadPlCSV = () => {
     const headers = ['Station', 'Manager', 'PMS Litres', 'AGO Litres', 'Total Litres', 'PMS Revenue', 'AGO Revenue', 'Total Revenue', 'COGS', 'Gross Profit', 'Expenses', 'Net P/L', 'Margin %']
@@ -1562,30 +1537,6 @@ const AdminDashboardPage = () => {
           <p className="text-sm text-slate-200">
             {isHistoryView && 'Completed request and daily finalization records.'}
           </p>
-        </Card>
-      )}
-
-      {isDashboardView && (
-        <Card className="space-y-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <input type="date" value={plDate} max={today} onChange={(e) => { setPlDate(e.target.value); setPlExpandedStation(null) }}
-              className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
-            <div className="flex gap-3 ml-auto text-xs text-slate-400">
-              <span>Submitted: <span className="font-bold text-[#a9cd39]">{submittedTodayCount}</span></span>
-              <span>Pending: <span className="font-bold text-amber-300">{pendingTodayCount}</span></span>
-              <span>Stations: <span className="font-bold text-white">{stations.length}</span></span>
-            </div>
-            {plStationCards.length > 0 && (
-              <button type="button" onClick={downloadPlCSV}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/10 transition">
-                ↓ Export CSV
-              </button>
-            )}
-          </div>
-          {plStationCards.length === 0
-            ? <EmptyState title={`No P/L data for ${plDate}`} message="No costed reports submitted for this date yet." />
-            : <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus />
-          }
         </Card>
       )}
 
@@ -1819,27 +1770,15 @@ const AdminDashboardPage = () => {
             <Card className="space-y-5">
               {/* Period picker */}
               <div className="flex flex-wrap items-center gap-3">
-                {adminView === 'profit-loss/daily' && (
-                  <input type="date" value={plDate} max={today} onChange={(e) => { setPlDate(e.target.value); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
-                )}
-                {adminView === 'profit-loss/weekly' && (
-                  <input type="week" value={plWeek || `${currentYear}-W${String(Number(currentWeek.split('W')[1])).padStart(2,'0')}`}
-                    onChange={(e) => { setPlWeek(e.target.value.replace('-W', ' W').replace(/^(\d{4}) W0?(\d+)$/, (_, y, w) => `${y} W${w.padStart(2,'0')}`)); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
-                )}
-                {(adminView === 'profit-loss/monthly' || adminView === 'profit-loss/stations') && (
-                  <input type="month" value={plMonth} onChange={(e) => { setPlMonth(e.target.value); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
-                )}
-                {adminView === 'profit-loss/yearly' && (
-                  <select value={plYear} onChange={(e) => { setPlYear(e.target.value); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
-                    {Array.from({ length: 5 }, (_, i) => String(Number(today.slice(0,4)) - i)).map((y) => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                )}
+                <DateRangePicker
+                  from={plDateFrom}
+                  to={plDateTo}
+                  maxDate={today}
+                  label="Date range"
+                  emptyLabel="Select period"
+                  align="left"
+                  onChange={({ from, to }) => { setPlDateFrom(from); setPlDateTo(to || from); setPlExpandedStation(null) }}
+                />
                 {adminView === 'profit-loss/stations' && (
                   <select value={plSelectedStation} onChange={(e) => { setPlSelectedStation(e.target.value); setPlExpandedStation(null) }}
                     className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
@@ -1922,25 +1861,34 @@ const AdminDashboardPage = () => {
       )}
 
       {isDashboardView && (
-      <Card className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">Needs Attention Now</h2>
-          <p className="text-sm text-slate-500">{needsAttentionRows.length} stations</p>
-        </div>
-        {needsAttentionRows.length ? (
-          <DataTable
-            columns={needsAttentionColumns}
-            rows={needsAttentionRows}
-            onRowClick={(row) => navigate(`/stations/${row.stationId}`)}
-            tableClassName="min-w-[1390px]"
-          />
-        ) : (
-          <EmptyState
-            title="No stations currently need attention"
-            message="All stations are within safe stock range and reporting on time."
-          />
-        )}
-      </Card>
+        <Card className="space-y-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <DateRangePicker
+              from={plDateFrom}
+              to={plDateTo}
+              maxDate={today}
+              label="Date range"
+              emptyLabel="Select period"
+              align="left"
+              onChange={({ from, to }) => { setPlDateFrom(from); setPlDateTo(to || from); setPlExpandedStation(null) }}
+            />
+            <div className="flex gap-3 ml-auto text-xs text-slate-400">
+              <span>Submitted: <span className="font-bold text-[#a9cd39]">{submittedTodayCount}</span></span>
+              <span>Pending: <span className="font-bold text-amber-300">{pendingTodayCount}</span></span>
+              <span>Stations: <span className="font-bold text-white">{stations.length}</span></span>
+            </div>
+            {plStationCards.length > 0 && (
+              <button type="button" onClick={downloadPlCSV}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/10 transition">
+                ↓ Export CSV
+              </button>
+            )}
+          </div>
+          {plStationCards.length === 0
+            ? <EmptyState title="No P/L data for selected period" message="No costed reports found for the selected date range." />
+            : <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus />
+          }
+        </Card>
       )}
 
       {isProductRequestsView && (
@@ -2097,24 +2045,6 @@ const AdminDashboardPage = () => {
       </Card>
       )}
 
-      {isDashboardView && (
-      <Card className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">Replenishment Approval Workflow</h2>
-          <p className="text-sm text-slate-500">
-            Pending Approval - Approved - Dispatched - Delivered - Received
-          </p>
-        </div>
-        {replenishmentRows.length ? (
-          <DataTable columns={replenishmentColumns} rows={replenishmentRows} tableClassName="min-w-[1650px]" />
-        ) : (
-          <EmptyState
-            title="No warning or critical stations"
-            message="Replenishment requests will appear automatically when stock drops below safe threshold."
-          />
-        )}
-      </Card>
-      )}
     </div>
   )
 }

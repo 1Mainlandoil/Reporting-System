@@ -95,11 +95,8 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     >
       <div className="mt-16 flex items-center justify-between border-b border-white/5 px-5 py-4">
         <div className="flex items-center gap-3">
-          <img src={MAINLAND_LOGO_SRC} alt="Mainland Oil" className="h-7 w-auto" />
-          <div>
-            <p className="text-sm font-bold text-white">Menu</p>
-            <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{isSupervisorView ? 'Supervisor View' : effectiveRole}</p>
-          </div>
+          <img src={MAINLAND_LOGO_SRC} alt="MEST" className="h-12 w-auto" />
+          <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{isSupervisorView ? 'Supervisor View' : effectiveRole}</p>
         </div>
         <button
           type="button"
