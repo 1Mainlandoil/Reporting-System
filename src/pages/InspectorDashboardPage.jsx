@@ -184,7 +184,7 @@ const InspectorDashboardPage = () => {
                     required
                     value={form.stationId}
                     onChange={(event) => handleStationChange(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-white outline-none focus:border-[#a9cd39]/40"
                   >
                     <option value="">Select station</option>
                     {stations.map((station) => (

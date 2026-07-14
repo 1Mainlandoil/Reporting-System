@@ -50,6 +50,8 @@ const MenuIcon = () => (
 const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) => {
   const location = useLocation()
   const role = useAppStore((state) => state.role)
+  const viewAsRole = useAppStore((state) => state.viewAsRole)
+  const setViewAsRole = useAppStore((state) => state.setViewAsRole)
   const currentUser = useAppStore((state) => state.currentUser)
   const getCurrentStation = useAppStore((state) => state.getCurrentStation)
   const logout = useAppStore((state) => state.logout)
@@ -58,13 +60,15 @@ const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) =
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const station = getCurrentStation()
-  const roleLabel = role === 'staff'
+  const isSupervisorView = role === 'admin' && viewAsRole === 'supervisor'
+  const effectiveRole = isSupervisorView ? 'supervisor' : role
+  const roleLabel = effectiveRole === 'staff'
     ? 'Manager'
-    : role === 'supervisor'
-      ? 'Supervisor'
-      : role === 'terminal_operator'
+    : effectiveRole === 'supervisor'
+      ? isSupervisorView ? 'Supervisor View' : 'Supervisor'
+      : effectiveRole === 'terminal_operator'
         ? 'Terminal Operator'
-        : role === 'inspector'
+        : effectiveRole === 'inspector'
           ? 'Inspector'
           : 'Admin'
   const staffHistoryPath = currentUser?.stationId ? `/stations/${currentUser.stationId}/history` : ''
@@ -115,6 +119,20 @@ const Navbar = ({ onToggleSidebar, supervisorTheme, onToggleSupervisorTheme }) =
                   : <p className="mt-0.5 text-xs leading-none text-[#a9cd39]">{roleLabel}</p>
                 }
               </div>
+            )}
+
+            {role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => setViewAsRole(isSupervisorView ? null : 'supervisor')}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition ${
+                  isSupervisorView
+                    ? 'border-[#c4151d]/40 bg-[#c4151d]/15 text-[#c4151d] hover:bg-[#c4151d]/25'
+                    : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                {isSupervisorView ? '← Back to Admin' : 'Supervisor View'}
+              </button>
             )}
 
             {onToggleSupervisorTheme && (

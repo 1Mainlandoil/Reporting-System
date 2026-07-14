@@ -499,7 +499,7 @@ const AdminProductRequestsPage = () => {
                   onChange={(event) =>
                     setApproveDraft((prev) => ({ ...prev, approvedProductType: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
                 >
                   <option value="PMS">PMS</option>
                   <option value="AGO">AGO</option>
@@ -514,7 +514,7 @@ const AdminProductRequestsPage = () => {
                   onChange={(event) =>
                     setApproveDraft((prev) => ({ ...prev, approvedLiters: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
                 />
               </label>
               <label className="block space-y-1">
@@ -523,7 +523,7 @@ const AdminProductRequestsPage = () => {
                   value={approveDraft.remark}
                   onChange={(event) => setApproveDraft((prev) => ({ ...prev, remark: event.target.value }))}
                   placeholder="Optional note for manager (defaults to expect product in 24hrs)"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
                 />
               </label>
             </div>

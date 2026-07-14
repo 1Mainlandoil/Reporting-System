@@ -12,14 +12,32 @@ const chatUnreadSelector = (state) => {
   ).length
 }
 
+const supervisorLinksForAdmin = [
+  { label: 'Dashboard', icon: 'dashboard', path: '/admin/profit-loss?view=dashboard' },
+  { label: 'Reports', icon: 'reports', path: '/admin/profit-loss?view=daily-openings' },
+  { label: 'Month-End Summary', icon: 'summary', path: '/admin/profit-loss?view=month-end-summary' },
+  { label: 'Station Scorecard', icon: 'analytics', path: '/admin/profit-loss?view=scorecard' },
+  { label: 'Product Requests', icon: 'product', path: '/admin/profit-loss?view=product-requests' },
+  { label: 'History', icon: 'history', path: '/admin/profit-loss?view=history' },
+  { label: 'Alerts', icon: 'alerts', path: '/alerts' },
+  { label: 'Analytics', icon: 'analytics', path: '/analytics' },
+  { label: 'Stations', icon: 'stations', path: '/stations' },
+  { label: 'Users', icon: 'users', path: '/users' },
+  { label: 'Settings', icon: 'settings', path: '/settings' },
+]
+
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const role = useAppStore((state) => state.role)
+  const viewAsRole = useAppStore((state) => state.viewAsRole)
   const logout = useAppStore((state) => state.logout)
   const setChatOpen = useAppStore((state) => state.setChatOpen)
   const currentUser = useAppStore((state) => state.currentUser)
   const chatUnreadCount = useAppStore(chatUnreadSelector)
   const location = useLocation()
-  const links = linksByRole[role] || []
+
+  const isSupervisorView = role === 'admin' && viewAsRole === 'supervisor'
+  const effectiveRole = isSupervisorView ? 'supervisor' : role
+  const links = linksByRole[effectiveRole] || []
   const linkMap = Object.fromEntries(links.map((item) => [item.label.toLowerCase(), item.path]))
   const currentView = new URLSearchParams(location.search).get('view')
   const currentPathWithSearch = `${location.pathname}${location.search}`
@@ -47,23 +65,25 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     Settings: 'settings',
   }
 
-  const menuItems = role === 'terminal_operator'
-    ? links.map((item) => ({ ...item, icon: terminalIconByLabel[item.label] || 'dashboard' }))
-    : role === 'admin'
-      ? links.map((item) => ({ ...item, icon: adminIconByLabel[item.label] || 'dashboard' }))
-    : [
-        { label: 'Dashboard', icon: 'dashboard', path: role === 'staff' ? '/staff' : linkMap.dashboard },
-        { label: 'Reports', icon: 'reports', path: role === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
-        ...(role === 'supervisor' ? [{ label: 'Month-End Summary', icon: 'summary', path: '/supervisor?view=month-end-summary' }] : []),
-        { label: 'Station Scorecard', icon: 'analytics', path: '/supervisor?view=scorecard' },
-        { label: 'Product Requests', icon: 'product', path: role === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
-        { label: 'History', icon: 'history', path: role === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
-        { label: 'Alerts', icon: 'alerts', path: linkMap.alerts },
-        { label: 'Analytics', icon: 'analytics', path: linkMap.analytics },
-        { label: 'Stations', icon: 'stations', path: linkMap.stations },
-        { label: 'Users', icon: 'users', path: linkMap.users },
-        { label: 'Settings', icon: 'settings', path: linkMap.settings },
-      ]
+  const menuItems = isSupervisorView
+    ? supervisorLinksForAdmin
+    : effectiveRole === 'terminal_operator'
+      ? links.map((item) => ({ ...item, icon: terminalIconByLabel[item.label] || 'dashboard' }))
+      : effectiveRole === 'admin'
+        ? links.map((item) => ({ ...item, icon: adminIconByLabel[item.label] || 'dashboard' }))
+      : [
+          { label: 'Dashboard', icon: 'dashboard', path: effectiveRole === 'staff' ? '/staff' : linkMap.dashboard },
+          { label: 'Reports', icon: 'reports', path: effectiveRole === 'supervisor' ? '/supervisor?view=stock-flow' : linkMap.reports },
+          ...(effectiveRole === 'supervisor' ? [{ label: 'Month-End Summary', icon: 'summary', path: '/supervisor?view=month-end-summary' }] : []),
+          { label: 'Station Scorecard', icon: 'analytics', path: '/supervisor?view=scorecard' },
+          { label: 'Product Requests', icon: 'product', path: effectiveRole === 'supervisor' ? '/supervisor?view=product-requests' : linkMap['product requests'] },
+          { label: 'History', icon: 'history', path: effectiveRole === 'supervisor' ? '/supervisor?view=history' : linkMap.history },
+          { label: 'Alerts', icon: 'alerts', path: linkMap.alerts },
+          { label: 'Analytics', icon: 'analytics', path: linkMap.analytics },
+          { label: 'Stations', icon: 'stations', path: linkMap.stations },
+          { label: 'Users', icon: 'users', path: linkMap.users },
+          { label: 'Settings', icon: 'settings', path: linkMap.settings },
+        ]
 
   const handleNav = () => onClose()
 
@@ -71,14 +91,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     <aside
       className={`fixed left-0 top-0 z-[40] flex h-full w-72 flex-col border-r border-white/5 bg-[#0d1220] transition-transform duration-300 ease-out ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
-      } ${role === 'supervisor' ? 'border-l-4 border-l-[#c4151d]' : ''}`}
+      } ${effectiveRole === 'supervisor' ? 'border-l-4 border-l-[#c4151d]' : ''}`}
     >
       <div className="mt-16 flex items-center justify-between border-b border-white/5 px-5 py-4">
         <div className="flex items-center gap-3">
           <img src={MAINLAND_LOGO_SRC} alt="Mainland Oil" className="h-7 w-auto" />
           <div>
             <p className="text-sm font-bold text-white">Menu</p>
-            <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{role}</p>
+            <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{isSupervisorView ? 'Supervisor View' : effectiveRole}</p>
           </div>
         </div>
         <button
@@ -98,7 +118,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-white">{currentUser.name}</p>
-              <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{role}</p>
+              <p className="text-xs uppercase tracking-widest text-[#a9cd39]">{isSupervisorView ? 'Supervisor View' : effectiveRole}</p>
             </div>
           </div>
         </div>

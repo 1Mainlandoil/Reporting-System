@@ -3,10 +3,12 @@ import { Outlet } from 'react-router-dom'
 import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
 import ChatPanel from '../components/layout/ChatPanel'
+import SupervisorDashboardPage from '../pages/SupervisorDashboardPage'
 import { useAppStore } from '../store/useAppStore'
 
 const AppLayout = () => {
   const role = useAppStore((state) => state.role)
+  const viewAsRole = useAppStore((state) => state.viewAsRole)
   const hydrateFromSupabase = useAppStore((state) => state.hydrateFromSupabase)
   const showSidebar = role !== 'staff'
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -35,12 +37,13 @@ const AppLayout = () => {
     }
   }, [role, terminalTheme])
 
-  const isSupervisorLight = role === 'supervisor' && supervisorTheme === 'light'
-  const isTerminalLight = role === 'terminal_operator' && terminalTheme === 'light'
-  const activeTheme = role === 'supervisor' ? supervisorTheme : role === 'terminal_operator' ? terminalTheme : undefined
-  const toggleTheme = role === 'supervisor'
+  const effectiveRole = (role === 'admin' && viewAsRole) ? viewAsRole : role
+  const isSupervisorLight = effectiveRole === 'supervisor' && supervisorTheme === 'light'
+  const isTerminalLight = effectiveRole === 'terminal_operator' && terminalTheme === 'light'
+  const activeTheme = effectiveRole === 'supervisor' ? supervisorTheme : effectiveRole === 'terminal_operator' ? terminalTheme : undefined
+  const toggleTheme = effectiveRole === 'supervisor'
     ? () => setSupervisorTheme((current) => current === 'light' ? 'dark' : 'light')
-    : role === 'terminal_operator'
+    : effectiveRole === 'terminal_operator'
       ? () => setTerminalTheme((current) => current === 'light' ? 'dark' : 'light')
       : undefined
 
@@ -65,7 +68,7 @@ const AppLayout = () => {
       )}
 
       <main className="min-w-0 flex-1 overflow-x-hidden p-4 pt-[80px] md:p-6 md:pt-[80px] lg:p-8 lg:pt-[80px]">
-        <Outlet />
+        {role === 'admin' && viewAsRole === 'supervisor' ? <SupervisorDashboardPage /> : <Outlet />}
       </main>
 
       <ChatPanel />

@@ -19,6 +19,95 @@ import { getReportingDateIso } from '../utils/dateFormat'
 
 const money = (value) => `NGN ${Math.round(Number(value || 0)).toLocaleString()}`
 const liters = (value) => `${Math.round(Number(value || 0)).toLocaleString()} L`
+
+const Sparkline = ({ data }) => {
+  if (!data || data.every((v) => v === 0)) return null
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min || 1
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * 56},${16 - ((v - min) / range) * 14}`).join(' ')
+  const lastPositive = data[data.length - 1] >= 0
+  return (
+    <svg viewBox="0 0 56 16" className="w-14 h-4 shrink-0">
+      <polyline points={pts} fill="none" stroke={lastPositive ? '#a9cd39' : '#f43f5e'} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+const PlStationCardGrid = ({ cards, sparklines, expanded, setExpanded, showStatus }) => (
+  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    {cards.map((s) => {
+      const isOpen = expanded === s.stationId
+      const profitColor = s.netProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'
+      const marginBg = s.margin >= 20 ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : s.margin >= 5 ? 'bg-amber-400/15 text-amber-300' : 'bg-rose-400/15 text-rose-300'
+      const sparkData = sparklines?.get(s.stationId)
+      const hasVariance = s.varianceLiters > 50
+      return (
+        <button key={s.stationId} type="button" onClick={() => setExpanded(isOpen ? null : s.stationId)}
+          className={`rounded-2xl border text-left transition hover:brightness-110 ${isOpen ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}>
+          <div className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-black text-white text-base leading-tight truncate">{s.stationName}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{s.managerName}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${marginBg}`}>{s.margin.toFixed(1)}%</span>
+                {hasVariance && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">⚠ Variance</span>}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Litres</p><p className="text-sm font-bold text-white">{Math.round(s.litersSold).toLocaleString()}</p></div>
+              <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Revenue</p><p className="text-sm font-bold text-white">{money(s.revenue)}</p></div>
+              <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Net P/L</p><p className={`text-sm font-black ${profitColor}`}>{money(s.netProfit)}</p></div>
+            </div>
+            <div className="flex items-center justify-between">
+              <Sparkline data={sparkData} />
+              <p className="text-[10px] text-slate-600">{isOpen ? '▲ Hide' : '▼ Details'}</p>
+            </div>
+          </div>
+          {isOpen && (
+            <div className="border-t border-white/8 p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Product Split</p>
+                <div className="grid grid-cols-3 gap-1 text-[11px] text-center rounded-xl border border-white/8 bg-white/[0.03] p-2">
+                  <div><p className="text-slate-500 mb-0.5">Product</p></div>
+                  <div><p className="text-slate-500 mb-0.5">Litres</p></div>
+                  <div><p className="text-slate-500 mb-0.5">Revenue</p></div>
+                  <div><p className="text-amber-300 font-bold">PMS</p></div>
+                  <div><p className="text-white font-semibold">{Math.round(s.pmsLiters).toLocaleString()} L</p></div>
+                  <div><p className="text-white font-semibold">{money(s.pmsRevenue)}</p></div>
+                  <div><p className="text-blue-300 font-bold">AGO</p></div>
+                  <div><p className="text-white font-semibold">{Math.round(s.agoLiters).toLocaleString()} L</p></div>
+                  <div><p className="text-white font-semibold">{money(s.agoRevenue)}</p></div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {[
+                  ['Revenue', money(s.revenue)],
+                  ['COGS', money(s.cogs)],
+                  ['Gross Profit', money(s.grossProfit)],
+                  ['Expenses', money(s.expense)],
+                  ['Net P/L', money(s.netProfit)],
+                  ['Reports', String(s.reports)],
+                  ...(s.varianceLiters > 0 ? [['Variance', `${Math.round(s.varianceLiters).toLocaleString()} L`]] : []),
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-2">
+                    <span className="text-slate-400">{label}</span>
+                    <span className={`font-semibold text-right ${label === 'Net P/L' && s.netProfit < 0 ? 'text-rose-400' : label === 'Variance' ? 'text-amber-300' : 'text-white'}`}>{value}</span>
+                  </div>
+                ))}
+              </div>
+              {showStatus && s.rows.length > 0 && s.rows[0].sourceStatus && (
+                <p className="text-[10px] text-slate-500">Status: {s.rows[0].sourceStatus}</p>
+              )}
+            </div>
+          )}
+        </button>
+      )
+    })}
+  </div>
+)
 const getReportLiters = (report, product) => {
   const key = product === 'AGO' ? 'AGO' : 'PMS'
   return Number(
@@ -264,6 +353,7 @@ const AdminDashboardPage = () => {
             margin: revenue ? (netProfit / revenue) * 100 : 0,
             costingStatus: fifo.costingStatus,
             sourceStatus: report.supervisorReview?.status || report.reviewStatus || 'Submitted',
+            varianceLiters: Math.abs(Number(report.variancePMS || 0)) + Math.abs(Number(report.varianceAGO || 0)),
           }
         })
         .sort((a, b) => String(b.date).localeCompare(String(a.date))),
@@ -737,7 +827,7 @@ const AdminDashboardPage = () => {
                 })
               }
               placeholder="Admin response note"
-              className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
+              className="rounded-lg border border-white/10 bg-[#0d1220] px-2 py-1 text-xs text-white outline-none"
             />
             {(persisted.resolution || current.resolution) && (
               <p className="text-xs text-slate-500">
@@ -897,7 +987,7 @@ const AdminDashboardPage = () => {
                     [row.id]: { ...draft, approvedProductType: event.target.value },
                   }))
                 }
-                className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs dark:border-slate-700 dark:bg-[#0d1220]"
+                className="rounded-lg border border-white/10 bg-[#0d1220] px-2 py-1 text-xs text-white outline-none"
               >
                 <option value="PMS">PMS</option>
                 <option value="AGO">AGO</option>
@@ -1186,7 +1276,7 @@ const AdminDashboardPage = () => {
   const adminView = location.pathname.startsWith('/admin/')
     ? location.pathname.replace('/admin/', '')
     : 'dashboard'
-  const isDashboardView = adminView === 'dashboard'
+  const isDashboardView = adminView === 'dashboard' || adminView === 'profit-loss'
   const isReportsView = adminView === 'reports'
   const isProductRequestsView = adminView === 'product-requests'
   const isHistoryView = adminView === 'history'
@@ -1265,7 +1355,7 @@ const AdminDashboardPage = () => {
 
   const plStationCards = useMemo(() => {
     let filtered = profitRows
-    if (adminView === 'profit-loss/daily') filtered = profitRows.filter((r) => r.date === plDate)
+    if (adminView === 'profit-loss' || adminView === 'profit-loss/daily') filtered = profitRows.filter((r) => r.date === plDate)
     else if (adminView === 'profit-loss/weekly') filtered = profitRows.filter((r) => plWeek ? r.week === plWeek : r.week === currentWeek)
     else if (adminView === 'profit-loss/monthly') filtered = profitRows.filter((r) => r.month === plMonth)
     else if (adminView === 'profit-loss/yearly') filtered = profitRows.filter((r) => r.year === plYear)
@@ -1278,17 +1368,21 @@ const AdminDashboardPage = () => {
         stationId: r.stationId, stationName: r.stationName,
         managerName: stationManagerById.get(r.stationId) || 'Unassigned',
         pmsLiters: 0, agoLiters: 0, litersSold: 0,
+        pmsRevenue: 0, agoRevenue: 0,
         revenue: 0, cogs: 0, expense: 0, grossProfit: 0, netProfit: 0,
-        reports: 0, rows: [],
+        varianceLiters: 0, reports: 0, rows: [],
       }
       existing.pmsLiters += r.pmsLiters
       existing.agoLiters += r.agoLiters
       existing.litersSold += r.litersSold
+      existing.pmsRevenue += r.pmsRevenue
+      existing.agoRevenue += r.agoRevenue
       existing.revenue += r.revenue
       existing.cogs += r.cogs
       existing.expense += r.expense
       existing.grossProfit += r.grossProfit
       existing.netProfit += r.netProfit
+      existing.varianceLiters += r.varianceLiters
       existing.reports += 1
       existing.rows.push(r)
       map.set(r.stationId, existing)
@@ -1297,6 +1391,38 @@ const AdminDashboardPage = () => {
       .map((s) => ({ ...s, margin: s.revenue ? (s.netProfit / s.revenue) * 100 : 0 }))
       .sort((a, b) => b.netProfit - a.netProfit)
   }, [adminView, profitRows, plDate, plWeek, plMonth, plYear, plSelectedStation, currentWeek, stationManagerById])
+
+  const stationSparklines = useMemo(() => {
+    const last7 = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(`${today}T00:00:00`)
+      d.setDate(d.getDate() - (6 - i))
+      return d.toISOString().slice(0, 10)
+    })
+    const map = new Map()
+    for (const r of profitRows) {
+      if (!last7.includes(r.date)) continue
+      if (!map.has(r.stationId)) map.set(r.stationId, new Map())
+      const dayMap = map.get(r.stationId)
+      dayMap.set(r.date, (dayMap.get(r.date) || 0) + r.netProfit)
+    }
+    const result = new Map()
+    for (const [stationId, dayMap] of map) {
+      result.set(stationId, last7.map((d) => dayMap.get(d) || 0))
+    }
+    return result
+  }, [profitRows, today])
+
+  const cumulativeChart = useMemo(() => {
+    const days = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(`${today}T00:00:00`)
+      d.setDate(d.getDate() - (29 - i))
+      return d.toISOString().slice(0, 10)
+    })
+    return days.map((date) => ({
+      date,
+      netProfit: profitRows.filter((r) => r.date === date).reduce((s, r) => s + r.netProfit, 0),
+    }))
+  }, [profitRows, today])
   const profitColumns = [
     { key: 'label', header: 'Period / Station', minWidth: 160 },
     { key: 'reports', header: 'Reports', minWidth: 90, render: (row) => Number(row.reports || 0).toLocaleString() },
@@ -1365,6 +1491,25 @@ const AdminDashboardPage = () => {
               ? stationProfitRows
               : dailyProfitRows
 
+  const downloadPlCSV = () => {
+    const headers = ['Station', 'Manager', 'PMS Litres', 'AGO Litres', 'Total Litres', 'PMS Revenue', 'AGO Revenue', 'Total Revenue', 'COGS', 'Gross Profit', 'Expenses', 'Net P/L', 'Margin %']
+    const csvRows = plStationCards.map((s) => [
+      s.stationName, s.managerName,
+      Math.round(s.pmsLiters), Math.round(s.agoLiters), Math.round(s.litersSold),
+      Math.round(s.pmsRevenue), Math.round(s.agoRevenue), Math.round(s.revenue),
+      Math.round(s.cogs), Math.round(s.grossProfit), Math.round(s.expense),
+      Math.round(s.netProfit), s.margin.toFixed(1),
+    ])
+    const csv = [headers, ...csvRows].map((r) => r.map((v) => `"${v}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `pl-${adminView.replace('profit-loss/', '') || 'dashboard'}-${today}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const openInventoryFiltersScreen = () => {
     setInventorySearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -1424,78 +1569,23 @@ const AdminDashboardPage = () => {
         <Card className="space-y-5">
           <div className="flex flex-wrap items-center gap-3">
             <input type="date" value={plDate} max={today} onChange={(e) => { setPlDate(e.target.value); setPlExpandedStation(null) }}
-              className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+              className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
             <div className="flex gap-3 ml-auto text-xs text-slate-400">
               <span>Submitted: <span className="font-bold text-[#a9cd39]">{submittedTodayCount}</span></span>
               <span>Pending: <span className="font-bold text-amber-300">{pendingTodayCount}</span></span>
               <span>Stations: <span className="font-bold text-white">{stations.length}</span></span>
             </div>
+            {plStationCards.length > 0 && (
+              <button type="button" onClick={downloadPlCSV}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/10 transition">
+                ↓ Export CSV
+              </button>
+            )}
           </div>
-          {(() => {
-            const dayCards = profitRows.filter((r) => r.date === plDate)
-            const grouped = new Map()
-            for (const r of dayCards) {
-              const existing = grouped.get(r.stationId) || {
-                stationId: r.stationId, stationName: r.stationName,
-                managerName: stationManagerById.get(r.stationId) || 'Unassigned',
-                pmsLiters: 0, agoLiters: 0, litersSold: 0,
-                revenue: 0, cogs: 0, expense: 0, grossProfit: 0, netProfit: 0, reports: 0, rows: [],
-              }
-              existing.pmsLiters += r.pmsLiters; existing.agoLiters += r.agoLiters
-              existing.litersSold += r.litersSold; existing.revenue += r.revenue
-              existing.cogs += r.cogs; existing.expense += r.expense
-              existing.grossProfit += r.grossProfit; existing.netProfit += r.netProfit
-              existing.reports += 1; existing.rows.push(r)
-              grouped.set(r.stationId, existing)
-            }
-            const cards = [...grouped.values()]
-              .map((s) => ({ ...s, margin: s.revenue ? (s.netProfit / s.revenue) * 100 : 0 }))
-              .sort((a, b) => b.netProfit - a.netProfit)
-            if (cards.length === 0) return <EmptyState title={`No P/L data for ${plDate}`} message="No costed reports submitted for this date yet." />
-            return (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {cards.map((s) => {
-                  const isOpen = plExpandedStation === s.stationId
-                  const profitColor = s.netProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'
-                  const marginBg = s.margin >= 20 ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : s.margin >= 5 ? 'bg-amber-400/15 text-amber-300' : 'bg-rose-400/15 text-rose-300'
-                  return (
-                    <button key={s.stationId} type="button" onClick={() => setPlExpandedStation(isOpen ? null : s.stationId)}
-                      className={`rounded-2xl border text-left transition hover:brightness-110 ${isOpen ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}>
-                      <div className="p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="font-black text-white text-base leading-tight">{s.stationName}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{s.managerName}</p>
-                          </div>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${marginBg}`}>{s.margin.toFixed(1)}%</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Litres</p><p className="text-sm font-bold text-white">{Math.round(s.litersSold).toLocaleString()}</p></div>
-                          <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Revenue</p><p className="text-sm font-bold text-white">{money(s.revenue)}</p></div>
-                          <div><p className="text-[10px] text-slate-500 uppercase tracking-wide">Net P/L</p><p className={`text-sm font-black ${profitColor}`}>{money(s.netProfit)}</p></div>
-                        </div>
-                        <p className="text-[10px] text-slate-600 text-right">{isOpen ? '▲ Hide' : '▼ Details'}</p>
-                      </div>
-                      {isOpen && (
-                        <div className="border-t border-white/8 p-4 space-y-2" onClick={(e) => e.stopPropagation()}>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            {[['PMS Litres', `${Math.round(s.pmsLiters).toLocaleString()} L`], ['AGO Litres', `${Math.round(s.agoLiters).toLocaleString()} L`],
-                              ['Revenue', money(s.revenue)], ['COGS', money(s.cogs)], ['Gross Profit', money(s.grossProfit)], ['Expenses', money(s.expense)], ['Net P/L', money(s.netProfit)]
-                            ].map(([label, value]) => (
-                              <div key={label} className="flex justify-between gap-2">
-                                <span className="text-slate-400">{label}</span>
-                                <span className="font-semibold text-white text-right">{value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })()}
+          {plStationCards.length === 0
+            ? <EmptyState title={`No P/L data for ${plDate}`} message="No costed reports submitted for this date yet." />
+            : <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus />
+          }
         </Card>
       )}
 
@@ -1576,41 +1666,6 @@ const AdminDashboardPage = () => {
               ))}
             </div>
           </Card>
-
-          {adminView === 'profit-loss' && (
-            <div className="grid gap-4 xl:grid-cols-2">
-              <Card className="space-y-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">Top station P/L</p>
-                  <h3 className="text-lg font-bold">Best performing stations</h3>
-                </div>
-                {stationProfitRows.slice(0, 5).map((row, index) => (
-                  <div key={row.id} className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
-                    <div>
-                      <p className="font-bold">{index + 1}. {row.label}</p>
-                      <p className="text-sm text-slate-500">{liters(row.litersSold)} · {row.reports} report(s)</p>
-                    </div>
-                    <p className={row.netProfit < 0 ? 'font-black text-rose-400' : 'font-black text-[#a9cd39]'}>{money(row.netProfit)}</p>
-                  </div>
-                ))}
-              </Card>
-              <Card className="space-y-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-[#a9cd39]">Recent daily P/L</p>
-                  <h3 className="text-lg font-bold">Latest report days</h3>
-                </div>
-                {dailyProfitRows.slice(0, 5).map((row) => (
-                  <div key={row.id} className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
-                    <div>
-                      <p className="font-bold">{row.label}</p>
-                      <p className="text-sm text-slate-500">{liters(row.litersSold)} · revenue {money(row.revenue)}</p>
-                    </div>
-                    <p className={row.netProfit < 0 ? 'font-black text-rose-400' : 'font-black text-[#a9cd39]'}>{money(row.netProfit)}</p>
-                  </div>
-                ))}
-              </Card>
-            </div>
-          )}
 
           {adminView === 'profit-loss/costing' ? (
             <Card className="space-y-5">
@@ -1766,20 +1821,20 @@ const AdminDashboardPage = () => {
               <div className="flex flex-wrap items-center gap-3">
                 {adminView === 'profit-loss/daily' && (
                   <input type="date" value={plDate} max={today} onChange={(e) => { setPlDate(e.target.value); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
                 )}
                 {adminView === 'profit-loss/weekly' && (
                   <input type="week" value={plWeek || `${currentYear}-W${String(Number(currentWeek.split('W')[1])).padStart(2,'0')}`}
                     onChange={(e) => { setPlWeek(e.target.value.replace('-W', ' W').replace(/^(\d{4}) W0?(\d+)$/, (_, y, w) => `${y} W${w.padStart(2,'0')}`)); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
                 )}
                 {(adminView === 'profit-loss/monthly' || adminView === 'profit-loss/stations') && (
                   <input type="month" value={plMonth} onChange={(e) => { setPlMonth(e.target.value); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
+                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40" />
                 )}
                 {adminView === 'profit-loss/yearly' && (
                   <select value={plYear} onChange={(e) => { setPlYear(e.target.value); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
+                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
                     {Array.from({ length: 5 }, (_, i) => String(Number(today.slice(0,4)) - i)).map((y) => (
                       <option key={y} value={y}>{y}</option>
                     ))}
@@ -1787,84 +1842,80 @@ const AdminDashboardPage = () => {
                 )}
                 {adminView === 'profit-loss/stations' && (
                   <select value={plSelectedStation} onChange={(e) => { setPlSelectedStation(e.target.value); setPlExpandedStation(null) }}
-                    className="rounded-xl border border-white/10 bg-[#0b111d] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
+                    className="rounded-xl border border-white/10 bg-[#0d1220] px-4 py-2.5 text-sm font-semibold text-white outline-none focus:border-[#a9cd39]/40">
                     <option value="all">All stations</option>
                     {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 )}
-                <span className="ml-auto text-xs text-slate-500">{plStationCards.length} station{plStationCards.length !== 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-xs text-slate-500">{plStationCards.length} station{plStationCards.length !== 1 ? 's' : ''}</span>
+                  {plStationCards.length > 0 && (
+                    <button type="button" onClick={downloadPlCSV}
+                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/10 transition">
+                      ↓ CSV
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Top 3 / Bottom 3 */}
+              {plStationCards.length >= 3 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-[#a9cd39]/15 bg-[#a9cd39]/5 p-4 space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#a9cd39]">Top Performers</p>
+                    {plStationCards.slice(0, 3).map((s, i) => (
+                      <div key={s.stationId} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-slate-300 truncate">{['🥇','🥈','🥉'][i]} {s.stationName}</span>
+                        <span className="font-bold text-[#a9cd39] shrink-0">{money(s.netProfit)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl border border-rose-400/15 bg-rose-400/5 p-4 space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-rose-300">Needs Attention</p>
+                    {[...plStationCards].reverse().slice(0, 3).map((s) => (
+                      <div key={s.stationId} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-slate-300 truncate">{s.stationName}</span>
+                        <span className={`font-bold shrink-0 ${s.netProfit < 0 ? 'text-rose-400' : 'text-slate-400'}`}>{money(s.netProfit)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Station cards */}
               {plStationCards.length === 0 ? (
                 <EmptyState title="No data for this period" message="No costed reports found for the selected period." />
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {plStationCards.map((s) => {
-                    const isOpen = plExpandedStation === s.stationId
-                    const profitColor = s.netProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'
-                    const marginBg = s.margin >= 20 ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : s.margin >= 5 ? 'bg-amber-400/15 text-amber-300' : 'bg-rose-400/15 text-rose-300'
-                    return (
-                      <button
-                        key={s.stationId}
-                        type="button"
-                        onClick={() => setPlExpandedStation(isOpen ? null : s.stationId)}
-                        className={`rounded-2xl border text-left transition hover:brightness-110 ${isOpen ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}
-                      >
-                        <div className="p-4 space-y-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-black text-white text-base leading-tight">{s.stationName}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">{s.managerName}</p>
-                            </div>
-                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${marginBg}`}>{s.margin.toFixed(1)}%</span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-center">
-                            <div>
-                              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Litres</p>
-                              <p className="text-sm font-bold text-white">{Math.round(s.litersSold).toLocaleString()}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Revenue</p>
-                              <p className="text-sm font-bold text-white">{money(s.revenue)}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Net P/L</p>
-                              <p className={`text-sm font-black ${profitColor}`}>{money(s.netProfit)}</p>
-                            </div>
-                          </div>
-                          <p className="text-[10px] text-slate-600 text-right">{isOpen ? '▲ Hide' : '▼ Details'}</p>
-                        </div>
-
-                        {isOpen && (
-                          <div className="border-t border-white/8 p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                              {[
-                                ['PMS Litres', `${Math.round(s.pmsLiters).toLocaleString()} L`],
-                                ['AGO Litres', `${Math.round(s.agoLiters).toLocaleString()} L`],
-                                ['Revenue', money(s.revenue)],
-                                ['COGS', money(s.cogs)],
-                                ['Gross Profit', money(s.grossProfit)],
-                                ['Expenses', money(s.expense)],
-                                ['Net P/L', money(s.netProfit)],
-                                ['Reports', String(s.reports)],
-                              ].map(([label, value]) => (
-                                <div key={label} className="flex justify-between gap-2">
-                                  <span className="text-slate-400 text-xs">{label}</span>
-                                  <span className="font-semibold text-white text-xs text-right">{value}</span>
-                                </div>
-                              ))}
-                            </div>
-                            {adminView === 'profit-loss/daily' && s.rows.length > 0 && s.rows[0].sourceStatus && (
-                              <p className="text-xs text-slate-500">Status: {s.rows[0].sourceStatus}</p>
-                            )}
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
+                <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus={adminView === 'profit-loss/daily'} />
               )}
+
+              {/* 30-day cumulative chart */}
+              {(() => {
+                const max = Math.max(...cumulativeChart.map((d) => Math.abs(d.netProfit)), 1)
+                return (
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 space-y-3">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400">30-Day Net P/L Trend</p>
+                    <div className="flex items-end gap-0.5 h-16">
+                      {cumulativeChart.map((d) => {
+                        const h = Math.max(2, (Math.abs(d.netProfit) / max) * 56)
+                        const isPos = d.netProfit >= 0
+                        return (
+                          <div key={d.date} className="flex-1 flex flex-col items-center group relative" title={`${d.date}: ${money(d.netProfit)}`}>
+                            <div className={`w-full rounded-sm ${isPos ? 'bg-[#a9cd39]/70' : 'bg-rose-400/70'}`} style={{ height: `${h}px` }} />
+                            <div className="hidden group-hover:flex absolute -top-8 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap rounded-lg border border-white/10 bg-[#0d1220] px-2 py-1 text-[10px] text-white shadow-xl">
+                              {d.date.slice(5)}: {money(d.netProfit)}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-600">
+                      <span>{cumulativeChart[0]?.date?.slice(5)}</span>
+                      <span>{cumulativeChart[cumulativeChart.length - 1]?.date?.slice(5)}</span>
+                    </div>
+                  </div>
+                )
+              })()}
             </Card>
           ) : null}
         </div>

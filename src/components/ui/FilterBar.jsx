@@ -1,6 +1,6 @@
 import StationMultiSelect from './StationMultiSelect'
 
-const selectCls = 'h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 focus:border-[#a9cd39]/50 focus:outline-none'
+const selectCls = 'h-11 w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40'
 
 const FilterBar = ({
   stations,

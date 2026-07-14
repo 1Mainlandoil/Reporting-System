@@ -1306,7 +1306,7 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
               <select
                 value={selectedReportId}
                 onChange={(event) => setSelectedReportId(event.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-white outline-none focus:border-[#a9cd39]/40"
               >
                 <option value="">Choose report date</option>
                 {reports.map((report) => (
@@ -1381,7 +1381,7 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
                           [selectedReport.id]: { ...draft, status: event.target.value },
                         }))
                       }
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                      className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-white outline-none focus:border-[#a9cd39]/40"
                     >
                       {REVIEW_STATUS_OPTIONS.map((status) => (
                         <option key={status} value={status}>

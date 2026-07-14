@@ -128,6 +128,7 @@ export const useAppStore = create(
     (set, get) => ({
       role: null,
       currentUser: null,
+      viewAsRole: null,
       theme: 'light',
       stations: canonicalStations,
       users: mockUsers,
@@ -374,13 +375,14 @@ export const useAppStore = create(
         })
         return newUserId
       },
+      setViewAsRole: (viewAsRole) => set({ viewAsRole }),
       logout: () => {
         if (hasSupabaseEnv && supabase) {
           supabase.auth.signOut().catch(() => {
             // Local logout still proceeds even if remote signout fails.
           })
         }
-        set({ role: null, currentUser: null })
+        set({ role: null, currentUser: null, viewAsRole: null })
       },
       toggleTheme: () =>
         set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),

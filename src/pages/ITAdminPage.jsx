@@ -26,9 +26,9 @@ const roleLabel = (user) => user.role === 'staff' ? 'Manager' : user.role === 'a
 function PasswordInput({ value, onChange, placeholder = '', id, disabled }) {
   const [show, setShow] = useState(false)
   return (
-    <div className="relative">
-      <input id={id} type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} autoComplete="new-password" className="w-full rounded border border-white/10 px-3 py-2 pr-10 text-sm dark:border-slate-600 dark:bg-slate-800" />
-      <button type="button" onClick={() => setShow(!show)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">{show ? 'Hide' : 'Show'}</button>
+    <div className="relative mt-1">
+      <input id={id} type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} autoComplete="new-password" className="w-full rounded-xl border border-white/10 bg-[#0b111d] px-3 py-2.5 pr-14 text-sm text-white placeholder-slate-500 focus:border-[#a9cd39]/40 focus:outline-none disabled:opacity-40" />
+      <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 hover:text-white transition">{show ? 'Hide' : 'Show'}</button>
     </div>
   )
 }
@@ -39,16 +39,16 @@ function SecurityModal({ config, onConfirm, onCancel }) {
   useEffect(() => { setValue(''); inputRef.current?.focus() }, [config])
   if (!config) return null
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-xl bg-white/5 p-6 shadow-xl dark:bg-slate-800" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-white dark:text-white">{config.title}</h3>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{config.hint}</p>
-        {config.challengeCode && <p className="mt-2 text-center text-2xl font-mono font-bold text-blue-600">{config.challengeCode}</p>}
-        <label className="mt-4 block text-sm font-medium text-slate-200 dark:text-slate-200">{config.label}</label>
-        <input ref={inputRef} type="text" value={value} onChange={(e) => setValue(e.target.value)} placeholder={config.placeholder || ''} inputMode={config.inputMode || 'text'} onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value) }} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0d1220] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-bold text-white">{config.title}</h3>
+        <p className="mt-2 text-sm text-slate-400">{config.hint}</p>
+        {config.challengeCode && <p className="mt-3 text-center text-2xl font-mono font-bold text-[#a9cd39]">{config.challengeCode}</p>}
+        <label className="mt-4 block text-xs font-semibold text-slate-400">{config.label}</label>
+        <input ref={inputRef} type="text" value={value} onChange={(e) => setValue(e.target.value)} placeholder={config.placeholder || ''} inputMode={config.inputMode || 'text'} onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value) }} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111d] px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-[#a9cd39]/40 focus:outline-none" />
         <div className="mt-4 flex gap-3 justify-end">
-          <button type="button" onClick={onCancel} className="rounded bg-slate-200 px-4 py-2 text-sm font-medium dark:bg-slate-600 dark:text-white">Cancel</button>
-          <button type="button" onClick={() => onConfirm(value)} className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white">Continue</button>
+          <button type="button" onClick={onCancel} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10 transition">Cancel</button>
+          <button type="button" onClick={() => onConfirm(value)} className="rounded-xl bg-[#a9cd39] px-4 py-2 text-sm font-bold text-black hover:bg-[#bcd94a] transition">Continue</button>
         </div>
       </div>
     </div>
@@ -408,33 +408,36 @@ export default function ITAdminPage() {
     return (u.name || '').toLowerCase().includes(q) || roleLabel(u).toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || stationName(u.station_id).toLowerCase().includes(q)
   }).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 
-  if (!hasSupabaseEnv) return <div className="flex min-h-screen items-center justify-center"><p className="text-red-600 font-bold">Supabase is not configured.</p></div>
+  const inp = 'w-full rounded-xl border border-white/10 bg-[#0b111d] px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-[#a9cd39]/40 focus:outline-none'
+
+  if (!hasSupabaseEnv) return <div className="flex min-h-screen items-center justify-center bg-[#0a0e1a]"><p className="text-red-400 font-bold">Supabase is not configured.</p></div>
 
   if (!authed) return (
-    <div className="flex min-h-screen items-center justify-center bg-white/8 px-4 dark:bg-[#0d1220]">
-      <form onSubmit={handleGateSubmit} className="w-full max-w-sm rounded-xl bg-white/5 p-8 shadow-lg dark:bg-slate-800">
-        <h1 className="text-xl font-bold text-white dark:text-white">IT Control Portal</h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Sign in with your admin account to continue.</p>
-        {notice.text && <p className={`mt-3 rounded p-2 text-xs ${notice.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>{notice.text}</p>}
-        <input type="email" value={gateEmail} onChange={(e) => setGateEmail(e.target.value)} placeholder="admin@mainlandoil.com" className="mt-4 w-full rounded border border-white/10 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" autoFocus />
-        <input type="password" value={gatePassword} onChange={(e) => setGatePassword(e.target.value)} placeholder="Password" className="mt-3 w-full rounded border border-white/10 px-3 py-2 dark:border-slate-600 dark:bg-slate-700 dark:text-white" />
-        <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Sign In</button>
+    <div className="flex min-h-screen items-center justify-center bg-[#0a0e1a] px-4">
+      <form onSubmit={handleGateSubmit} className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0d1220] p-8 shadow-2xl">
+        <h1 className="text-xl font-bold text-white">IT Control Portal</h1>
+        <p className="mt-2 text-sm text-slate-400">Sign in with your admin account to continue.</p>
+        {notice.text && <p className={`mt-3 rounded-xl p-3 text-xs font-medium ${notice.type === 'error' ? 'bg-red-500/10 text-red-300' : 'bg-[#a9cd39]/10 text-[#a9cd39]'}`}>{notice.text}</p>}
+        <input type="email" value={gateEmail} onChange={(e) => setGateEmail(e.target.value)} placeholder="admin@mainlandoil.com" className={`mt-4 ${inp}`} autoFocus />
+        <input type="password" value={gatePassword} onChange={(e) => setGatePassword(e.target.value)} placeholder="Password" className={`mt-3 ${inp}`} />
+        <button type="submit" className="mt-4 w-full rounded-xl bg-[#a9cd39] px-4 py-2.5 font-bold text-black hover:bg-[#bcd94a] transition">Sign In</button>
       </form>
     </div>
   )
 
-  const tabBtnClass = (t) => `px-4 py-2 rounded-t text-sm font-medium ${tab === t ? 'bg-white/5 dark:bg-slate-800 text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-200 dark:text-slate-400'}`
+  const tabBtnClass = (t) => `px-4 py-2.5 text-sm font-semibold border-b-2 transition ${tab === t ? 'border-[#a9cd39] text-[#a9cd39]' : 'border-transparent text-slate-400 hover:text-white'}`
 
   return (
-    <div className="min-h-screen bg-white/8 p-4 dark:bg-[#0d1220] md:p-8">
+    <div className="min-h-screen bg-[#0a0e1a] p-4 text-slate-100 md:p-8">
       <SecurityModal config={modalConfig} onConfirm={handleModalConfirm} onCancel={handleModalCancel} />
       <div className="mx-auto max-w-7xl">
         <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white dark:text-white">IT Control Portal</h1>
-          {notice.text && <p className={`mt-2 rounded p-3 text-sm ${notice.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>{notice.text}</p>}
+          <p className="text-xs font-black uppercase tracking-widest text-[#a9cd39]">IT Control Portal</p>
+          <h1 className="mt-1 text-2xl font-bold text-white">User & Station Management</h1>
+          {notice.text && <p className={`mt-3 rounded-xl p-3 text-sm font-medium ${notice.type === 'error' ? 'bg-red-500/10 text-red-300 border border-red-500/20' : 'bg-[#a9cd39]/10 text-[#a9cd39] border border-[#a9cd39]/20'}`}>{notice.text}</p>}
         </header>
 
-        <nav className="flex gap-1 border-b border-white/8 dark:border-slate-700">
+        <nav className="flex gap-1 border-b border-white/8">
           <button type="button" className={tabBtnClass('users')} onClick={() => setTab('users')}>Users</button>
           <button type="button" className={tabBtnClass('create')} onClick={() => setTab('create')}>Create Users</button>
           <button type="button" className={tabBtnClass('stations')} onClick={() => setTab('stations')}>Stations</button>
@@ -442,31 +445,28 @@ export default function ITAdminPage() {
         </nav>
 
         {tab === 'users' && (
-          <section className="mt-4">
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, role, station, or email" className="mb-4 w-full max-w-md rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white" />
-            <div className="overflow-x-auto rounded-lg bg-white/5 shadow dark:bg-slate-800">
+          <section className="mt-5">
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, role, station, or email" className={`mb-4 max-w-md ${inp}`} />
+            <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#0d1220]">
               <table className="w-full text-left text-sm">
-                <thead className="border-b bg-white/5 dark:bg-slate-700">
+                <thead className="border-b border-white/8 bg-white/[0.03]">
                   <tr>
-                    <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2">Role</th>
-                    <th className="px-3 py-2">Username</th>
-                    <th className="px-3 py-2">Email</th>
-                    <th className="px-3 py-2">Station</th>
-                    <th className="px-3 py-2">Actions</th>
+                    {['Name','Role','Username','Email','Station','Actions'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-widest text-slate-400">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredUsers.map((u) => (
-                    <tr key={u.id} onClick={() => setSelectedUser(u)} className={`cursor-pointer border-b hover:bg-white/5 dark:hover:bg-slate-700 ${selectedUser?.id === u.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
-                      <td className="px-3 py-2">{u.name || '-'}</td>
-                      <td className="px-3 py-2">{roleLabel(u)}</td>
-                      <td className="px-3 py-2">{u.role === 'staff' ? u.manager_username || '-' : '-'}</td>
-                      <td className="px-3 py-2">{u.email || '-'}</td>
-                      <td className="px-3 py-2">{stationName(u.station_id)}</td>
-                      <td className="px-3 py-2 space-x-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleResetPassword(u) }} className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Reset PW</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(u) }} className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">Delete</button>
+                    <tr key={u.id} onClick={() => setSelectedUser(u)} className={`cursor-pointer border-b border-white/5 hover:bg-white/5 transition ${selectedUser?.id === u.id ? 'bg-[#a9cd39]/8' : ''}`}>
+                      <td className="px-4 py-3 font-medium text-white">{u.name || '-'}</td>
+                      <td className="px-4 py-3 text-slate-300">{roleLabel(u)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-400">{u.role === 'staff' ? u.manager_username || '-' : '-'}</td>
+                      <td className="px-4 py-3 text-slate-400">{u.email || '-'}</td>
+                      <td className="px-4 py-3 text-slate-300">{stationName(u.station_id)}</td>
+                      <td className="px-4 py-3 space-x-1">
+                        <button onClick={(e) => { e.stopPropagation(); handleResetPassword(u) }} className="rounded-lg bg-amber-400/15 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-400/25 transition">Reset PW</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(u) }} className="rounded-lg bg-red-500/15 px-2.5 py-1 text-xs font-bold text-red-400 hover:bg-red-500/25 transition">Delete</button>
                       </td>
                     </tr>
                   ))}
@@ -475,19 +475,19 @@ export default function ITAdminPage() {
             </div>
 
             {selectedUser && (
-              <div className="mt-4 rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
-                <h3 className="font-bold text-white dark:text-white">Edit: {selectedUser.name}</h3>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+                <h3 className="font-bold text-white">Edit: {selectedUser.name}</h3>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Name</label><input value={editForm.name || ''} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Email</label><input type="email" value={editForm.email || ''} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Station</label><select value={editForm.stationId || ''} onChange={(e) => setEditForm((f) => ({ ...f, stationId: e.target.value, stationLoc: stationLocation(e.target.value) }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Manager Username</label><input value={editForm.managerUsername || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerUsername: e.target.value }))} disabled={editForm.role !== 'staff'} className="mt-1 w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" /></div>
-                  <div><label className="text-xs font-medium text-slate-600 dark:text-slate-300">Manager Password (blank = keep)</label><PasswordInput value={editForm.managerPassword || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerPassword: e.target.value }))} disabled={editForm.role !== 'staff'} /></div>
+                  <div><label className="text-xs font-semibold text-slate-400">Name</label><input value={editForm.name || ''} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} className={`mt-1 ${inp}`} /></div>
+                  <div><label className="text-xs font-semibold text-slate-400">Email</label><input type="email" value={editForm.email || ''} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className={`mt-1 ${inp}`} /></div>
+                  <div><label className="text-xs font-semibold text-slate-400">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className={`mt-1 ${inp}`}><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
+                  <div><label className="text-xs font-semibold text-slate-400">Station</label><select value={editForm.stationId || ''} onChange={(e) => setEditForm((f) => ({ ...f, stationId: e.target.value, stationLoc: stationLocation(e.target.value) }))} disabled={editForm.role !== 'staff'} className={`mt-1 ${inp} disabled:opacity-40`}><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                  <div><label className="text-xs font-semibold text-slate-400">Manager Username</label><input value={editForm.managerUsername || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerUsername: e.target.value }))} disabled={editForm.role !== 'staff'} className={`mt-1 ${inp} disabled:opacity-40`} /></div>
+                  <div><label className="text-xs font-semibold text-slate-400">Manager Password (blank = keep)</label><PasswordInput value={editForm.managerPassword || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerPassword: e.target.value }))} disabled={editForm.role !== 'staff'} /></div>
                 </div>
                 <div className="mt-4 flex gap-3">
-                  <button type="button" onClick={handleSaveEdit} className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white">Save Changes</button>
-                  <button type="button" onClick={() => setSelectedUser(null)} className="rounded bg-slate-200 px-4 py-2 text-sm font-medium dark:bg-slate-600 dark:text-white">Cancel</button>
+                  <button type="button" onClick={handleSaveEdit} className="rounded-xl bg-[#a9cd39] px-4 py-2 text-sm font-bold text-black hover:bg-[#bcd94a] transition">Save Changes</button>
+                  <button type="button" onClick={() => setSelectedUser(null)} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10 transition">Cancel</button>
                 </div>
               </div>
             )}
@@ -495,76 +495,76 @@ export default function ITAdminPage() {
         )}
 
         {tab === 'create' && (
-          <section className="mt-4 grid gap-6 lg:grid-cols-2">
-            <form onSubmit={handleCreateManager} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-white dark:text-white">Create Manager</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Station manager with username/password.</p>
+          <section className="mt-5 grid gap-5 lg:grid-cols-2">
+            <form onSubmit={handleCreateManager} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Create Manager</h2>
+              <p className="text-xs text-slate-500">Station manager with username/password.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="username" placeholder="Login username" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <select name="stationId" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                <input name="stationLocation" placeholder="Station location / zone" className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Full name" required className={inp} />
+                <input name="username" placeholder="Login username" required className={inp} />
+                <input name="password" type="password" placeholder="Password (min 8)" required className={inp} />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className={inp} />
+                <select name="stationId" required className={inp}><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                <input name="stationLocation" placeholder="Station location / zone" className={inp} />
               </div>
-              <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Create Manager</button>
+              <button type="submit" className="mt-4 w-full rounded-xl bg-blue-600 px-4 py-2.5 font-bold text-white hover:bg-blue-500 transition">Create Manager</button>
             </form>
 
-            <form onSubmit={handleCreateSupervisor} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-white dark:text-white">Create Supervisor</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Company email for Supabase login.</p>
+            <form onSubmit={handleCreateSupervisor} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Create Supervisor</h2>
+              <p className="text-xs text-slate-500">Company email for Supabase login.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Full name" required className={inp} />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className={inp} />
+                <input name="password" type="password" placeholder="Password (min 8)" required className={inp} />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className={inp} />
               </div>
-              <button type="submit" className="mt-4 w-full rounded bg-green-600 px-4 py-2 font-medium text-white">Create Supervisor</button>
+              <button type="submit" className="mt-4 w-full rounded-xl bg-[#a9cd39] px-4 py-2.5 font-bold text-black hover:bg-[#bcd94a] transition">Create Supervisor</button>
             </form>
 
-            <form onSubmit={handleCreateAdmin} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-white dark:text-white">Create Admin</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Company email for Supabase login.</p>
+            <form onSubmit={handleCreateAdmin} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Create Admin</h2>
+              <p className="text-xs text-slate-500">Company email for Supabase login.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Full name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Full name" required className={inp} />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className={inp} />
+                <input name="password" type="password" placeholder="Password (min 8)" required className={inp} />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className={inp} />
               </div>
-              <button type="submit" className="mt-4 w-full rounded bg-purple-600 px-4 py-2 font-medium text-white">Create Admin</button>
+              <button type="submit" className="mt-4 w-full rounded-xl bg-purple-600 px-4 py-2.5 font-bold text-white hover:bg-purple-500 transition">Create Admin</button>
             </form>
 
-            <form onSubmit={handleCreateSuperAdmin} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-white dark:text-white">Create Super Admin (IT)</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Any @mainlandoil.com email.</p>
+            <form onSubmit={handleCreateSuperAdmin} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Create Super Admin (IT)</h2>
+              <p className="text-xs text-slate-500">Any @mainlandoil.com email.</p>
               <div className="mt-4 space-y-3">
-                <input name="name" placeholder="Display name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="email" type="email" placeholder="name@mainlandoil.com" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="password" type="password" placeholder="Password (min 8)" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="confirmPassword" type="password" placeholder="Confirm password" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="name" placeholder="Display name" required className={inp} />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className={inp} />
+                <input name="password" type="password" placeholder="Password (min 8)" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className={inp} />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required defaultValue={IT_SUPER_ADMIN_DEFAULT_PASSWORD} className={inp} />
               </div>
-              <button type="submit" className="mt-4 w-full rounded bg-red-600 px-4 py-2 font-medium text-white">Create Super Admin</button>
+              <button type="submit" className="mt-4 w-full rounded-xl bg-red-600 px-4 py-2.5 font-bold text-white hover:bg-red-500 transition">Create Super Admin</button>
             </form>
           </section>
         )}
 
         {tab === 'stations' && (
-          <section className="mt-4 grid gap-6 lg:grid-cols-2">
-            <form onSubmit={handleCreateStation} className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-white dark:text-white">Add / Update Station</h2>
+          <section className="mt-5 grid gap-5 lg:grid-cols-2">
+            <form onSubmit={handleCreateStation} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Add / Update Station</h2>
               <div className="mt-4 space-y-3">
-                <input name="id" placeholder="Station ID (e.g. stn-9)" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="name" placeholder="Station name" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
-                <input name="location" placeholder="Zone or address" required className="w-full rounded border border-white/10 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700" />
+                <input name="id" placeholder="Station ID (e.g. stn-9)" required className={inp} />
+                <input name="name" placeholder="Station name" required className={inp} />
+                <input name="location" placeholder="Zone or address" required className={inp} />
               </div>
-              <button type="submit" className="mt-4 w-full rounded bg-blue-600 px-4 py-2 font-medium text-white">Save Station</button>
+              <button type="submit" className="mt-4 w-full rounded-xl bg-[#a9cd39] px-4 py-2.5 font-bold text-black hover:bg-[#bcd94a] transition">Save Station</button>
             </form>
-            <div className="rounded-lg bg-white/5 p-5 shadow dark:bg-slate-800">
-              <h2 className="text-lg font-bold text-white dark:text-white">Registered Stations</h2>
-              <div className="mt-4 overflow-x-auto">
+            <div className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Registered Stations</h2>
+              <div className="mt-4 overflow-x-auto rounded-xl border border-white/8">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b bg-white/5 dark:bg-slate-700"><tr><th className="px-3 py-2">ID</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Location</th></tr></thead>
-                  <tbody>{stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => <tr key={s.id} className="border-b"><td className="px-3 py-2 font-mono text-xs">{s.id}</td><td className="px-3 py-2 font-medium">{s.name}</td><td className="px-3 py-2">{s.location}</td></tr>)}</tbody>
+                  <thead className="border-b border-white/8 bg-white/[0.03]"><tr><th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">ID</th><th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Name</th><th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Location</th></tr></thead>
+                  <tbody>{stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => <tr key={s.id} className="border-b border-white/5"><td className="px-3 py-2.5 font-mono text-xs text-slate-500">{s.id}</td><td className="px-3 py-2.5 font-medium text-white">{s.name}</td><td className="px-3 py-2.5 text-slate-400">{s.location}</td></tr>)}</tbody>
                 </table>
               </div>
             </div>

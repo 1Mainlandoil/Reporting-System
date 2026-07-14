@@ -42,7 +42,7 @@ const AdminInspectorVisitsPage = () => {
           <select
             value={stationFilter}
             onChange={(event) => setStationFilter(event.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
           >
             <option value="">All stations</option>
             {stations.map((station) => (

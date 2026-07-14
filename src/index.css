@@ -9,6 +9,19 @@ body {
   font-size: 15px;
 }
 
+/* Global dark select — covers every <select> and its dropdown options.
+   supervisor-light-mode overrides this below for the light theme. */
+select {
+  background-color: #0d1220;
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+option {
+  background-color: #0d1220;
+  color: #e2e8f0;
+}
+
 html.dark body {
   background: #0a0e1a;
 }

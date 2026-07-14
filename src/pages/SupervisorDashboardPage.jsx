@@ -1905,7 +1905,7 @@ const SupervisorDashboardPage = () => {
               onChange={(event) =>
                 setDailyQueueFilters((prev) => ({ ...prev, reportStatus: event.target.value }))
               }
-              className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
+              className="h-11 w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
             >
               <option value="all">All submission statuses</option>
               <option value="Submitted">Submitted</option>
@@ -1969,7 +1969,7 @@ const SupervisorDashboardPage = () => {
               onChange={(event) =>
                 setDailyQueueFilters((prev) => ({ ...prev, reportStatus: event.target.value }))
               }
-              className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
+              className="h-11 w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
             >
               <option value="all">All submission statuses</option>
               <option value="Submitted">Submitted</option>
@@ -2033,7 +2033,7 @@ const SupervisorDashboardPage = () => {
               onChange={(event) =>
                 setExpenseQueueFilters((prev) => ({ ...prev, expenseStatus: event.target.value }))
               }
-              className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1220]"
+              className="h-11 w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
             >
               <option value="all">All expense statuses</option>
               <option value="Submitted">Submitted</option>
@@ -4201,7 +4201,7 @@ const SupervisorDashboardPage = () => {
               <select
                 value={selectedMonthKey}
                 onChange={(e) => setSelectedMonthKey(e.target.value)}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                className="rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
               >
                 {monthEndMonthOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
               </select>
