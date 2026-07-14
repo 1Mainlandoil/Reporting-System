@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import Card from '../components/ui/Card'
 import { useAppStore } from '../store/useAppStore'
+import { APP_VERSION } from '../constants/appVersion'
 
 const ToggleSetting = ({ label, value, onChange }) => (
   <label className="flex items-center justify-between gap-3 rounded-lg border border-white/8 px-3 py-2 dark:border-slate-800">
@@ -19,6 +21,30 @@ const ToggleSetting = ({ label, value, onChange }) => (
 )
 
 const SettingsPage = () => {
+  const [updateStatus, setUpdateStatus] = useState('idle') // idle | updating | done
+
+  const handleUpdateApp = async () => {
+    setUpdateStatus('updating')
+    try {
+      // Unregister all service workers
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(registrations.map((r) => r.unregister()))
+      }
+      // Clear all caches
+      if (window.caches) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map((k) => caches.delete(k)))
+      }
+      localStorage.setItem('app_version', APP_VERSION)
+      setUpdateStatus('done')
+      // Hard reload after short delay so user sees the "done" state
+      window.setTimeout(() => window.location.reload(true), 800)
+    } catch {
+      window.location.reload(true)
+    }
+  }
+
   const theme = useAppStore((state) => state.theme)
   const toggleTheme = useAppStore((state) => state.toggleTheme)
   const appSettings = useAppStore((state) => state.appSettings)
@@ -133,6 +159,31 @@ const SettingsPage = () => {
             updateAppSettings('reportingConfiguration', 'supervisorReviewWorkflowEnabled', value)
           }
         />
+      </Card>
+      <Card className="space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-white">App Update</h3>
+          <p className="mt-1 text-sm text-slate-400">
+            Clears cached files and reloads the latest version of the app. Use this if icons, logos, or features appear outdated.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleUpdateApp}
+          disabled={updateStatus !== 'idle'}
+          className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${
+            updateStatus === 'done'
+              ? 'bg-[#a9cd39]/20 text-[#a9cd39]'
+              : updateStatus === 'updating'
+                ? 'cursor-not-allowed bg-white/5 text-slate-400'
+                : 'bg-[#a9cd39] text-black hover:bg-[#bcd94a]'
+          }`}
+        >
+          {updateStatus === 'updating' ? '⟳ Clearing cache...' : updateStatus === 'done' ? '✓ Updated — reloading...' : '↺ Update App'}
+        </button>
+        <p className="text-xs text-slate-600">
+          Note: if the app icon on your phone home screen still looks old, remove and re-add the app to get the new icon.
+        </p>
       </Card>
     </div>
   )

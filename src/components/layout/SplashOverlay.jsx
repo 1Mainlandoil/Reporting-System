@@ -8,25 +8,38 @@ export default function SplashOverlay() {
     const video = videoRef.current
     if (!video) return
 
-    const onEnded = () => setPhase('fade')
-    video.addEventListener('ended', onEnded)
+    const dismiss = () => setPhase('fade')
 
-    // Fallback: if video fails to load or play, hide after 5s
-    const fallback = window.setTimeout(() => setPhase('fade'), 8000)
+    video.addEventListener('ended', dismiss)
 
-    video.play().catch(() => setPhase('fade'))
+    // Force play — works on mobile when muted + playsInline + autoPlay are all set
+    const tryPlay = () => {
+      const promise = video.play()
+      if (promise !== undefined) {
+        promise.catch(() => {
+          // Browser blocked autoplay — skip splash immediately
+          dismiss()
+        })
+      }
+    }
+
+    // Small delay lets the DOM settle before play() on iOS Safari
+    const t = window.setTimeout(tryPlay, 80)
+
+    // Hard fallback — never block the app more than 8 seconds
+    const fallback = window.setTimeout(dismiss, 8000)
 
     return () => {
-      video.removeEventListener('ended', onEnded)
+      video.removeEventListener('ended', dismiss)
+      window.clearTimeout(t)
       window.clearTimeout(fallback)
     }
   }, [])
 
   useEffect(() => {
-    if (phase === 'fade') {
-      const t = window.setTimeout(() => setPhase('hidden'), 400)
-      return () => window.clearTimeout(t)
-    }
+    if (phase !== 'fade') return
+    const t = window.setTimeout(() => setPhase('hidden'), 400)
+    return () => window.clearTimeout(t)
   }, [phase])
 
   if (phase === 'hidden') return null
@@ -41,8 +54,10 @@ export default function SplashOverlay() {
       <video
         ref={videoRef}
         src="/splash.mp4"
+        autoPlay
         muted
         playsInline
+        preload="auto"
         className="h-full w-full object-cover"
       />
     </div>
