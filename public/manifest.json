@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Mainland Reporting System",
-  "short_name": "Mainland",
-  "description": "Mainland Oil station reporting and management system",
+  "name": "MEST Reporting System",
+  "short_name": "MEST",
+  "description": "MEST station reporting and management system",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
