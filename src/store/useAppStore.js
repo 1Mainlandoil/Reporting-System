@@ -458,6 +458,11 @@ export const useAppStore = create(
           try {
             await insertReport(newReport)
           } catch (err) {
+            // 23505 = row already exists in DB (successful prior attempt the client didn't see)
+            if (err?.code === '23505') {
+              await get().refreshFromSupabase()
+              return { ok: true, reportId: newReport.id, reportDate: resolvedDate }
+            }
             return {
               ok: false,
               error: 'sync_failed',
@@ -523,6 +528,11 @@ export const useAppStore = create(
         try {
           await insertReport(newReport)
         } catch (err) {
+          // 23505 = row already exists in DB (successful prior attempt the client didn't see)
+          if (err?.code === '23505') {
+            await get().refreshFromSupabase()
+            return { ok: true, reportId: newReport.id, reportDate: resolvedDate }
+          }
           return {
             ok: false,
             error: 'sync_failed',
