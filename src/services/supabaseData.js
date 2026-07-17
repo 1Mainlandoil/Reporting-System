@@ -348,7 +348,7 @@ export const loadInitialData = async () => {
   const [stationsRes, usersRes, reportsRes, chatRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits] = await Promise.all([
     supabase.from('stations').select('*').order('name', { ascending: true }),
     supabase.from('users').select('*').order('name', { ascending: true }),
-    supabase.from('daily_reports').select('*').order('date', { ascending: true }),
+    supabase.from('daily_reports').select('*').gte('date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)).order('date', { ascending: true }),
     supabase.from('chat_messages').select('*').order('created_at', { ascending: true }),
     supabase.from('admin_daily_reviews').select('*').order('date', { ascending: false }),
     safeSelect(supabase.from('product_requests').select('*').order('created_at', { ascending: false }), mapProductRequest, []),
