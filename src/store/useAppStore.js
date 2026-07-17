@@ -1964,7 +1964,7 @@ export const useAppStore = create(
             set({
               stations: mergeStationCatalog(canonicalStations, remoteData.stations),
               users: asArray(remoteData.users),
-              reports: mergeReportsByStationDate(latestState.reports, asArray(remoteData.reports)),
+              reports: asArray(remoteData.reports),
               productRequests: asArray(remoteData.productRequests),
               dailyFinalizations: asArray(remoteData.dailyFinalizations),
               monthEndFinalizations: asArray(remoteData.monthEndFinalizations),
