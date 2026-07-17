@@ -506,9 +506,7 @@ export const insertReport = async (report) => {
   }
 
   const upsertReport = async (rowPayload) => {
-    const { error } = await supabase
-      .from('daily_reports')
-      .upsert(rowPayload, { onConflict: 'station_id,date,report_type' })
+    const { error } = await supabase.from('daily_reports').upsert(rowPayload)
     if (error) {
       throw error
     }
