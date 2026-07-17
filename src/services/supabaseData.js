@@ -340,6 +340,24 @@ const safeSelect = async (builder, mapper, fallback = []) => {
   }
 }
 
+const fetchAllReports = async () => {
+  const PAGE = 1000
+  let allRows = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('daily_reports')
+      .select('*')
+      .order('date', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    if (data && data.length > 0) allRows = allRows.concat(data)
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return allRows
+}
+
 export const loadInitialData = async () => {
   if (!hasSupabaseEnv || !supabase) {
     return null
@@ -348,7 +366,7 @@ export const loadInitialData = async () => {
   const [stationsRes, usersRes, reportsRes, chatRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits] = await Promise.all([
     supabase.from('stations').select('*').order('name', { ascending: true }),
     supabase.from('users').select('*').order('name', { ascending: true }),
-    supabase.from('daily_reports').select('*').order('date', { ascending: true }).limit(100000),
+    fetchAllReports(),
     supabase.from('chat_messages').select('*').order('created_at', { ascending: true }),
     supabase.from('admin_daily_reviews').select('*').order('date', { ascending: false }),
     safeSelect(supabase.from('product_requests').select('*').order('created_at', { ascending: false }), mapProductRequest, []),
@@ -376,11 +394,10 @@ export const loadInitialData = async () => {
     ),
   ])
 
-  if (stationsRes.error || usersRes.error || reportsRes.error || chatRes.error || adminDailyReviewsRes.error) {
+  if (stationsRes.error || usersRes.error || chatRes.error || adminDailyReviewsRes.error) {
     throw new Error(
       stationsRes.error?.message ||
         usersRes.error?.message ||
-        reportsRes.error?.message ||
         chatRes.error?.message ||
         adminDailyReviewsRes.error?.message ||
         'Failed to load Supabase data',
@@ -390,7 +407,7 @@ export const loadInitialData = async () => {
   return {
     stations: stationsRes.data.map(mapStation),
     users: usersRes.data.map(mapUser),
-    reports: reportsRes.data.map(mapReport),
+    reports: reportsRes.map(mapReport),
     chatMessages: chatRes.data.map(mapChat),
     adminDailyReviews: adminDailyReviewsRes.data.map(mapAdminDailyReview),
     productRequests,
