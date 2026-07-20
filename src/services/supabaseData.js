@@ -150,6 +150,7 @@ export const mapReportRow = (row) => {
   hasDiscrepancy: Boolean(row.has_discrepancy),
   discrepancies: Array.isArray(row.discrepancies) ? row.discrepancies : [],
   supervisorCorrectionHistory: Array.isArray(row.supervisor_correction_history) ? row.supervisor_correction_history : [],
+  correctionRequest: row.correction_request ?? null,
   finalizationStatus: row.report_finalization_status || '',
   finalizedBy: row.report_finalized_by || '',
   finalizedByUserId: row.report_finalized_by_user_id || null,
@@ -515,6 +516,7 @@ export const insertReport = async (report) => {
     manager_entered_sales_liters_ago:
       report.managerEnteredSalesLitersAGO == null ? null : Number(report.managerEnteredSalesLitersAGO),
     supervisor_correction_history: Array.isArray(report.supervisorCorrectionHistory) ? report.supervisorCorrectionHistory : [],
+    correction_request: report.correctionRequest ?? null,
     report_finalization_status: report.finalizationStatus || '',
     report_finalized_by: report.finalizedBy || '',
     report_finalized_by_user_id: report.finalizedByUserId || null,
