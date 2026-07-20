@@ -724,6 +724,8 @@ export const useAppStore = create(
             salesAGO: totalSalesLitersAGO,
             calculatedSalesLitersPMS: totalSalesLitersPMS,
             calculatedSalesLitersAGO: totalSalesLitersAGO,
+            managerEnteredSalesLitersPMS: patch.managerEnteredSalesLitersPMS != null ? Number(patch.managerEnteredSalesLitersPMS) : (target.managerEnteredSalesLitersPMS ?? null),
+            managerEnteredSalesLitersAGO: patch.managerEnteredSalesLitersAGO != null ? Number(patch.managerEnteredSalesLitersAGO) : (target.managerEnteredSalesLitersAGO ?? null),
             quantityRemainingPMS: computeQuantityRemaining({ previousRemaining: openingStockPMS, received: receivedPMS, salesLiters: totalSalesLitersPMS, rtt: rttPMS }),
             quantityRemainingAGO: computeQuantityRemaining({ previousRemaining: openingStockAGO, received: receivedAGO, salesLiters: totalSalesLitersAGO, rtt: rttAGO }),
             cashBf,

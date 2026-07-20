@@ -2233,10 +2233,12 @@ const SupervisorDashboardPage = () => {
       receivedAGO: report.receivedAGO ?? 0,
       rttPMS: report.rttPMS ?? 0,
       rttAGO: report.rttAGO ?? 0,
-      cashBf: report.cashBf ?? 0,
-      cashSales: report.cashSales ?? 0,
-      posValue: report.posValue ?? 0,
-      closingBalance: report.closingBalance ?? 0,
+      managerEnteredSalesLitersPMS: report.managerEnteredSalesLitersPMS ?? report.totalSalesLitersPMS ?? report.salesPMS ?? 0,
+      managerEnteredSalesLitersAGO: report.managerEnteredSalesLitersAGO ?? report.totalSalesLitersAGO ?? report.salesAGO ?? 0,
+      cashBf: Math.round(Number(report.cashBf ?? 0) * 100) / 100,
+      cashSales: Math.round(Number(report.cashSales ?? 0) * 100) / 100,
+      posValue: Math.round(Number(report.posValue ?? 0) * 100) / 100,
+      closingBalance: Math.round(Number(report.closingBalance ?? 0) * 100) / 100,
       remark: report.remark ?? report.remarks ?? '',
       pumpReadings: savedPumpReadings.length ? savedPumpReadings : visiblePumpRows,
       paymentBreakdown: Array.isArray(report.paymentBreakdown)
@@ -3730,6 +3732,29 @@ const SupervisorDashboardPage = () => {
                     </div>
                   </section>
 
+                  <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                    <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Sales Quantity (manager-entered)</p>
+                    <p className="mb-3 text-xs text-slate-500">Only the manager&apos;s own figures — system pump calculations are not changed here.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        ['managerEnteredSalesLitersPMS', 'PMS sold (L)'],
+                        ['managerEnteredSalesLitersAGO', 'AGO sold (L)'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="space-y-1">
+                          <span className="text-xs text-slate-400">{label}</span>
+                          <input
+                            type="number"
+                            value={correctionDraft[key]}
+                            onChange={(event) => setCorrectionDraft((prev) => ({ ...prev, [key]: event.target.value }))}
+                            className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                     <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#a9cd39]">Cash</p>
                     <div className="grid grid-cols-2 gap-3">
