@@ -678,9 +678,9 @@ const SupervisorDashboardPage = () => {
           ? paymentBreakdown.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
           : stationReportsToday.reduce((sum, report) => sum + Number(report?.totalPaymentDeposits || 0), 0)
         const posValue = stationReportsToday.reduce((sum, report) => sum + Number(report?.posValue || 0), 0)
-        const cashBf = Number(previousReport?.closingBalance || 0)
+        const cashBf = latestToday ? Number(latestToday.cashBf ?? previousReport?.closingBalance ?? 0) : Number(previousReport?.closingBalance || 0)
         const cashSales = stationReportsToday.reduce((sum, report) => sum + Number(report?.cashSales || 0), 0)
-        const totalAmount = cashBf + cashSales
+        const totalAmount = latestToday ? Number(latestToday.totalAmount ?? cashBf + cashSales) : cashBf + cashSales
         const closingBalance = latestToday ? Number(latestToday.closingBalance || 0) : totalAmount - totalPaymentDeposits - posValue
         // Variance = Total - Bank Lodgements - POS - Closing (should be 0 if rule is followed)
         const cashMovementVariance = totalAmount - totalPaymentDeposits - posValue - closingBalance
