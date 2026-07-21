@@ -118,21 +118,16 @@ const StaffClosingReportForm = ({
     'Expenses': 5, 'Cash': 6, 'POS Terminals': 7, 'Payments': 8,
     'Pump Readings': 10,
   }
-  const allowedSteps = isCorrectionMode
-    ? new Set([0, ...unlockedSections.map((s) => SECTION_STEP_MAP[s]).filter(Boolean), 11])
+  // Ordered (not just set-membership) so correction mode always walks
+  // sections in the same order they'd appear in a normal report, regardless
+  // of the order the supervisor happened to check the boxes.
+  const correctionStepOrder = isCorrectionMode
+    ? [...new Set(unlockedSections.map((s) => SECTION_STEP_MAP[s]).filter(Boolean))].sort((a, b) => a - b)
     : null
+  // Step 0 (Sales Check) is deliberately excluded — correction mode skips
+  // straight to the first unlocked section and never revisits it.
+  const allowedSteps = isCorrectionMode ? new Set([...correctionStepOrder, 11]) : null
 
-  const goToStep = (n) => {
-    if (!allowedSteps) { setStep(n); return }
-    // In correction mode, find the nearest allowed step in the direction of travel
-    if (allowedSteps.has(n)) { setStep(n); return }
-    const dir = n > step ? 1 : -1
-    let target = n + dir
-    while (target >= 0 && target <= 11) {
-      if (allowedSteps.has(target)) { setStep(target); return }
-      target += dir
-    }
-  }
   const receivedDispatchTotals = receivedDispatches.reduce(
     (totals, dispatch) => {
       const productType = dispatch.approvedProductType || dispatch.requestedProductType
@@ -143,7 +138,20 @@ const StaffClosingReportForm = ({
     { pms: 0, ago: 0 },
   )
   const hasReceivedDispatches = receivedDispatches.length > 0
-  const [step, setStep] = useState(0)
+  const [step, setStepRaw] = useState(() => (isCorrectionMode ? (correctionStepOrder[0] ?? 11) : 0))
+  // In correction mode, every setStep(n) call throughout this component
+  // (each step's Next/Back) gets rerouted to the nearest actually-unlocked
+  // step in the direction of travel, instead of the hardcoded step number.
+  const setStep = (n) => {
+    if (!allowedSteps) { setStepRaw(n); return }
+    if (allowedSteps.has(n)) { setStepRaw(n); return }
+    const dir = n > step ? 1 : -1
+    let target = n + dir
+    while (target >= 0 && target <= 11) {
+      if (allowedSteps.has(target)) { setStepRaw(target); return }
+      target += dir
+    }
+  }
   const [formData, setFormData] = useState(defaultForm)
   const [expenseDraft, setExpenseDraft] = useState({ category: 'Gas', otherLabel: '', amount: '' })
   const [expenseItems, setExpenseItems] = useState([])
@@ -1682,30 +1690,36 @@ const StaffClosingReportForm = ({
       <div className="flex min-h-[70vh] flex-col">
         <StepHeader label={steps[11]} current={12} total={totalSteps} />
         <p className="mb-1 text-2xl font-bold text-white">Review your report</p>
-        <p className="mb-6 text-sm text-slate-500">Check every entry before sending it to your supervisor.</p>
+        <p className="mb-6 text-sm text-slate-500">
+          {isCorrectionMode ? 'Check the corrected sections before sending them to your supervisor.' : 'Check every entry before sending it to your supervisor.'}
+        </p>
         <div className="flex-1 space-y-4">
           <ReviewSection title="Report details">
             <ReviewRow label="Report date" value={reportDate || getReportingDateIso()} />
             <ReviewRow label="Station ID" value={stationId || '-'} />
-            <ReviewRow label="Sales today" value={isNoSalesDay ? 'No' : 'Yes'} tone={isNoSalesDay ? 'text-amber-300' : 'text-[#a9cd39]'} strong />
+            {!isCorrectionMode && (
+              <ReviewRow label="Sales today" value={isNoSalesDay ? 'No' : 'Yes'} tone={isNoSalesDay ? 'text-amber-300' : 'text-[#a9cd39]'} strong />
+            )}
           </ReviewSection>
 
-          <ReviewSection title="Stock">
-            <ReviewRow label="Open PMS" value={liters(effectiveOpening.pms)} />
-            <ReviewRow label="Open AGO" value={liters(effectiveOpening.ago)} />
-            <ReviewRow label="Received PMS" value={liters(formData.receivedProduct === 'yes' ? formData.receivedQuantityPMS : 0)} />
-            <ReviewRow label="Received AGO" value={liters(formData.receivedProduct === 'yes' ? formData.receivedQuantityAGO : 0)} />
-            <ReviewRow label="Closing PMS" value={liters(formData.closingStockPMS)} />
-            <ReviewRow label="Closing AGO" value={liters(formData.closingStockAGO)} />
-            <ReviewRow label="RTT PMS" value={liters(formData.rttPMS)} />
-            <ReviewRow label="RTT AGO" value={liters(formData.rttAGO)} />
-            <ReviewRow label="PMS sold" value={pmsPumpSold == null ? 'No pump reading added' : liters(pmsPumpSold)} strong tone="text-[#a9cd39]" />
-            <ReviewRow label="AGO sold" value={agoPumpSold == null ? 'No pump reading added' : liters(agoPumpSold)} strong tone="text-blue-300" />
-            <ReviewRow label="Manager PMS sold" value={liters(formData.managerSalesPMS)} />
-            <ReviewRow label="Manager AGO sold" value={liters(formData.managerSalesAGO)} />
-          </ReviewSection>
+          {(!isCorrectionMode || unlockedSections.includes('Stock')) && (
+            <ReviewSection title="Stock">
+              <ReviewRow label="Open PMS" value={liters(effectiveOpening.pms)} />
+              <ReviewRow label="Open AGO" value={liters(effectiveOpening.ago)} />
+              <ReviewRow label="Received PMS" value={liters(formData.receivedProduct === 'yes' ? formData.receivedQuantityPMS : 0)} />
+              <ReviewRow label="Received AGO" value={liters(formData.receivedProduct === 'yes' ? formData.receivedQuantityAGO : 0)} />
+              <ReviewRow label="Closing PMS" value={liters(formData.closingStockPMS)} />
+              <ReviewRow label="Closing AGO" value={liters(formData.closingStockAGO)} />
+              <ReviewRow label="RTT PMS" value={liters(formData.rttPMS)} />
+              <ReviewRow label="RTT AGO" value={liters(formData.rttAGO)} />
+              <ReviewRow label="PMS sold" value={pmsPumpSold == null ? 'No pump reading added' : liters(pmsPumpSold)} strong tone="text-[#a9cd39]" />
+              <ReviewRow label="AGO sold" value={agoPumpSold == null ? 'No pump reading added' : liters(agoPumpSold)} strong tone="text-blue-300" />
+              <ReviewRow label="Manager PMS sold" value={liters(formData.managerSalesPMS)} />
+              <ReviewRow label="Manager AGO sold" value={liters(formData.managerSalesAGO)} />
+            </ReviewSection>
+          )}
 
-          {hasReceivedDispatches && (
+          {!isCorrectionMode && hasReceivedDispatches && (
             <ReviewSection title="Terminal delivery">
               {receivedDispatches.map((dispatch) => {
                 const productType = dispatch.approvedProductType || dispatch.requestedProductType || 'Product'
@@ -1730,96 +1744,108 @@ const StaffClosingReportForm = ({
             </ReviewSection>
           )}
 
-          <ReviewSection title="Pump readings">
-            {pumpReadings.length ? pumpReadings.map((item) => {
-              const quantitySold = item.opening != null && item.closing != null ? Number(item.closing) - Number(item.opening) : 0
-              return (
-                <div key={item.id} className="rounded-xl border border-white/8 bg-black/20 p-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <ReviewRow label="Pump name" value={item.label} />
-                    <ReviewRow label="Product type" value={item.productType || 'PMS'} />
-                    <ReviewRow label="Opening" value={item.opening != null ? Number(item.opening).toLocaleString() : 'No opening entered'} />
-                    <ReviewRow label="Closing" value={Number(item.closing || 0).toLocaleString()} />
-                    <ReviewRow label="Sold" value={liters(quantitySold)} strong tone="text-[#a9cd39]" />
+          {(!isCorrectionMode || unlockedSections.includes('Pump Readings')) && (
+            <ReviewSection title="Pump readings">
+              {pumpReadings.length ? pumpReadings.map((item) => {
+                const quantitySold = item.opening != null && item.closing != null ? Number(item.closing) - Number(item.opening) : 0
+                return (
+                  <div key={item.id} className="rounded-xl border border-white/8 bg-black/20 p-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <ReviewRow label="Pump name" value={item.label} />
+                      <ReviewRow label="Product type" value={item.productType || 'PMS'} />
+                      <ReviewRow label="Opening" value={item.opening != null ? Number(item.opening).toLocaleString() : 'No opening entered'} />
+                      <ReviewRow label="Closing" value={Number(item.closing || 0).toLocaleString()} />
+                      <ReviewRow label="Sold" value={liters(quantitySold)} strong tone="text-[#a9cd39]" />
+                    </div>
                   </div>
+                )
+              }) : (
+                <ReviewRow label="Pump readings" value="No pump readings added" tone="text-amber-300" />
+              )}
+            </ReviewSection>
+          )}
+
+          {(!isCorrectionMode || unlockedSections.includes('Pricing')) && (
+            <ReviewSection title="Prices">
+              <ReviewRow label="PMS price" value={money(formData.pmsPrice) + ' per litre'} />
+              <ReviewRow label="AGO price" value={money(formData.agoPrice) + ' per litre'} />
+              {(priceBandsPMS.length > 0 || priceBandsAGO.length > 0) ? (
+                <>
+                  {priceBandsPMS.map((band, index) => <ReviewRow key={`pms-${index}`} label={`PMS price entry ${index + 1}`} value={`${money(band.price)} for ${liters(band.liters)}`} />)}
+                  {priceBandsAGO.map((band, index) => <ReviewRow key={`ago-${index}`} label={`AGO price entry ${index + 1}`} value={`${money(band.price)} for ${liters(band.liters)}`} />)}
+                </>
+              ) : (
+                <ReviewRow label="Multiple price entries" value="None" />
+              )}
+            </ReviewSection>
+          )}
+
+          {(!isCorrectionMode || unlockedSections.includes('Expenses')) && (
+            <ReviewSection title="Expenses">
+              {expenseItems.length ? expenseItems.map((item, index) => (
+                <ReviewRow key={item.id || `${item.label}-${index}`} label={item.label} value={money(item.amount)} />
+              )) : (
+                <ReviewRow label="Expense lines" value="No expenses entered" />
+              )}
+              <ReviewRow label="Total expense" value={money(totalExpenses)} strong />
+              <ReviewRow label="Expense evidence uploaded" value={`${expenseUploads.length} file(s)`} />
+              {expenseUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`Expense file ${index + 1}`} value={eodName(upload)} />)}
+            </ReviewSection>
+          )}
+
+          {(!isCorrectionMode || unlockedSections.includes('Cash')) && (
+            <ReviewSection title="Cash">
+              <ReviewRow label="Cash B/F" value={money(effectiveCashBf)} />
+              <ReviewRow label="Cash sales" value={money(cashSales)} />
+              <ReviewRow label="Bank lodgements" value={money(totalBankPayments)} />
+              <ReviewRow label="POS" value={money(posValue)} />
+              <ReviewRow label="Closing cash balance" value={money(closingCash)} strong />
+              <ReviewRow label="Difference" value={money(cashDifference)} tone={Math.abs(cashDifference) > 0 ? 'text-amber-300' : 'text-[#a9cd39]'} />
+            </ReviewSection>
+          )}
+
+          {(!isCorrectionMode || unlockedSections.includes('POS Terminals') || unlockedSections.includes('Payments')) && (
+            <ReviewSection title="Bank and evidence">
+              {posTerminalBreakdown.length ? posTerminalBreakdown.map((item) => (
+                <ReviewRow key={item.terminalId} label={item.label} value={money(item.amount)} />
+              )) : (
+                <ReviewRow label="POS terminal entries" value="No POS terminal amount entered" />
+              )}
+              {paymentBreakdown.length ? paymentBreakdown.map((item) => (
+                <ReviewRow key={item.id} label={item.channel} value={money(item.amount)} />
+              )) : (
+                <ReviewRow label="Bank/channel entries" value="No bank lodgement entered" />
+              )}
+              <ReviewRow label="Bank evidence uploaded" value={`${bankUploads.length} file(s)`} />
+              {bankUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`Bank file ${index + 1}`} value={eodName(upload)} />)}
+              <ReviewRow label="POS evidence uploaded" value={`${posUploads.length} file(s)`} />
+              {posUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`POS file ${index + 1}`} value={eodName(upload)} />)}
+            </ReviewSection>
+          )}
+
+          {!isCorrectionMode && (
+            <ReviewSection title="Remarks">
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Manager remark</span>
+                <textarea
+                  value={formData.remark}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, remark: e.target.value }))}
+                  className="h-24 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white placeholder-slate-600 focus:outline-none resize-none"
+                  placeholder="Any additional notes..."
+                />
+              </label>
+              {discrepancies.length ? discrepancies.map((item, index) => (
+                <div key={`${item.field}-${index}`} className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-sm">
+                  <p className="font-bold text-amber-300">{item.field}</p>
+                  <p className="mt-1 text-slate-300">System expected: {item.systemValue}</p>
+                  <p className="text-slate-300">Manager entered: {item.enteredValue}</p>
+                  <p className="mt-1 text-amber-200">Reason: {item.reason || 'No reason entered'}</p>
                 </div>
-              )
-            }) : (
-              <ReviewRow label="Pump readings" value="No pump readings added" tone="text-amber-300" />
-            )}
-          </ReviewSection>
-
-          <ReviewSection title="Prices">
-            <ReviewRow label="PMS price" value={money(formData.pmsPrice) + ' per litre'} />
-            <ReviewRow label="AGO price" value={money(formData.agoPrice) + ' per litre'} />
-            {(priceBandsPMS.length > 0 || priceBandsAGO.length > 0) ? (
-              <>
-                {priceBandsPMS.map((band, index) => <ReviewRow key={`pms-${index}`} label={`PMS price entry ${index + 1}`} value={`${money(band.price)} for ${liters(band.liters)}`} />)}
-                {priceBandsAGO.map((band, index) => <ReviewRow key={`ago-${index}`} label={`AGO price entry ${index + 1}`} value={`${money(band.price)} for ${liters(band.liters)}`} />)}
-              </>
-            ) : (
-              <ReviewRow label="Multiple price entries" value="None" />
-            )}
-          </ReviewSection>
-
-          <ReviewSection title="Expenses">
-            {expenseItems.length ? expenseItems.map((item, index) => (
-              <ReviewRow key={item.id || `${item.label}-${index}`} label={item.label} value={money(item.amount)} />
-            )) : (
-              <ReviewRow label="Expense lines" value="No expenses entered" />
-            )}
-            <ReviewRow label="Total expense" value={money(totalExpenses)} strong />
-            <ReviewRow label="Expense evidence uploaded" value={`${expenseUploads.length} file(s)`} />
-            {expenseUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`Expense file ${index + 1}`} value={eodName(upload)} />)}
-          </ReviewSection>
-
-          <ReviewSection title="Cash">
-            <ReviewRow label="Cash B/F" value={money(effectiveCashBf)} />
-            <ReviewRow label="Cash sales" value={money(cashSales)} />
-            <ReviewRow label="Bank lodgements" value={money(totalBankPayments)} />
-            <ReviewRow label="POS" value={money(posValue)} />
-            <ReviewRow label="Closing cash balance" value={money(closingCash)} strong />
-            <ReviewRow label="Difference" value={money(cashDifference)} tone={Math.abs(cashDifference) > 0 ? 'text-amber-300' : 'text-[#a9cd39]'} />
-          </ReviewSection>
-
-          <ReviewSection title="Bank and evidence">
-            {posTerminalBreakdown.length ? posTerminalBreakdown.map((item) => (
-              <ReviewRow key={item.terminalId} label={item.label} value={money(item.amount)} />
-            )) : (
-              <ReviewRow label="POS terminal entries" value="No POS terminal amount entered" />
-            )}
-            {paymentBreakdown.length ? paymentBreakdown.map((item) => (
-              <ReviewRow key={item.id} label={item.channel} value={money(item.amount)} />
-            )) : (
-              <ReviewRow label="Bank/channel entries" value="No bank lodgement entered" />
-            )}
-            <ReviewRow label="Bank evidence uploaded" value={`${bankUploads.length} file(s)`} />
-            {bankUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`Bank file ${index + 1}`} value={eodName(upload)} />)}
-            <ReviewRow label="POS evidence uploaded" value={`${posUploads.length} file(s)`} />
-            {posUploads.map((upload, index) => <ReviewRow key={upload.fileId || index} label={`POS file ${index + 1}`} value={eodName(upload)} />)}
-          </ReviewSection>
-
-          <ReviewSection title="Remarks">
-            <label className="block space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Manager remark</span>
-              <textarea
-                value={formData.remark}
-                onChange={(e) => setFormData((prev) => ({ ...prev, remark: e.target.value }))}
-                className="h-24 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white placeholder-slate-600 focus:outline-none resize-none"
-                placeholder="Any additional notes..."
-              />
-            </label>
-            {discrepancies.length ? discrepancies.map((item, index) => (
-              <div key={`${item.field}-${index}`} className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-sm">
-                <p className="font-bold text-amber-300">{item.field}</p>
-                <p className="mt-1 text-slate-300">System expected: {item.systemValue}</p>
-                <p className="text-slate-300">Manager entered: {item.enteredValue}</p>
-                <p className="mt-1 text-amber-200">Reason: {item.reason || 'No reason entered'}</p>
-              </div>
-            )) : (
-              <ReviewRow label="Discrepancy reasons" value="None" tone="text-[#a9cd39]" />
-            )}
-          </ReviewSection>
+              )) : (
+                <ReviewRow label="Discrepancy reasons" value="None" tone="text-[#a9cd39]" />
+              )}
+            </ReviewSection>
+          )}
 
           {submitError && <p className="text-sm text-rose-400">{submitError}</p>}
         </div>
