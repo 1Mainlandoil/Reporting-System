@@ -828,8 +828,8 @@ const StaffClosingReportForm = ({
           </div>
         )}
 
-        {/* Closing stock + RTT — always shown once opening is resolved */}
-        {(openingConfirmed !== null || isFirstReport) && (
+        {/* Closing stock + RTT — always shown once opening is resolved (or there's no prior opening to confirm) */}
+        {(openingConfirmed !== null || isFirstReport || !hasPrior) && (
           <div className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Closing Tank Dip & RTT</p>
             {[
