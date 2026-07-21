@@ -276,6 +276,14 @@ alter table public.daily_reports
   add column if not exists report_type text not null default 'fuel',
   add column if not exists lpg_report jsonb;
 
+alter table public.daily_reports
+  add column if not exists eod_attachments jsonb not null default '[]'::jsonb,
+  add column if not exists has_discrepancy boolean not null default false,
+  add column if not exists discrepancies jsonb not null default '[]'::jsonb;
+
+alter table public.daily_reports
+  add column if not exists correction_request jsonb;
+
 create table if not exists public.inspector_visits (
   id text primary key,
   station_id text not null references public.stations(id) on delete cascade,

@@ -5,11 +5,14 @@ import Sidebar from '../components/layout/Sidebar'
 import ChatPanel from '../components/layout/ChatPanel'
 import SupervisorDashboardPage from '../pages/SupervisorDashboardPage'
 import { useAppStore } from '../store/useAppStore'
+import { useSupabaseRealtime } from '../hooks/useSupabaseRealtime'
 
 const AppLayout = () => {
   const role = useAppStore((state) => state.role)
   const viewAsRole = useAppStore((state) => state.viewAsRole)
   const hydrateFromSupabase = useAppStore((state) => state.hydrateFromSupabase)
+
+  useSupabaseRealtime()
   const showSidebar = role !== 'staff'
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [supervisorTheme, setSupervisorTheme] = useState(() => {
