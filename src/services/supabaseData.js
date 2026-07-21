@@ -341,34 +341,46 @@ const safeSelect = async (builder, mapper, fallback = []) => {
   }
 }
 
-const fetchAllReports = async () => {
-  const PAGE = 1000
+const PAGE_SIZE = 1000
+
+/**
+ * Keyset-paginated fetch: pages by cursorColumn (a unique column) instead of
+ * OFFSET/range. OFFSET pagination silently drops or duplicates rows once a
+ * table crosses PostgREST's per-request row cap, because Postgres doesn't
+ * guarantee stable ordering for tied sort values across separate queries,
+ * and a row inserted anywhere before the current offset while paginating
+ * shifts every later page by one. Keyset pagination anchors each page to
+ * the actual last row seen, so it's immune to both.
+ */
+const fetchAllRows = async (table, { select = '*', cursorColumn = 'id' } = {}) => {
   let allRows = []
-  let from = 0
+  let cursor = null
   while (true) {
-    const { data, error } = await supabase
-      .from('daily_reports')
-      .select('*')
-      .order('date', { ascending: true })
-      .range(from, from + PAGE - 1)
+    let query = supabase.from(table).select(select).order(cursorColumn, { ascending: true }).limit(PAGE_SIZE)
+    if (cursor !== null) query = query.gt(cursorColumn, cursor)
+    const { data, error } = await query
     if (error) throw error
-    if (data && data.length > 0) allRows = allRows.concat(data)
-    if (!data || data.length < PAGE) break
-    from += PAGE
+    if (!data || data.length === 0) break
+    allRows = allRows.concat(data)
+    if (data.length < PAGE_SIZE) break
+    cursor = data[data.length - 1][cursorColumn]
   }
   return allRows
 }
+
+const fetchAllReports = () => fetchAllRows('daily_reports')
+const fetchAllChatMessages = () => fetchAllRows('chat_messages')
 
 export const loadInitialData = async () => {
   if (!hasSupabaseEnv || !supabase) {
     return null
   }
 
-  const [stationsRes, usersRes, reportsRes, chatRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits] = await Promise.all([
+  const [stationsRes, usersRes, reportsRes, chatMessagesRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits] = await Promise.all([
     supabase.from('stations').select('*').order('name', { ascending: true }),
     supabase.from('users').select('*').order('name', { ascending: true }),
     fetchAllReports(),
-    supabase.from('chat_messages').select('*').order('created_at', { ascending: true }),
+    fetchAllChatMessages(),
     supabase.from('admin_daily_reviews').select('*').order('date', { ascending: false }),
     safeSelect(supabase.from('product_requests').select('*').order('created_at', { ascending: false }), mapProductRequest, []),
     safeSelect(supabase.from('daily_finalizations').select('*').order('date', { ascending: false }), mapDailyFinalization, []),
@@ -395,21 +407,27 @@ export const loadInitialData = async () => {
     ),
   ])
 
-  if (stationsRes.error || usersRes.error || chatRes.error || adminDailyReviewsRes.error) {
+  if (stationsRes.error || usersRes.error || adminDailyReviewsRes.error) {
     throw new Error(
       stationsRes.error?.message ||
         usersRes.error?.message ||
-        chatRes.error?.message ||
         adminDailyReviewsRes.error?.message ||
         'Failed to load Supabase data',
     )
   }
 
+  // Downstream pages assume `reports` arrives sorted by date ascending (e.g.
+  // stationReportsToday.at(-1)/[0] for "latest"/"first in range"). Keyset
+  // pagination fetches by id, not date, so restore that ordering here.
+  const sortedReportRows = reportsRes
+    .slice()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+
   return {
     stations: stationsRes.data.map(mapStation),
     users: usersRes.data.map(mapUser),
-    reports: reportsRes.map(mapReport),
-    chatMessages: chatRes.data.map(mapChat),
+    reports: sortedReportRows.map(mapReport),
+    chatMessages: chatMessagesRes.map(mapChat),
     adminDailyReviews: adminDailyReviewsRes.data.map(mapAdminDailyReview),
     productRequests,
     dailyFinalizations,
