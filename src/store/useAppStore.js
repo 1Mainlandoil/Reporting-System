@@ -600,9 +600,35 @@ export const useAppStore = create(
           const report = state.reports.find((r) => r.id === reportId)
           if (!report) return { reports: state.reports }
           const now = new Date().toISOString()
+          // Opening stock / RTT feed into the book-remaining figure — recompute it
+          // whenever a correction touches either, so it doesn't go stale relative
+          // to the corrected inputs (received/sales are untouched by this section).
+          const mergedPatch = { ...patch }
+          if (patch.openingStockPMS != null) {
+            mergedPatch.openingPMS = Number(patch.openingStockPMS)
+          }
+          if (patch.openingStockAGO != null) {
+            mergedPatch.openingAGO = Number(patch.openingStockAGO)
+          }
+          if (patch.openingStockPMS != null || patch.rttPMS != null) {
+            mergedPatch.quantityRemainingPMS = computeQuantityRemaining({
+              previousRemaining: Number(patch.openingStockPMS ?? report.openingStockPMS ?? 0),
+              received: Number(report.receivedPMS ?? 0),
+              salesLiters: Number(report.totalSalesLitersPMS ?? 0),
+              rtt: Number(patch.rttPMS ?? report.rttPMS ?? 0),
+            })
+          }
+          if (patch.openingStockAGO != null || patch.rttAGO != null) {
+            mergedPatch.quantityRemainingAGO = computeQuantityRemaining({
+              previousRemaining: Number(patch.openingStockAGO ?? report.openingStockAGO ?? 0),
+              received: Number(report.receivedAGO ?? 0),
+              salesLiters: Number(report.totalSalesLitersAGO ?? 0),
+              rtt: Number(patch.rttAGO ?? report.rttAGO ?? 0),
+            })
+          }
           const updated = {
             ...report,
-            ...patch,
+            ...mergedPatch,
             correctionRequest: { ...report.correctionRequest, status: 'corrected', correctedAt: now },
             supervisorCorrectionHistory: [
               ...(Array.isArray(report.supervisorCorrectionHistory) ? report.supervisorCorrectionHistory : []),

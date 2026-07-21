@@ -425,7 +425,14 @@ const StaffClosingReportForm = ({
       setSubmitting(true)
       try {
         const patch = {}
-        if (unlockedSections.includes('Stock')) { patch.closingStockPMS = Number(formData.closingStockPMS || 0); patch.closingStockAGO = Number(formData.closingStockAGO || 0) }
+        if (unlockedSections.includes('Stock')) {
+          patch.openingStockPMS = Number(effectiveOpening.pms || 0)
+          patch.openingStockAGO = Number(effectiveOpening.ago || 0)
+          patch.closingStockPMS = Number(formData.closingStockPMS || 0)
+          patch.closingStockAGO = Number(formData.closingStockAGO || 0)
+          patch.rttPMS = Number(formData.rttPMS || 0)
+          patch.rttAGO = Number(formData.rttAGO || 0)
+        }
         if (unlockedSections.includes('Sales Quantity')) { patch.managerSalesPMS = Number(formData.managerSalesPMS || 0); patch.managerSalesAGO = Number(formData.managerSalesAGO || 0) }
         if (unlockedSections.includes('Pricing')) { patch.pmsPrice = Number(formData.pmsPrice || 0); patch.agoPrice = Number(formData.agoPrice || 0) }
         if (unlockedSections.includes('Expenses')) { patch.expenseItems = expenseItems; patch.expenseAmount = expenseItems.reduce((s, i) => s + Number(i.amount || 0), 0) }
