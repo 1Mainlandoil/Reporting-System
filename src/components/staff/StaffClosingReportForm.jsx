@@ -107,6 +107,7 @@ const StaffClosingReportForm = ({
   correctionRequest = null,
   correctionReportId = null,
   submitSectionCorrection = null,
+  onExitCorrection = null,
 }) => {
   const isCorrectionMode = !!correctionRequest && correctionRequest.status === 'pending'
   const unlockedSections = correctionRequest?.sections || []
@@ -629,6 +630,15 @@ const StaffClosingReportForm = ({
         </div>
         <p className="text-2xl font-bold text-white">Report Submitted!</p>
         <p className="text-sm text-slate-500">Your daily report has been saved successfully.</p>
+        {isCorrectionMode && (
+          <button
+            type="button"
+            onClick={() => onExitCorrection?.()}
+            className="mt-2 rounded-xl bg-[#a9cd39] px-6 py-3 text-sm font-bold text-black hover:bg-[#bcd94a] transition"
+          >
+            Back to Dashboard
+          </button>
+        )}
       </div>
     )
   }

@@ -67,6 +67,7 @@ const StaffDashboardPage = () => {
   const availableReportDate = earliestBacklogDate || (stationReportDates.has(todayIso) ? '' : todayIso)
   const [reportStarted, setReportStarted] = useState(false)
   const [reportMode, setReportMode] = useState('fuel')
+  const [correctionTarget, setCorrectionTarget] = useState(null)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [receiveTarget, setReceiveTarget] = useState(null)
   const [receiveDraft, setReceiveDraft] = useState({ tankDip: '', remark: '' })
@@ -88,10 +89,12 @@ const StaffDashboardPage = () => {
   const selectedBacklogDates = selectedOldest ? listMissedReportDatesInclusive(selectedOldest, todayIso).filter((date) => !selectedReportDates.has(date)) : []
   const selectedActiveReportDate = selectedBacklogDates[0] || (selectedReportDates.has(todayIso) ? '' : todayIso)
   const activeReportDate = selectedActiveReportDate
+  const formReportDate = correctionTarget?.date || activeReportDate
 
   useEffect(() => {
+    if (correctionTarget) return
     setReportStarted(false)
-  }, [activeReportDate, reportMode])
+  }, [activeReportDate, reportMode, correctionTarget])
 
   useEffect(() => {
     if (currentUser?.stationId) {
@@ -401,7 +404,21 @@ const StaffDashboardPage = () => {
               <span key={sec} className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-300">{sec}</span>
             ))}
           </div>
-          <p className="text-xs text-slate-400">Only the sections above are unlocked for editing. Open the report below to make corrections.</p>
+          {(report.reportType || 'fuel') !== 'lpg' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setCorrectionTarget(report)
+                setReportMode('fuel')
+                setReportStarted(true)
+              }}
+              className="rounded-xl bg-amber-400 px-4 py-2 text-xs font-black text-black hover:bg-amber-300 transition"
+            >
+              Open &amp; Correct
+            </button>
+          ) : (
+            <p className="text-xs text-slate-400">LPG report corrections aren't supported yet — contact your supervisor.</p>
+          )}
         </div>
       ))}
       {!currentUser?.stationId && (
@@ -573,7 +590,7 @@ const StaffDashboardPage = () => {
           />
         ) : (
           <StaffClosingReportForm
-            key={`fuel-${activeReportDate}`}
+            key={`fuel-${formReportDate}-${correctionTarget?.id || 'normal'}`}
             stationId={currentUser?.stationId}
             carriedOpening={carriedOpening}
             carriedCashBf={carriedCashBf}
@@ -584,13 +601,17 @@ const StaffDashboardPage = () => {
             submissionReminder={submissionReminder}
             pastCatchUpNeeded={pastCatchUpNeeded}
             historyPath={historyPath}
-            reportDate={activeReportDate}
+            reportDate={formReportDate}
             reportingConfiguration={reportingConfiguration}
             submitReport={submitReport}
-            correctionRequest={pendingCorrectionRequests.find((r) => r.date === activeReportDate)?.correctionRequest || null}
-            correctionReportId={pendingCorrectionRequests.find((r) => r.date === activeReportDate)?.id || null}
+            correctionRequest={correctionTarget?.correctionRequest || null}
+            correctionReportId={correctionTarget?.id || null}
             submitSectionCorrection={submitSectionCorrection}
-            formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled || !activeReportDate}
+            onExitCorrection={() => {
+              setCorrectionTarget(null)
+              setReportStarted(false)
+            }}
+            formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled || !formReportDate}
             onSubmitted={(result) => {
               if (result?.reportId && receivedDispatchesForReport.length) {
                 markReceivedDispatchesReported({
