@@ -13,6 +13,10 @@
     "matchedTerminals": 219,
     "unmatchedRows": 1
   },
+  "manualAdditions": [
+    { "stationId": "stn-39", "stationName": "ENUGU 4", "addedAt": "2026-07-22", "note": "Added after the original Excel generation - station wasn't in the source spreadsheet." },
+    { "stationId": "stn-40", "stationName": "ABAK 1", "addedAt": "2026-07-22", "note": "Added after the original Excel generation - station wasn't in the source spreadsheet." }
+  ],
   "stations": {
     "stn-1": {
       "stationId": "stn-1",
@@ -1333,6 +1337,43 @@
           "tid": "2033S2Q4",
           "bank": "UBA",
           "label": "UBA - 2033S2Q4"
+        }
+      ]
+    },
+    "stn-39": {
+      "stationId": "stn-39",
+      "stationName": "ENUGU 4",
+      "terminals": [
+        {
+          "tid": "2TMP3MSL",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TMP3MSL"
+        },
+        {
+          "tid": "2TMP2W5F",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2TMP2W5F"
+        }
+      ]
+    },
+    "stn-40": {
+      "stationId": "stn-40",
+      "stationName": "ABAK 1",
+      "terminals": [
+        {
+          "tid": "2MP1J450",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1J450"
+        },
+        {
+          "tid": "2MP1KR19",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1KR19"
+        },
+        {
+          "tid": "2MP1KGZ3",
+          "bank": "MONIEPOINT",
+          "label": "MONIEPOINT - 2MP1KGZ3"
         }
       ]
     }
