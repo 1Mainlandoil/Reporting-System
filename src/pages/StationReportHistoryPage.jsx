@@ -241,6 +241,14 @@ const StationReportHistoryPage = () => {
   }, [isStaffOwnStation, historyFilterDate, reportDatesSet, nextAllowedSubmitDate])
 
   const isSupervisor = role === ROLES.SUPERVISOR
+  const historyTabs = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'dispatch', label: 'Dispatch / Received Product' },
+    { key: 'reports', label: 'Daily Reports' },
+    ...(isSupervisor && reportingConfiguration.supervisorReviewWorkflowEnabled ? [{ key: 'review', label: 'Supervisor Review' }] : []),
+  ]
+  const [activeHistoryTab, setActiveHistoryTab] = useState(() => (isStaffOwnStation ? 'reports' : 'overview'))
+  const effectiveHistoryTab = historyTabs.some((tab) => tab.key === activeHistoryTab) ? activeHistoryTab : historyTabs[0].key
   const historyRange = useMemo(() => normalizeDateRange(historyRangeFrom, historyRangeTo), [historyRangeFrom, historyRangeTo])
   const activeHistoryRangeLabel = useMemo(
     () => isStaffOwnStation ? (historyFilterDate || 'All dates') : formatDateRangeLabel(historyRange.start, historyRange.end),
@@ -805,7 +813,27 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
         )}
       </Card>
 
-      {deliveryHistory.length > 0 && (
+      {reports.length > 0 && (
+        <div className="flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-white/[0.03] p-1">
+          {historyTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveHistoryTab(tab.key)}
+              className={`flex-1 min-w-[130px] rounded-xl px-3 py-2 text-xs font-black transition ${
+                effectiveHistoryTab === tab.key
+                  ? 'bg-[#a9cd39]/15 text-[#a9cd39]'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {effectiveHistoryTab === 'dispatch' && (
+        deliveryHistory.length > 0 ? (
         <Card className="space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -892,10 +920,14 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
             })}
           </div>
         </Card>
+        ) : (
+          <EmptyState title="No delivery records" message="Terminal dispatch and received-product records for this station will appear here." />
+        )
       )}
-      {reports.length ? (
+
+      {effectiveHistoryTab === 'overview' && (
+        reports.length ? (
         filteredReports.length ? (
-          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {[
                 ['Reports', formatNumber(historyInsights.totalReports), `${historyInsights.missingDays} missing`],
@@ -917,7 +949,27 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
                 </div>
               ))}
             </div>
+        ) : (
+          <EmptyState
+            title={historyFilterDate ? 'No report on this date' : 'No matching reports'}
+            message={
+              historyFilterDate
+                ? 'Try another date or clear the filter to show all submissions.'
+                : 'Adjust or clear the filter to see historical submissions.'
+            }
+          />
+        )
+        ) : (
+          <EmptyState
+            title={deliveryHistory.length ? 'No daily report history' : 'No report history'}
+            message={deliveryHistory.length ? 'Product delivery records exist, but this station has not submitted daily reports yet.' : 'This station has not submitted any report entries yet.'}
+          />
+        )
+      )}
 
+      {effectiveHistoryTab === 'reports' && (
+        reports.length ? (
+        filteredReports.length ? (
             <Card className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -997,7 +1049,6 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
                 })}
               </div>
             </Card>
-          </div>
         ) : (
           <EmptyState
             title={historyFilterDate ? 'No report on this date' : 'No matching reports'}
@@ -1008,11 +1059,12 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
             }
           />
         )
-      ) : (
-        <EmptyState
-          title={deliveryHistory.length ? 'No daily report history' : 'No report history'}
-          message={deliveryHistory.length ? 'Product delivery records exist, but this station has not submitted daily reports yet.' : 'This station has not submitted any report entries yet.'}
-        />
+        ) : (
+          <EmptyState
+            title={deliveryHistory.length ? 'No daily report history' : 'No report history'}
+            message={deliveryHistory.length ? 'Product delivery records exist, but this station has not submitted daily reports yet.' : 'This station has not submitted any report entries yet.'}
+          />
+        )
       )}
       {selectedHistoryReport && (
         <div className="fixed inset-0 z-[70] overflow-y-auto bg-[#060a12]/95 p-3 backdrop-blur-xl md:p-6">
@@ -1294,7 +1346,7 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
           </div>
         </div>
       )}
-      {isSupervisor && reports.length > 0 && reportingConfiguration.supervisorReviewWorkflowEnabled && (
+      {effectiveHistoryTab === 'review' && isSupervisor && reports.length > 0 && reportingConfiguration.supervisorReviewWorkflowEnabled && (
         <Card className="space-y-4">
           <h3 className="text-lg font-semibold">Supervisor Review</h3>
           <p className="text-sm text-slate-500">
