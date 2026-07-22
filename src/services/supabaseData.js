@@ -329,6 +329,17 @@ const mapInspectorVisit = (row) => ({
   updatedAt: row.updated_at,
 })
 
+const mapPosTerminal = (row) => ({
+  id: row.id,
+  stationId: row.station_id,
+  tid: row.tid,
+  bank: row.bank,
+  label: row.label,
+  isActive: row.is_active !== false,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+})
+
 const mapManualCostEntry = (row) => ({
   id: row.id,
   stationId: row.station_id,
@@ -384,13 +395,22 @@ const fetchAllRows = async (table, { select = '*', cursorColumn = 'id' } = {}) =
 
 const fetchAllReports = () => fetchAllRows('daily_reports')
 const fetchAllChatMessages = () => fetchAllRows('chat_messages')
+// Table may not exist yet until the migration in schema.sql is run - fall
+// back to empty rather than breaking the whole data load.
+const fetchAllPosTerminals = async () => {
+  try {
+    return await fetchAllRows('pos_terminals')
+  } catch {
+    return []
+  }
+}
 
 export const loadInitialData = async () => {
   if (!hasSupabaseEnv || !supabase) {
     return null
   }
 
-  const [stationsRes, usersRes, reportsRes, chatMessagesRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits, manualCostEntries] = await Promise.all([
+  const [stationsRes, usersRes, reportsRes, chatMessagesRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits, manualCostEntries, posTerminalsRows] = await Promise.all([
     supabase.from('stations').select('*').order('name', { ascending: true }),
     supabase.from('users').select('*').order('name', { ascending: true }),
     fetchAllReports(),
@@ -424,6 +444,7 @@ export const loadInitialData = async () => {
       mapManualCostEntry,
       [],
     ),
+    fetchAllPosTerminals(),
   ])
 
   if (stationsRes.error || usersRes.error || adminDailyReviewsRes.error) {
@@ -456,6 +477,7 @@ export const loadInitialData = async () => {
     adminReportResolutions,
     inspectorVisits,
     manualCostEntries,
+    posTerminals: posTerminalsRows.map(mapPosTerminal),
   }
 }
 
@@ -1008,6 +1030,28 @@ export const insertManualCostEntry = async (entry) => {
   }
 
   const { error } = await supabase.from('manual_cost_entries').insert(payload)
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
+}
+
+export const upsertPosTerminal = async (terminal) => {
+  if (!hasSupabaseEnv || !supabase) {
+    throw new Error('Supabase is not configured for POS terminal sync.')
+  }
+
+  const payload = {
+    id: terminal.id,
+    station_id: terminal.stationId,
+    tid: terminal.tid,
+    bank: terminal.bank,
+    label: terminal.label,
+    is_active: terminal.isActive !== false,
+    updated_at: new Date().toISOString(),
+  }
+
+  const { error } = await supabase.from('pos_terminals').upsert(payload, { onConflict: 'id' })
   if (error) {
     throw new Error(error.message)
   }

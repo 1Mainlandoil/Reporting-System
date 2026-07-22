@@ -3,7 +3,6 @@ import { supabase, hasSupabaseEnv } from '../../lib/supabaseClient'
 import FormInput from '../ui/FormInput'
 import CustomSelect from '../ui/CustomSelect'
 import ProductPriceSection from './ProductPriceSection'
-import posTerminalCatalog from '../../data/posTerminals.generated.json'
 import { computeSalesFromMovement, getPumpHistoryKey, normalizePumpProductType } from '../../utils/reportFields'
 import {
   computeSalesAmountFromBands,
@@ -108,6 +107,7 @@ const StaffClosingReportForm = ({
   correctionReportId = null,
   submitSectionCorrection = null,
   onExitCorrection = null,
+  posTerminals = [],
 }) => {
   const isCorrectionMode = !!correctionRequest && correctionRequest.status === 'pending'
   const unlockedSections = correctionRequest?.sections || []
@@ -201,8 +201,8 @@ const StaffClosingReportForm = ({
   const [extraSlotIds, setExtraSlotIds] = useState([]) // track manually-added extra slots
 
   const assignedPosTerminals = useMemo(
-    () => posTerminalCatalog?.stations?.[stationId]?.terminals || [],
-    [stationId],
+    () => posTerminals.filter((terminal) => terminal.stationId === stationId && terminal.isActive !== false),
+    [posTerminals, stationId],
   )
   const posTerminalBreakdown = useMemo(
     () => {

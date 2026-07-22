@@ -80,6 +80,7 @@ const ensurePersistedCollections = (state, fallback = {}) => ({
   adminReportResolutions: asArray(state.adminReportResolutions, fallback.adminReportResolutions),
   inspectorVisits: asArray(state.inspectorVisits, fallback.inspectorVisits),
   manualCostEntries: asArray(state.manualCostEntries, fallback.manualCostEntries),
+  posTerminals: asArray(state.posTerminals, fallback.posTerminals),
   appSettings: state.appSettings ?? fallback.appSettings ?? defaultAppSettings,
 })
 
@@ -141,6 +142,7 @@ export const useAppStore = create(
       rejectedReports: [],
       inspectorVisits: [],
       manualCostEntries: [],
+      posTerminals: [],
       dailyFinalizations: [],
       monthEndFinalizations: [],
       adminDailyReviews: [],
@@ -2050,6 +2052,7 @@ export const useAppStore = create(
               adminReportResolutions: asArray(remoteData.adminReportResolutions),
               inspectorVisits: asArray(remoteData.inspectorVisits),
               manualCostEntries: asArray(remoteData.manualCostEntries),
+              posTerminals: asArray(remoteData.posTerminals),
               hydratedFromSupabase: true,
               isHydrating: false,
             })
@@ -2107,6 +2110,7 @@ export const useAppStore = create(
             adminReportResolutions: [],
             inspectorVisits: [],
             manualCostEntries: [],
+            posTerminals: [],
           }
         }
         return persisted
@@ -2126,6 +2130,7 @@ export const useAppStore = create(
         adminReportResolutions: state.adminReportResolutions,
         inspectorVisits: state.inspectorVisits,
         manualCostEntries: state.manualCostEntries,
+        posTerminals: state.posTerminals,
         chatMessages: state.chatMessages,
         appSettings: state.appSettings,
         pinnedChatUserIds: state.pinnedChatUserIds,

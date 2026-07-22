@@ -22,6 +22,7 @@ const StaffDashboardPage = () => {
   const reportingConfiguration = useAppStore((state) => state.appSettings.reportingConfiguration)
   const rejectedReports = useAppStore((state) => state.rejectedReports)
   const submitSectionCorrection = useAppStore((state) => state.submitSectionCorrection)
+  const posTerminals = useAppStore((state) => state.posTerminals)
 
   const todayIso = getReportingDateIso()
 
@@ -607,6 +608,7 @@ const StaffDashboardPage = () => {
             correctionRequest={correctionTarget?.correctionRequest || null}
             correctionReportId={correctionTarget?.id || null}
             submitSectionCorrection={submitSectionCorrection}
+            posTerminals={posTerminals}
             onExitCorrection={() => {
               setCorrectionTarget(null)
               setReportStarted(false)

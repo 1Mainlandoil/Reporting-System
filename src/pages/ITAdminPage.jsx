@@ -71,6 +71,9 @@ export default function ITAdminPage() {
   const [stations, setStations] = useState([])
   const [users, setUsers] = useState([])
   const [reports, setReports] = useState([])
+  const [posTerminals, setPosTerminals] = useState([])
+  const [posTerminalForm, setPosTerminalForm] = useState({ id: null, stationId: '', tid: '', bank: '' })
+  const [posTerminalSearch, setPosTerminalSearch] = useState('')
   const [search, setSearch] = useState('')
   const [selectedUser, setSelectedUser] = useState(null)
   const [editForm, setEditForm] = useState({})
@@ -127,7 +130,22 @@ export default function ITAdminPage() {
     return data || []
   }, [])
 
-  useEffect(() => { if (authed) { loadStations(); loadUsers(); loadReports() } }, [authed, loadStations, loadReports, loadUsers])
+  const loadPosTerminals = useCallback(async () => {
+    if (!supabase) return []
+    const { data, error } = await supabase.from('pos_terminals').select('*').order('station_id').order('bank')
+    if (error) {
+      // Table may not exist yet until the migration in schema.sql is run.
+      if (!/relation .* does not exist/i.test(error.message || '')) {
+        showNotice(`Failed to load POS terminals: ${error.message}`, 'error')
+      }
+      setPosTerminals([])
+      return []
+    }
+    setPosTerminals(data || [])
+    return data || []
+  }, [])
+
+  useEffect(() => { if (authed) { loadStations(); loadUsers(); loadReports(); loadPosTerminals() } }, [authed, loadStations, loadReports, loadUsers, loadPosTerminals])
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || id || '-'
   const stationLocation = (id) => stations.find((s) => s.id === id)?.location || '-'
@@ -385,6 +403,36 @@ export default function ITAdminPage() {
     await loadStations()
   }
 
+  const handleSavePosTerminal = async (e) => {
+    e.preventDefault()
+    if (!supabase) return
+    const stationId = posTerminalForm.stationId
+    const tid = posTerminalForm.tid.trim().toUpperCase()
+    const bank = posTerminalForm.bank.trim().toUpperCase()
+    if (!stationId) { showNotice('Select a station.', 'error'); return }
+    if (!tid) { showNotice('Enter the terminal ID.', 'error'); return }
+    if (!bank) { showNotice('Enter the bank.', 'error'); return }
+    const label = `${bank} - ${tid}`
+    const isEdit = Boolean(posTerminalForm.id)
+    if (!(await runSecurityGate(isEdit ? 'edit POS terminal' : 'add POS terminal', `${stationName(stationId)} - ${label}`))) return
+    const id = posTerminalForm.id || `pos-${stationId}-${tid}`
+    const { error } = await supabase.from('pos_terminals').upsert({ id, station_id: stationId, tid, bank, label, is_active: true }, { onConflict: 'id' })
+    if (error) { showNotice(`Could not save POS terminal: ${error.message}`, 'error'); return }
+    setPosTerminalForm({ id: null, stationId: '', tid: '', bank: '' })
+    showNotice(isEdit ? 'POS terminal updated.' : 'POS terminal added.')
+    await loadPosTerminals()
+  }
+
+  const handleTogglePosTerminalActive = async (terminal) => {
+    if (!supabase) return
+    const nextActive = !terminal.is_active
+    if (!(await runSecurityGate(nextActive ? 'reactivate POS terminal' : 'deactivate POS terminal', `${stationName(terminal.station_id)} - ${terminal.label}`))) return
+    const { error } = await supabase.from('pos_terminals').update({ is_active: nextActive, updated_at: new Date().toISOString() }).eq('id', terminal.id)
+    if (error) { showNotice(`Could not update terminal: ${error.message}`, 'error'); return }
+    showNotice(nextActive ? 'Terminal reactivated.' : 'Terminal deactivated - it stays on old reports but managers will no longer see it as an option.')
+    await loadPosTerminals()
+  }
+
   const handleResetPassword = async (user) => {
     if (!supabase) return
     const isManager = user.role === 'staff'
@@ -496,6 +544,7 @@ export default function ITAdminPage() {
           <button type="button" className={tabBtnClass('users')} onClick={() => setTab('users')}>Users</button>
           <button type="button" className={tabBtnClass('create')} onClick={() => setTab('create')}>Create Users</button>
           <button type="button" className={tabBtnClass('stations')} onClick={() => setTab('stations')}>Stations</button>
+          <button type="button" className={tabBtnClass('pos-terminals')} onClick={() => setTab('pos-terminals')}>POS Terminals</button>
           <button type="button" className={tabBtnClass('reset')} onClick={() => setTab('reset')}>Reset</button>
         </nav>
 
@@ -644,6 +693,85 @@ export default function ITAdminPage() {
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-white/8 bg-white/[0.03]"><tr><th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">ID</th><th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Name</th><th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Location</th></tr></thead>
                   <tbody>{stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => <tr key={s.id} className="border-b border-white/5"><td className="px-3 py-2.5 font-mono text-xs text-slate-500">{s.id}</td><td className="px-3 py-2.5 font-medium text-white">{s.name}</td><td className="px-3 py-2.5 text-slate-400">{s.location}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {tab === 'pos-terminals' && (
+          <section className="mt-5 grid gap-5 lg:grid-cols-2">
+            <form onSubmit={handleSavePosTerminal} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">{posTerminalForm.id ? 'Edit POS Terminal' : 'Add POS Terminal'}</h2>
+              <p className="text-xs text-slate-500">Assign a POS terminal to a station, or edit an existing one.</p>
+              <div className="mt-4 space-y-3">
+                <select value={posTerminalForm.stationId} onChange={(e) => setPosTerminalForm((f) => ({ ...f, stationId: e.target.value }))} required className={inp}>
+                  <option value="">Select station</option>
+                  {stations.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <input value={posTerminalForm.tid} onChange={(e) => setPosTerminalForm((f) => ({ ...f, tid: e.target.value }))} placeholder="Terminal ID (e.g. 2MP1J450)" required className={inp} disabled={Boolean(posTerminalForm.id)} />
+                <input value={posTerminalForm.bank} onChange={(e) => setPosTerminalForm((f) => ({ ...f, bank: e.target.value }))} placeholder="Bank (e.g. MONIEPOINT)" required className={inp} />
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button type="submit" className="flex-1 rounded-xl bg-[#a9cd39] px-4 py-2.5 font-bold text-black hover:bg-[#bcd94a] transition">
+                  {posTerminalForm.id ? 'Save Changes' : 'Add Terminal'}
+                </button>
+                {posTerminalForm.id && (
+                  <button type="button" onClick={() => setPosTerminalForm({ id: null, stationId: '', tid: '', bank: '' })} className="rounded-xl border border-white/10 px-4 py-2.5 font-semibold text-slate-300 hover:bg-white/5 transition">
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+
+            <div className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-bold text-white">Station Terminals</h2>
+                <span className="rounded-full bg-[#a9cd39]/15 px-3 py-1 text-xs font-bold text-[#a9cd39]">{posTerminals.length} total</span>
+              </div>
+              <input value={posTerminalSearch} onChange={(e) => setPosTerminalSearch(e.target.value)} placeholder="Search by station, bank, or terminal ID" className={`mt-3 ${inp}`} />
+              <div className="mt-3 max-h-[520px] overflow-y-auto rounded-xl border border-white/8">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-white/8 bg-white/[0.03] sticky top-0"><tr>
+                    <th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Station</th>
+                    <th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Terminal</th>
+                    <th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Status</th>
+                    <th className="px-3 py-2.5 text-xs font-black uppercase tracking-widest text-slate-400">Actions</th>
+                  </tr></thead>
+                  <tbody>
+                    {posTerminals
+                      .filter((t) => {
+                        if (!posTerminalSearch.trim()) return true
+                        const q = posTerminalSearch.trim().toLowerCase()
+                        return [stationName(t.station_id), t.bank, t.tid, t.label].some((v) => String(v || '').toLowerCase().includes(q))
+                      })
+                      .map((t) => (
+                        <tr key={t.id} className="border-b border-white/5">
+                          <td className="px-3 py-2.5 font-medium text-white">{stationName(t.station_id)}</td>
+                          <td className="px-3 py-2.5 text-slate-300">{t.label}</td>
+                          <td className="px-3 py-2.5">
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${t.is_active ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : 'bg-slate-500/15 text-slate-400'}`}>
+                              {t.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => setPosTerminalForm({ id: t.id, stationId: t.station_id, tid: t.tid, bank: t.bank })} className="rounded-lg border border-white/10 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-white/5 transition">
+                                Edit
+                              </button>
+                              <button type="button" onClick={() => handleTogglePosTerminalActive(t)} className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${t.is_active ? 'border-amber-400/30 text-amber-300 hover:bg-amber-400/10' : 'border-[#a9cd39]/30 text-[#a9cd39] hover:bg-[#a9cd39]/10'}`}>
+                                {t.is_active ? 'Deactivate' : 'Reactivate'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    {posTerminals.length === 0 && (
+                      <tr><td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-500">
+                        No POS terminals yet - run the pos_terminals migration in schema.sql, or add one using the form.
+                      </td></tr>
+                    )}
+                  </tbody>
                 </table>
               </div>
             </div>

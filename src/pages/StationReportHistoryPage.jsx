@@ -135,6 +135,7 @@ const StationReportHistoryPage = () => {
   const currentUser = useAppStore((state) => state.currentUser)
   const stations = useAppStore((state) => state.stations)
   const storeReports = useAppStore((state) => state.reports)
+  const posTerminals = useAppStore((state) => state.posTerminals)
   const productRequests = useAppStore((state) => state.productRequests)
   const submitReport = useAppStore((state) => state.submitReport)
   const updateReportSupervisorReview = useAppStore((state) => state.updateReportSupervisorReview)
@@ -806,6 +807,7 @@ const getReportTotalLiters = (row) => getSalesPms(row) + getSalesAgo(row)
                 openingBannerTitle="Opening stock for selected date (prior closing)"
                 formDisabled={!reportingConfiguration.dailyOpeningStockFormatEnabled}
                 submitButtonLabel={`Submit for ${historyFilterDate}`}
+                posTerminals={posTerminals}
                 onSubmitted={() => refreshFromSupabase()}
               />
             )}
