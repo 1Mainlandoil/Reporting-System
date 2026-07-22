@@ -12,6 +12,7 @@ import { exportAdminDailyReviewToExcel, exportStationsToExcel } from '../utils/e
 import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics } from '../utils/stock'
 import { buildBatches, computeFifoCogs, applyManualCosting } from '../utils/batchCosting'
+import StationCoverageModal from '../components/admin/StationCoverageModal'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
@@ -34,59 +35,18 @@ const Sparkline = ({ data }) => {
   )
 }
 
-const PlStationCardGrid = ({ cards, sparklines, expanded, setExpanded, showStatus, productRequests = [], batchConsumedTotals = {}, manualCostEntries = [] }) => (
+const PlStationCardGrid = ({ cards, sparklines, expanded, onSelect }) => (
   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
     {cards.map((s) => {
-      const isOpen = expanded === s.stationId
+      const isSelected = expanded === s.stationId
       const profitColor = s.netProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'
       const marginBg = s.margin >= 20 ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : s.margin >= 5 ? 'bg-amber-400/15 text-amber-300' : 'bg-rose-400/15 text-rose-300'
       const sparkData = sparklines?.get(s.stationId)
       const hasVariance = s.varianceLiters > 50
-
-      // Litres sold grouped by the landing cost they were actually matched
-      // against - one row per distinct batch/manual entry drawn from.
-      const costGroups = isOpen
-        ? Object.values(
-            (s.events || []).reduce((acc, ev) => {
-              const key = `${ev.source}::${ev.sourceId}`
-              if (!acc[key]) acc[key] = { ...ev, litres: 0 }
-              acc[key].litres += ev.litres
-              return acc
-            }, {}),
-          ).sort((a, b) => b.litres - a.litres)
-        : []
-
-      const receivingHistory = isOpen
-        ? productRequests
-            .filter((r) => r.stationId === s.stationId && (r.terminalReviewedAt || r.dispatchStatus === 'dispatched' || r.dispatchStatus === 'received') && Number(r.approvedLiters || 0) > 0)
-            .map((r) => {
-              const costPerLiter = Number(r.costPricePerLiter || 0)
-              const transportPerLiter = Number(r.transportCostPerLiter || 0)
-              const totalLitres = Number(r.approvedLiters || 0)
-              const consumed = batchConsumedTotals[r.id] || 0
-              return {
-                id: r.id,
-                date: String(r.terminalReviewedAt || r.updatedAt || r.createdAt || '').slice(0, 10),
-                product: (r.approvedProductType || r.requestedProductType || 'PMS').toUpperCase() === 'AGO' ? 'AGO' : 'PMS',
-                totalLitres,
-                costPerLiter,
-                transportPerLiter,
-                landingPerLiter: costPerLiter + transportPerLiter,
-                priced: costPerLiter > 0,
-                remaining: Math.max(0, totalLitres - consumed),
-              }
-            })
-            .sort((a, b) => b.date.localeCompare(a.date))
-        : []
-
-      const manualEntriesForStation = isOpen
-        ? manualCostEntries.filter((e) => e.stationId === s.stationId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-        : []
-
       return (
-        <button key={s.stationId} type="button" onClick={() => setExpanded(isOpen ? null : s.stationId)}
-          className={`rounded-2xl border text-left transition hover:brightness-110 ${isOpen ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}>
-          <div className="p-4 space-y-3">
+        <button key={s.stationId} type="button" onClick={() => onSelect(s.stationId)}
+          className={`rounded-2xl border p-4 text-left transition hover:brightness-110 ${isSelected ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}>
+          <div className="space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-black text-white text-base leading-tight truncate">{s.stationName}</p>
@@ -104,119 +64,11 @@ const PlStationCardGrid = ({ cards, sparklines, expanded, setExpanded, showStatu
             </div>
             <div className="flex items-center justify-between">
               <Sparkline data={sparkData} />
-              <p className="text-[10px] text-slate-600">{isOpen ? '▲ Hide' : '▼ Details'}</p>
+              {s.uncostedLitres > 0.5
+                ? <p className="text-[10px] font-semibold text-amber-300">▸ {s.coveragePct.toFixed(0)}% costed</p>
+                : <p className="text-[10px] text-slate-600">▸ View details</p>}
             </div>
           </div>
-          {isOpen && (
-            <div className="border-t border-white/8 p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-              <div className="space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Product Split</p>
-                <div className="grid grid-cols-3 gap-1 text-[11px] text-center rounded-xl border border-white/8 bg-white/[0.03] p-2">
-                  <div><p className="text-slate-500 mb-0.5">Product</p></div>
-                  <div><p className="text-slate-500 mb-0.5">Litres</p></div>
-                  <div><p className="text-slate-500 mb-0.5">Revenue</p></div>
-                  <div><p className="text-amber-300 font-bold">PMS</p></div>
-                  <div><p className="text-white font-semibold">{Math.round(s.pmsLiters).toLocaleString()} L</p></div>
-                  <div><p className="text-white font-semibold">{money(s.pmsRevenue)}</p></div>
-                  <div><p className="text-blue-300 font-bold">AGO</p></div>
-                  <div><p className="text-white font-semibold">{Math.round(s.agoLiters).toLocaleString()} L</p></div>
-                  <div><p className="text-white font-semibold">{money(s.agoRevenue)}</p></div>
-                </div>
-              </div>
-
-              <div className="space-y-2 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#a9cd39]">Final Verdict</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-300">Confirmed profit (trusted)</span>
-                  <span className={`text-sm font-black ${s.confirmedNetProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'}`}>{money(s.confirmedNetProfit)}</span>
-                </div>
-                <p className="text-[10px] text-slate-500">{s.confirmedMargin.toFixed(1)}% margin on {money(s.confirmedRevenue)} confirmed revenue</p>
-                {s.pendingRevenue > 0.5 && (
-                  <div className="flex items-center justify-between border-t border-white/10 pt-2">
-                    <span className="text-xs text-amber-300">Revenue pending cost</span>
-                    <span className="text-sm font-black text-amber-300">{money(s.pendingRevenue)}</span>
-                  </div>
-                )}
-                {s.uncostedLitres > 0.5 && (
-                  <p className="text-[10px] text-amber-300">{liters(s.uncostedLitres)} sold with no cost on file — coverage {s.coveragePct.toFixed(1)}%</p>
-                )}
-              </div>
-
-              {costGroups.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Litres by matched cost</p>
-                  <div className="space-y-1">
-                    {costGroups.map((g) => (
-                      <div key={`${g.source}-${g.sourceId}`} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11px]">
-                        <span className="text-slate-300">{g.product} · {liters(g.litres)}{g.source === 'manual' ? ' (manual)' : ''}</span>
-                        <span className="font-semibold text-white">{money(g.landingPerLitre)}/L</span>
-                      </div>
-                    ))}
-                    {s.uncostedLitres > 0.5 && (
-                      <div className="flex items-center justify-between rounded-lg bg-amber-400/10 px-2 py-1.5 text-[11px]">
-                        <span className="text-amber-300">Yet to cost · {liters(s.uncostedLitres)}</span>
-                        <span className="font-semibold text-amber-300">no cost on file</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {receivingHistory.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Receiving history</p>
-                  <div className="space-y-1">
-                    {receivingHistory.map((r) => (
-                      <div key={r.id} className="rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11px]">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-300">{r.date || '-'} · {r.product} · {liters(r.totalLitres)}</span>
-                          <span className={`font-semibold ${r.priced ? 'text-white' : 'text-amber-300'}`}>{r.priced ? `${money(r.landingPerLiter)}/L` : 'unpriced'}</span>
-                        </div>
-                        <p className="text-slate-500">{r.remaining > 0.5 ? `${liters(r.remaining)} unconsumed` : 'fully consumed'}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {manualEntriesForStation.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Manual costing entries</p>
-                  <div className="space-y-1">
-                    {manualEntriesForStation.map((e) => (
-                      <div key={e.id} className="rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11px]">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-300">{e.productType} · {liters(e.quantity)}</span>
-                          <span className="font-semibold text-white">{money(e.landingCostPerLiter)}/L</span>
-                        </div>
-                        <p className="text-slate-500">{e.enteredBy} · {String(e.createdAt || '').slice(0, 10)}{e.remark ? ` · ${e.remark}` : ''}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {[
-                  ['Revenue', money(s.revenue)],
-                  ['COGS', money(s.cogs)],
-                  ['Gross Profit', money(s.grossProfit)],
-                  ['Expenses', money(s.expense)],
-                  ['Net P/L', money(s.netProfit)],
-                  ['Reports', String(s.reports)],
-                  ...(s.varianceLiters > 0 ? [['Variance', `${Math.round(s.varianceLiters).toLocaleString()} L`]] : []),
-                ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between gap-2">
-                    <span className="text-slate-400">{label}</span>
-                    <span className={`font-semibold text-right ${label === 'Net P/L' && s.netProfit < 0 ? 'text-rose-400' : label === 'Variance' ? 'text-amber-300' : 'text-white'}`}>{value}</span>
-                  </div>
-                ))}
-              </div>
-              {showStatus && s.rows.length > 0 && s.rows[0].sourceStatus && (
-                <p className="text-[10px] text-slate-500">Status: {s.rows[0].sourceStatus}</p>
-              )}
-            </div>
-          )}
         </button>
       )
     })}
@@ -1494,6 +1346,12 @@ const AdminDashboardPage = () => {
   const isReportsView = adminView === 'reports'
   const isProductRequestsView = adminView === 'product-requests'
   const isHistoryView = adminView === 'history'
+
+  const handleCostNow = ({ stationId, productType }) => {
+    setManualCostForm((prev) => ({ ...prev, stationId, productType }))
+    setPlExpandedStation(null)
+    if (adminView !== 'profit-loss/costing') navigate('/admin/profit-loss/costing')
+  }
   const profitLossViewMeta = {
     'profit-loss': {
       title: 'Dashboard',
@@ -2165,7 +2023,7 @@ const AdminDashboardPage = () => {
               {plStationCards.length === 0 ? (
                 <EmptyState title="No data for this period" message="No costed reports found for the selected period." />
               ) : (
-                <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus={adminView === 'profit-loss/daily'} productRequests={productRequests} batchConsumedTotals={batchConsumedTotals} manualCostEntries={manualCostEntries} />
+                <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} onSelect={setPlExpandedStation} />
               )}
 
               {/* 30-day cumulative chart */}
@@ -2226,7 +2084,7 @@ const AdminDashboardPage = () => {
           </div>
           {plStationCards.length === 0
             ? <EmptyState title="No P/L data for selected period" message="No costed reports found for the selected date range." />
-            : <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus productRequests={productRequests} batchConsumedTotals={batchConsumedTotals} manualCostEntries={manualCostEntries} />
+            : <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} onSelect={setPlExpandedStation} />
           }
         </Card>
       )}
@@ -2385,6 +2243,18 @@ const AdminDashboardPage = () => {
       </Card>
       )}
 
+      {plExpandedStation && (
+        <StationCoverageModal
+          card={plStationCards.find((s) => s.stationId === plExpandedStation)}
+          dateFrom={plDateFrom}
+          dateTo={plDateTo}
+          today={today}
+          productRequests={productRequests}
+          batchConsumedTotals={batchConsumedTotals}
+          onClose={() => setPlExpandedStation(null)}
+          onCostNow={handleCostNow}
+        />
+      )}
     </div>
   )
 }
