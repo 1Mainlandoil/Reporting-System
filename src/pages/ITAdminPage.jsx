@@ -21,7 +21,14 @@ const validateCompanyEmail = (email) => email.toLowerCase().endsWith('@mainlando
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const sanitizeEmailForAuth = (raw) => String(raw || '').normalize('NFC').replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '').trim().toLowerCase().replace(/\s+/g, '')
 
-const roleLabel = (user) => user.role === 'staff' ? 'Manager' : user.role === 'admin' ? 'Admin' : 'Supervisor'
+const ROLE_LABELS = {
+  staff: 'Manager',
+  admin: 'Admin',
+  supervisor: 'Supervisor',
+  terminal_operator: 'Terminal Operator',
+  inspector: 'Inspector',
+}
+const roleLabel = (user) => ROLE_LABELS[user.role] || user.role
 
 function PasswordInput({ value, onChange, placeholder = '', id, disabled }) {
   const [show, setShow] = useState(false)
@@ -290,6 +297,54 @@ export default function ITAdminPage() {
     await loadUsers()
   }
 
+  const handleCreateTerminalOperator = async (e) => {
+    e.preventDefault()
+    if (!supabase) return
+    const fd = new FormData(e.target)
+    const name = String(fd.get('name') || '').trim()
+    const email = String(fd.get('email') || '').trim().toLowerCase()
+    const password = String(fd.get('password') || '')
+    const confirmPassword = String(fd.get('confirmPassword') || '')
+    if (!name || !validateCompanyEmail(email)) { showNotice('Terminal operator email must be @mainlandoil.com.', 'error'); return }
+    if (password.length < 8) { showNotice('Password must be at least 8 characters.', 'error'); return }
+    if (password !== confirmPassword) { showNotice('Passwords do not match.', 'error'); return }
+    if (!(await runSecurityGate('create terminal operator account', name || email))) return
+    const { error: authErr } = await supabase.auth.signUp({ email, password })
+    if (authErr && !authErr.message?.toLowerCase().includes('already registered')) { showNotice(`Auth error: ${authErr.message}`, 'error'); return }
+    const allUsers = await loadUsers()
+    const existing = allUsers.find((u) => u.role === 'terminal_operator' && (u.email || '').toLowerCase() === email)
+    const id = existing?.id || `term-${Date.now()}`
+    const { error } = await supabase.from('users').upsert({ id, name, role: 'terminal_operator', station_id: null, email, manager_username: null, manager_password_hash: null })
+    if (error) { showNotice(`Could not create terminal operator: ${error.message}`, 'error'); return }
+    e.target.reset()
+    showNotice('Terminal operator created. They can sign in with this email and password.')
+    await loadUsers()
+  }
+
+  const handleCreateInspector = async (e) => {
+    e.preventDefault()
+    if (!supabase) return
+    const fd = new FormData(e.target)
+    const name = String(fd.get('name') || '').trim()
+    const email = String(fd.get('email') || '').trim().toLowerCase()
+    const password = String(fd.get('password') || '')
+    const confirmPassword = String(fd.get('confirmPassword') || '')
+    if (!name || !validateCompanyEmail(email)) { showNotice('Inspector email must be @mainlandoil.com.', 'error'); return }
+    if (password.length < 8) { showNotice('Password must be at least 8 characters.', 'error'); return }
+    if (password !== confirmPassword) { showNotice('Passwords do not match.', 'error'); return }
+    if (!(await runSecurityGate('create inspector account', name || email))) return
+    const { error: authErr } = await supabase.auth.signUp({ email, password })
+    if (authErr && !authErr.message?.toLowerCase().includes('already registered')) { showNotice(`Auth error: ${authErr.message}`, 'error'); return }
+    const allUsers = await loadUsers()
+    const existing = allUsers.find((u) => u.role === 'inspector' && (u.email || '').toLowerCase() === email)
+    const id = existing?.id || `insp-${Date.now()}`
+    const { error } = await supabase.from('users').upsert({ id, name, role: 'inspector', station_id: null, email, manager_username: null, manager_password_hash: null })
+    if (error) { showNotice(`Could not create inspector: ${error.message}`, 'error'); return }
+    e.target.reset()
+    showNotice('Inspector created. They can sign in with this email and password.')
+    await loadUsers()
+  }
+
   const handleCreateSuperAdmin = async (e) => {
     e.preventDefault()
     if (!supabase) return
@@ -385,7 +440,7 @@ export default function ITAdminPage() {
     if (!supabase || !selectedUser) return
     const { name, email, role, stationId, stationLoc, managerUsername, managerPassword } = editForm
     if (!name) { showNotice('Name is required.', 'error'); return }
-    if ((role === 'admin' || role === 'supervisor') && !validateCompanyEmail(email || '')) { showNotice('Supervisor/Admin must have @mainlandoil.com email.', 'error'); return }
+    if (role !== 'staff' && !validateCompanyEmail(email || '')) { showNotice('Supervisor/Admin/Terminal Operator/Inspector must have @mainlandoil.com email.', 'error'); return }
     if (role === 'staff' && !stationId) { showNotice('Manager must have a station.', 'error'); return }
     if (role === 'staff' && !managerUsername) { showNotice('Manager username is required.', 'error'); return }
     const hash = managerPassword ? await sha256Hex(managerPassword) : (selectedUser.manager_password_hash || '')
@@ -480,7 +535,7 @@ export default function ITAdminPage() {
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div><label className="text-xs font-semibold text-slate-400">Name</label><input value={editForm.name || ''} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} className={`mt-1 ${inp}`} /></div>
                   <div><label className="text-xs font-semibold text-slate-400">Email</label><input type="email" value={editForm.email || ''} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className={`mt-1 ${inp}`} /></div>
-                  <div><label className="text-xs font-semibold text-slate-400">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className={`mt-1 ${inp}`}><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
+                  <div><label className="text-xs font-semibold text-slate-400">Role</label><select value={editForm.role || 'staff'} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))} className={`mt-1 ${inp}`}><option value="staff">Manager</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option><option value="terminal_operator">Terminal Operator</option><option value="inspector">Inspector</option></select></div>
                   <div><label className="text-xs font-semibold text-slate-400">Station</label><select value={editForm.stationId || ''} onChange={(e) => setEditForm((f) => ({ ...f, stationId: e.target.value, stationLoc: stationLocation(e.target.value) }))} disabled={editForm.role !== 'staff'} className={`mt-1 ${inp} disabled:opacity-40`}><option value="">Select station</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
                   <div><label className="text-xs font-semibold text-slate-400">Manager Username</label><input value={editForm.managerUsername || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerUsername: e.target.value }))} disabled={editForm.role !== 'staff'} className={`mt-1 ${inp} disabled:opacity-40`} /></div>
                   <div><label className="text-xs font-semibold text-slate-400">Manager Password (blank = keep)</label><PasswordInput value={editForm.managerPassword || ''} onChange={(e) => setEditForm((f) => ({ ...f, managerPassword: e.target.value }))} disabled={editForm.role !== 'staff'} /></div>
@@ -532,6 +587,30 @@ export default function ITAdminPage() {
                 <input name="confirmPassword" type="password" placeholder="Confirm password" required className={inp} />
               </div>
               <button type="submit" className="mt-4 w-full rounded-xl bg-purple-600 px-4 py-2.5 font-bold text-white hover:bg-purple-500 transition">Create Admin</button>
+            </form>
+
+            <form onSubmit={handleCreateTerminalOperator} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Create Terminal Operator</h2>
+              <p className="text-xs text-slate-500">Company email for Supabase login.</p>
+              <div className="mt-4 space-y-3">
+                <input name="name" placeholder="Full name" required className={inp} />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className={inp} />
+                <input name="password" type="password" placeholder="Password (min 8)" required className={inp} />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className={inp} />
+              </div>
+              <button type="submit" className="mt-4 w-full rounded-xl bg-cyan-600 px-4 py-2.5 font-bold text-white hover:bg-cyan-500 transition">Create Terminal Operator</button>
+            </form>
+
+            <form onSubmit={handleCreateInspector} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
+              <h2 className="text-base font-bold text-white">Create Inspector</h2>
+              <p className="text-xs text-slate-500">Company email for Supabase login.</p>
+              <div className="mt-4 space-y-3">
+                <input name="name" placeholder="Full name" required className={inp} />
+                <input name="email" type="email" placeholder="name@mainlandoil.com" required className={inp} />
+                <input name="password" type="password" placeholder="Password (min 8)" required className={inp} />
+                <input name="confirmPassword" type="password" placeholder="Confirm password" required className={inp} />
+              </div>
+              <button type="submit" className="mt-4 w-full rounded-xl bg-orange-600 px-4 py-2.5 font-bold text-white hover:bg-orange-500 transition">Create Inspector</button>
             </form>
 
             <form onSubmit={handleCreateSuperAdmin} className="rounded-2xl border border-white/10 bg-[#0d1220] p-5">
