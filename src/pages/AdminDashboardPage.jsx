@@ -11,7 +11,7 @@ import DateRangePicker from '../components/ui/DateRangePicker'
 import { exportAdminDailyReviewToExcel, exportStationsToExcel } from '../utils/exportExcel'
 import { useAppStore } from '../store/useAppStore'
 import { buildStationMetrics } from '../utils/stock'
-import { buildBatches, computeFifoCogs } from '../utils/batchCosting'
+import { buildBatches, computeFifoCogs, applyManualCosting } from '../utils/batchCosting'
 import { columnsToExportSpecs, filterColumnsForTable } from '../utils/columnVisibility'
 import { matchesStationMultiFilter } from '../utils/filterUtils'
 import { formatPendingSubmissionSummary, getDailyReportPendingInfo } from '../utils/reportPending'
@@ -34,7 +34,7 @@ const Sparkline = ({ data }) => {
   )
 }
 
-const PlStationCardGrid = ({ cards, sparklines, expanded, setExpanded, showStatus }) => (
+const PlStationCardGrid = ({ cards, sparklines, expanded, setExpanded, showStatus, productRequests = [], batchConsumedTotals = {}, manualCostEntries = [] }) => (
   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
     {cards.map((s) => {
       const isOpen = expanded === s.stationId
@@ -42,6 +42,47 @@ const PlStationCardGrid = ({ cards, sparklines, expanded, setExpanded, showStatu
       const marginBg = s.margin >= 20 ? 'bg-[#a9cd39]/15 text-[#a9cd39]' : s.margin >= 5 ? 'bg-amber-400/15 text-amber-300' : 'bg-rose-400/15 text-rose-300'
       const sparkData = sparklines?.get(s.stationId)
       const hasVariance = s.varianceLiters > 50
+
+      // Litres sold grouped by the landing cost they were actually matched
+      // against - one row per distinct batch/manual entry drawn from.
+      const costGroups = isOpen
+        ? Object.values(
+            (s.events || []).reduce((acc, ev) => {
+              const key = `${ev.source}::${ev.sourceId}`
+              if (!acc[key]) acc[key] = { ...ev, litres: 0 }
+              acc[key].litres += ev.litres
+              return acc
+            }, {}),
+          ).sort((a, b) => b.litres - a.litres)
+        : []
+
+      const receivingHistory = isOpen
+        ? productRequests
+            .filter((r) => r.stationId === s.stationId && (r.terminalReviewedAt || r.dispatchStatus === 'dispatched' || r.dispatchStatus === 'received') && Number(r.approvedLiters || 0) > 0)
+            .map((r) => {
+              const costPerLiter = Number(r.costPricePerLiter || 0)
+              const transportPerLiter = Number(r.transportCostPerLiter || 0)
+              const totalLitres = Number(r.approvedLiters || 0)
+              const consumed = batchConsumedTotals[r.id] || 0
+              return {
+                id: r.id,
+                date: String(r.terminalReviewedAt || r.updatedAt || r.createdAt || '').slice(0, 10),
+                product: (r.approvedProductType || r.requestedProductType || 'PMS').toUpperCase() === 'AGO' ? 'AGO' : 'PMS',
+                totalLitres,
+                costPerLiter,
+                transportPerLiter,
+                landingPerLiter: costPerLiter + transportPerLiter,
+                priced: costPerLiter > 0,
+                remaining: Math.max(0, totalLitres - consumed),
+              }
+            })
+            .sort((a, b) => b.date.localeCompare(a.date))
+        : []
+
+      const manualEntriesForStation = isOpen
+        ? manualCostEntries.filter((e) => e.stationId === s.stationId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+        : []
+
       return (
         <button key={s.stationId} type="button" onClick={() => setExpanded(isOpen ? null : s.stationId)}
           className={`rounded-2xl border text-left transition hover:brightness-110 ${isOpen ? 'border-[#a9cd39]/30 bg-[#a9cd39]/5' : 'border-white/8 bg-white/[0.04]'}`}>
@@ -82,6 +123,79 @@ const PlStationCardGrid = ({ cards, sparklines, expanded, setExpanded, showStatu
                   <div><p className="text-white font-semibold">{money(s.agoRevenue)}</p></div>
                 </div>
               </div>
+
+              <div className="space-y-2 rounded-xl border border-[#a9cd39]/20 bg-[#a9cd39]/5 p-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#a9cd39]">Final Verdict</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-300">Confirmed profit (trusted)</span>
+                  <span className={`text-sm font-black ${s.confirmedNetProfit < 0 ? 'text-rose-400' : 'text-[#a9cd39]'}`}>{money(s.confirmedNetProfit)}</span>
+                </div>
+                <p className="text-[10px] text-slate-500">{s.confirmedMargin.toFixed(1)}% margin on {money(s.confirmedRevenue)} confirmed revenue</p>
+                {s.pendingRevenue > 0.5 && (
+                  <div className="flex items-center justify-between border-t border-white/10 pt-2">
+                    <span className="text-xs text-amber-300">Revenue pending cost</span>
+                    <span className="text-sm font-black text-amber-300">{money(s.pendingRevenue)}</span>
+                  </div>
+                )}
+                {s.uncostedLitres > 0.5 && (
+                  <p className="text-[10px] text-amber-300">{liters(s.uncostedLitres)} sold with no cost on file — coverage {s.coveragePct.toFixed(1)}%</p>
+                )}
+              </div>
+
+              {costGroups.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Litres by matched cost</p>
+                  <div className="space-y-1">
+                    {costGroups.map((g) => (
+                      <div key={`${g.source}-${g.sourceId}`} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11px]">
+                        <span className="text-slate-300">{g.product} · {liters(g.litres)}{g.source === 'manual' ? ' (manual)' : ''}</span>
+                        <span className="font-semibold text-white">{money(g.landingPerLitre)}/L</span>
+                      </div>
+                    ))}
+                    {s.uncostedLitres > 0.5 && (
+                      <div className="flex items-center justify-between rounded-lg bg-amber-400/10 px-2 py-1.5 text-[11px]">
+                        <span className="text-amber-300">Yet to cost · {liters(s.uncostedLitres)}</span>
+                        <span className="font-semibold text-amber-300">no cost on file</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {receivingHistory.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Receiving history</p>
+                  <div className="space-y-1">
+                    {receivingHistory.map((r) => (
+                      <div key={r.id} className="rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-300">{r.date || '-'} · {r.product} · {liters(r.totalLitres)}</span>
+                          <span className={`font-semibold ${r.priced ? 'text-white' : 'text-amber-300'}`}>{r.priced ? `${money(r.landingPerLiter)}/L` : 'unpriced'}</span>
+                        </div>
+                        <p className="text-slate-500">{r.remaining > 0.5 ? `${liters(r.remaining)} unconsumed` : 'fully consumed'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {manualEntriesForStation.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Manual costing entries</p>
+                  <div className="space-y-1">
+                    {manualEntriesForStation.map((e) => (
+                      <div key={e.id} className="rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-300">{e.productType} · {liters(e.quantity)}</span>
+                          <span className="font-semibold text-white">{money(e.landingCostPerLiter)}/L</span>
+                        </div>
+                        <p className="text-slate-500">{e.enteredBy} · {String(e.createdAt || '').slice(0, 10)}{e.remark ? ` · ${e.remark}` : ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {[
                   ['Revenue', money(s.revenue)],
@@ -154,6 +268,8 @@ const AdminDashboardPage = () => {
   const acknowledgeMonthEndFinalization = useAppStore((state) => state.acknowledgeMonthEndFinalization)
   const adminReplenishmentWorkflows = useAppStore((state) => state.adminReplenishmentWorkflows)
   const adminReportResolutions = useAppStore((state) => state.adminReportResolutions)
+  const manualCostEntries = useAppStore((state) => state.manualCostEntries)
+  const addManualCostEntry = useAppStore((state) => state.addManualCostEntry)
   const setAdminReplenishmentWorkflow = useAppStore((state) => state.setAdminReplenishmentWorkflow)
   const setAdminReportResolution = useAppStore((state) => state.setAdminReportResolution)
   const currentUser = useAppStore((state) => state.currentUser)
@@ -177,6 +293,9 @@ const AdminDashboardPage = () => {
   const [costingReadiness, setCostingReadiness] = useState('all')
   const [costingDateFrom, setCostingDateFrom] = useState('')
   const [costingDateTo, setCostingDateTo] = useState('')
+  const [manualCostForm, setManualCostForm] = useState({ stationId: '', productType: 'PMS', quantity: '', costPricePerLiter: '', transportCostPerLiter: '', remark: '' })
+  const [manualCostSubmitting, setManualCostSubmitting] = useState(false)
+  const [manualCostNotice, setManualCostNotice] = useState('')
 
   const metrics = useMemo(
     () =>
@@ -307,12 +426,69 @@ const AdminDashboardPage = () => {
   const fifoCogs = useMemo(() => {
     try {
       const batches = buildBatches(productRequests)
-      return computeFifoCogs(batches, reports)
+      const base = computeFifoCogs(batches, reports)
+      return applyManualCosting(base, reports, manualCostEntries)
     } catch (e) {
       console.error('FIFO costing error:', e)
       return {}
     }
-  }, [productRequests, reports])
+  }, [productRequests, reports, manualCostEntries])
+
+  // Total litres ever drawn from each dispatch batch, across all history (not
+  // just whatever date range is selected) - used to show a batch's remaining
+  // unconsumed balance in the receiving-history drill-down.
+  const batchConsumedTotals = useMemo(() => {
+    const totals = {}
+    for (const row of Object.values(fifoCogs)) {
+      for (const ev of row.events || []) {
+        if (ev.source !== 'batch') continue
+        totals[ev.sourceId] = (totals[ev.sourceId] || 0) + ev.litres
+      }
+    }
+    return totals
+  }, [fifoCogs])
+
+  // How many litres are still sitting uncosted per station+product, across
+  // all history - what the manual costing form validates a submission against.
+  const uncostedByStationProduct = useMemo(() => {
+    const totals = {}
+    for (const row of Object.values(fifoCogs)) {
+      if (!row.stationId) continue
+      if (!totals[row.stationId]) totals[row.stationId] = { PMS: 0, AGO: 0 }
+      totals[row.stationId].PMS += row.pmsUncosted || 0
+      totals[row.stationId].AGO += row.agoUncosted || 0
+    }
+    return totals
+  }, [fifoCogs])
+
+  const manualCostAvailable = uncostedByStationProduct[manualCostForm.stationId]?.[manualCostForm.productType] || 0
+
+  const handleManualCostSubmit = async (event) => {
+    event.preventDefault()
+    setManualCostNotice('')
+    const quantity = Number(manualCostForm.quantity || 0)
+    if (!manualCostForm.stationId) { setManualCostNotice('Select a station.'); return }
+    if (!(quantity > 0)) { setManualCostNotice('Enter a quantity greater than zero.'); return }
+    if (quantity > manualCostAvailable + 0.5) {
+      setManualCostNotice(`Only ${liters(manualCostAvailable)} of ${manualCostForm.productType} is actually yet-to-cost for this station — enter that or less.`)
+      return
+    }
+    setManualCostSubmitting(true)
+    const result = await addManualCostEntry({
+      stationId: manualCostForm.stationId,
+      productType: manualCostForm.productType,
+      quantity,
+      costPricePerLiter: Number(manualCostForm.costPricePerLiter || 0),
+      transportCostPerLiter: Number(manualCostForm.transportCostPerLiter || 0),
+      remark: manualCostForm.remark,
+    }).finally(() => setManualCostSubmitting(false))
+    if (!result?.ok) {
+      setManualCostNotice(result?.message || 'Could not save manual cost entry.')
+      return
+    }
+    setManualCostForm((prev) => ({ ...prev, quantity: '', costPricePerLiter: '', transportCostPerLiter: '', remark: '' }))
+    setManualCostNotice('Cost entry saved — applied to the oldest uncosted litres first.')
+  }
 
   const allProfitRows = useMemo(
     () =>
@@ -325,11 +501,25 @@ const AdminDashboardPage = () => {
           const pmsRevenue = getReportRevenue(report, 'PMS')
           const agoRevenue = getReportRevenue(report, 'AGO')
           const revenue = pmsRevenue + agoRevenue
-          const fifo = fifoCogs[report.id] || { cogs: 0, costingStatus: 'uncosted' }
+          const litersSold = pmsLiters + agoLiters
+          const fifo = fifoCogs[report.id] || { cogs: 0, costingStatus: 'uncosted', uncostedLitres: litersSold, totalLitres: litersSold, events: [] }
           const cogs = fifo.cogs
+          const uncostedLitres = fifo.uncostedLitres || 0
+          const costedLitres = Math.max(0, (fifo.totalLitres || litersSold) - uncostedLitres)
+          // Revenue isn't tracked per-litre, so split it proportionally between
+          // costed and yet-to-cost litres, assuming the day's selling price was
+          // uniform across what was sold (true for single-price days, a close
+          // approximation otherwise). This is what lets a "partial" report
+          // contribute an honest confirmed-profit amount instead of being
+          // lumped whole into either bucket.
+          const costedShare = litersSold > 0 ? costedLitres / litersSold : (fifo.costingStatus === 'costed' ? 1 : 0)
+          const confirmedRevenue = revenue * costedShare
+          const pendingRevenue = revenue - confirmedRevenue
           const expense = Number(report.expenseAmount || 0)
           const grossProfit = revenue - cogs
           const netProfit = grossProfit - expense
+          const confirmedGrossProfit = confirmedRevenue - cogs
+          const confirmedNetProfit = confirmedGrossProfit - expense
           return {
             id: report.id,
             date: report.date,
@@ -340,7 +530,7 @@ const AdminDashboardPage = () => {
             stationName,
             pmsLiters,
             agoLiters,
-            litersSold: pmsLiters + agoLiters,
+            litersSold,
             pmsRevenue,
             agoRevenue,
             revenue,
@@ -350,6 +540,13 @@ const AdminDashboardPage = () => {
             netProfit,
             margin: revenue ? (netProfit / revenue) * 100 : 0,
             costingStatus: fifo.costingStatus,
+            uncostedLitres,
+            costedLitres,
+            confirmedRevenue,
+            pendingRevenue,
+            confirmedGrossProfit,
+            confirmedNetProfit,
+            events: fifo.events || [],
             sourceStatus: report.supervisorReview?.status || report.reviewStatus || 'Submitted',
             varianceLiters: Math.abs(Number(report.variancePMS || 0)) + Math.abs(Number(report.varianceAGO || 0)),
           }
@@ -393,22 +590,41 @@ const AdminDashboardPage = () => {
     return [...map.values()].sort((a, b) => b.netProfit - a.netProfit)
   }
 
+  // Headline P&L numbers use CONFIRMED figures only (revenue matched to a
+  // real cost, whether from a tracked dispatch or a manual costing entry) -
+  // independent of the costed/yet-to-cost tab below, which is for browsing
+  // individual reports, not for the totals. Revenue sold with no cost basis
+  // never enters this calculation; it's surfaced separately as pendingRevenue
+  // so the headline number is never quietly inflated by unpriced litres.
   const profitSummary = useMemo(() => {
-    const revenue = profitRows.reduce((sum, row) => sum + row.revenue, 0)
-    const cogs = profitRows.reduce((sum, row) => sum + row.cogs, 0)
-    const expense = profitRows.reduce((sum, row) => sum + row.expense, 0)
+    let rowsInRange = allProfitRows
+    if (plDateFrom && plDateTo) {
+      rowsInRange = allProfitRows.filter((r) => r.date >= plDateFrom && r.date <= plDateTo)
+    } else if (plDateFrom) {
+      rowsInRange = allProfitRows.filter((r) => r.date === plDateFrom)
+    }
+    const revenue = rowsInRange.reduce((sum, row) => sum + row.confirmedRevenue, 0)
+    const pendingRevenue = rowsInRange.reduce((sum, row) => sum + row.pendingRevenue, 0)
+    const uncostedLitres = rowsInRange.reduce((sum, row) => sum + row.uncostedLitres, 0)
+    const litersSold = rowsInRange.reduce((sum, row) => sum + row.litersSold, 0)
+    const cogs = rowsInRange.reduce((sum, row) => sum + row.cogs, 0)
+    const expense = rowsInRange.reduce((sum, row) => sum + row.expense, 0)
     const grossProfit = revenue - cogs
     const netProfit = grossProfit - expense
     return {
-      reports: profitRows.length,
+      reports: rowsInRange.length,
       revenue,
+      pendingRevenue,
+      uncostedLitres,
+      litersSold,
+      coveragePct: litersSold ? ((litersSold - uncostedLitres) / litersSold) * 100 : 100,
       cogs,
       expense,
       grossProfit,
       netProfit,
       margin: revenue ? (netProfit / revenue) * 100 : 0,
     }
-  }, [profitRows])
+  }, [allProfitRows, plDateFrom, plDateTo])
 
   const currentWeek = getWeekKey(today)
   const currentMonth = today.slice(0, 7)
@@ -1318,27 +1534,42 @@ const AdminDashboardPage = () => {
   const activeProfitLossView = profitLossViewMeta[adminView]
 
   const periodSummary = useMemo(() => {
+    // Confirmed-only, same rule as profitSummary: revenue with no matching
+    // cost never counts toward these totals, it's reported separately.
     const calc = (rows) => {
-      const revenue = rows.reduce((s, r) => s + r.revenue, 0)
+      const revenue = rows.reduce((s, r) => s + r.confirmedRevenue, 0)
+      const pendingRevenue = rows.reduce((s, r) => s + r.pendingRevenue, 0)
+      const uncostedLitres = rows.reduce((s, r) => s + r.uncostedLitres, 0)
+      const litersSold = rows.reduce((s, r) => s + r.litersSold, 0)
       const cogs = rows.reduce((s, r) => s + r.cogs, 0)
       const expense = rows.reduce((s, r) => s + r.expense, 0)
       const grossProfit = revenue - cogs
       const netProfit = grossProfit - expense
-      return { revenue, cogs, expense, grossProfit, netProfit, margin: revenue ? (netProfit / revenue) * 100 : 0, reports: rows.length }
+      return {
+        revenue, pendingRevenue, uncostedLitres, litersSold,
+        coveragePct: litersSold ? ((litersSold - uncostedLitres) / litersSold) * 100 : 100,
+        cogs, expense, grossProfit, netProfit,
+        margin: revenue ? (netProfit / revenue) * 100 : 0,
+        reports: rows.length,
+      }
     }
     const isPL = adminView && adminView.startsWith('profit-loss')
     const curr = isPL && plDateFrom && plDateTo
-      ? calc(profitRows.filter((r) => r.date >= plDateFrom && r.date <= plDateTo))
+      ? calc(allProfitRows.filter((r) => r.date >= plDateFrom && r.date <= plDateTo))
       : null
     return { curr, prev: null }
-  }, [adminView, profitRows, plDateFrom, plDateTo])
+  }, [adminView, allProfitRows, plDateFrom, plDateTo])
 
+  // Sourced from allProfitRows (not the costed/yet-to-cost tab-filtered
+  // profitRows) so every station card always shows its complete picture -
+  // confirmed profit and revenue pending cost side by side, never a subset
+  // silently hidden behind whichever tab happens to be selected.
   const plStationCards = useMemo(() => {
-    let filtered = profitRows
+    let filtered = allProfitRows
     if (plDateFrom && plDateTo) {
-      filtered = profitRows.filter((r) => r.date >= plDateFrom && r.date <= plDateTo)
+      filtered = allProfitRows.filter((r) => r.date >= plDateFrom && r.date <= plDateTo)
     } else if (plDateFrom) {
-      filtered = profitRows.filter((r) => r.date === plDateFrom)
+      filtered = allProfitRows.filter((r) => r.date === plDateFrom)
     }
     if (adminView === 'profit-loss/stations' && plSelectedStation !== 'all') {
       filtered = filtered.filter((r) => r.stationId === plSelectedStation)
@@ -1351,7 +1582,9 @@ const AdminDashboardPage = () => {
         pmsLiters: 0, agoLiters: 0, litersSold: 0,
         pmsRevenue: 0, agoRevenue: 0,
         revenue: 0, cogs: 0, expense: 0, grossProfit: 0, netProfit: 0,
-        varianceLiters: 0, reports: 0, rows: [],
+        confirmedRevenue: 0, pendingRevenue: 0, uncostedLitres: 0,
+        confirmedGrossProfit: 0, confirmedNetProfit: 0,
+        varianceLiters: 0, reports: 0, rows: [], events: [],
       }
       existing.pmsLiters += r.pmsLiters
       existing.agoLiters += r.agoLiters
@@ -1363,15 +1596,26 @@ const AdminDashboardPage = () => {
       existing.expense += r.expense
       existing.grossProfit += r.grossProfit
       existing.netProfit += r.netProfit
+      existing.confirmedRevenue += r.confirmedRevenue
+      existing.pendingRevenue += r.pendingRevenue
+      existing.uncostedLitres += r.uncostedLitres
+      existing.confirmedGrossProfit += r.confirmedGrossProfit
+      existing.confirmedNetProfit += r.confirmedNetProfit
       existing.varianceLiters += r.varianceLiters
       existing.reports += 1
       existing.rows.push(r)
+      for (const ev of r.events) existing.events.push({ ...ev, reportDate: r.date })
       map.set(r.stationId, existing)
     }
     return [...map.values()]
-      .map((s) => ({ ...s, margin: s.revenue ? (s.netProfit / s.revenue) * 100 : 0 }))
+      .map((s) => ({
+        ...s,
+        margin: s.revenue ? (s.netProfit / s.revenue) * 100 : 0,
+        coveragePct: s.litersSold ? ((s.litersSold - s.uncostedLitres) / s.litersSold) * 100 : 100,
+        confirmedMargin: s.confirmedRevenue ? (s.confirmedNetProfit / s.confirmedRevenue) * 100 : 0,
+      }))
       .sort((a, b) => b.netProfit - a.netProfit)
-  }, [adminView, profitRows, plDateFrom, plDateTo, plSelectedStation, stationManagerById])
+  }, [adminView, allProfitRows, plDateFrom, plDateTo, plSelectedStation, stationManagerById])
 
   const stationSparklines = useMemo(() => {
     const last7 = Array.from({ length: 7 }, (_, i) => {
@@ -1577,7 +1821,7 @@ const AdminDashboardPage = () => {
               )}
             </div>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className={`mt-6 grid gap-3 md:grid-cols-2 ${adminView === 'profit-loss/costing' ? 'xl:grid-cols-4' : 'xl:grid-cols-5'}`}>
               {(adminView === 'profit-loss/costing'
                 ? [
                     ['Dispatch volume', liters(costingSummary.totalLiters), `${filteredCostingRows.length} filtered records`],
@@ -1587,16 +1831,18 @@ const AdminDashboardPage = () => {
                   ]
                 : periodSummary.curr
                   ? [
-                      ['Revenue', money(periodSummary.curr.revenue), periodSummary.prev ? `vs prev: ${money(periodSummary.prev.revenue)}` : 'Sales value from reports'],
-                      ['COGS', money(periodSummary.curr.cogs), 'Liters sold x landing cost'],
+                      ['Revenue', money(periodSummary.curr.revenue), periodSummary.prev ? `vs prev: ${money(periodSummary.prev.revenue)}` : 'Confirmed — cost-matched litres only'],
+                      ['COGS', money(periodSummary.curr.cogs), 'Liters sold x matched landing cost'],
                       ['Expenses', money(periodSummary.curr.expense), 'Manager expense lines'],
                       ['Net P/L', money(periodSummary.curr.netProfit), `${periodSummary.curr.margin.toFixed(1)}% margin${periodSummary.prev ? ` · prev: ${money(periodSummary.prev.netProfit)}` : ''}`],
+                      ['Coverage', `${periodSummary.curr.coveragePct.toFixed(1)}%`, `${money(periodSummary.curr.pendingRevenue)} pending cost (${liters(periodSummary.curr.uncostedLitres)})`],
                     ]
                   : [
-                      ['Revenue', money(profitSummary.revenue), 'Sales value from reports'],
-                      ['COGS', money(profitSummary.cogs), 'Liters sold x landing cost'],
+                      ['Revenue', money(profitSummary.revenue), 'Confirmed — cost-matched litres only'],
+                      ['COGS', money(profitSummary.cogs), 'Liters sold x matched landing cost'],
                       ['Expenses', money(profitSummary.expense), 'Manager expense lines'],
                       ['Net P/L', money(profitSummary.netProfit), `${profitSummary.margin.toFixed(1)}% margin`],
+                      ['Coverage', `${profitSummary.coveragePct.toFixed(1)}%`, `${money(profitSummary.pendingRevenue)} pending cost (${liters(profitSummary.uncostedLitres)})`],
                     ]
               ).map(([label, value, hint]) => (
                 <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
@@ -1607,7 +1853,9 @@ const AdminDashboardPage = () => {
                         ? 'text-rose-400'
                         : label === 'Needs costing' && value !== '0'
                           ? 'text-amber-300'
-                          : 'text-white'
+                          : label === 'Coverage' && (periodSummary.curr ? periodSummary.curr.coveragePct : profitSummary.coveragePct) < 90
+                            ? 'text-amber-300'
+                            : 'text-white'
                     }`}
                   >
                     {value}
@@ -1619,6 +1867,7 @@ const AdminDashboardPage = () => {
           </Card>
 
           {adminView === 'profit-loss/costing' ? (
+            <>
             <Card className="space-y-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1766,6 +2015,97 @@ const AdminDashboardPage = () => {
                 <EmptyState title="No costing records yet" message="Terminal dispatches with cost price and transport price will appear here." />
               )}
             </Card>
+
+            <Card className="space-y-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-amber-300">Manual Costing Phase</p>
+                <h3 className="text-xl font-bold">Cost yet-to-cost litres</h3>
+                <p className="text-sm text-slate-500">
+                  For litres already sold with no dispatch batch to draw from. Consumed oldest-uncosted-first, same as a normal dispatch — never applied to future sales, only backfilled onto what's already recorded as yet-to-cost.
+                </p>
+              </div>
+
+              <form onSubmit={handleManualCostSubmit} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Station</span>
+                  <select
+                    value={manualCostForm.stationId}
+                    onChange={(e) => setManualCostForm((f) => ({ ...f, stationId: e.target.value }))}
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2.5 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                  >
+                    <option value="">Select station</option>
+                    {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Product</span>
+                  <select
+                    value={manualCostForm.productType}
+                    onChange={(e) => setManualCostForm((f) => ({ ...f, productType: e.target.value }))}
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2.5 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                  >
+                    <option value="PMS">PMS</option>
+                    <option value="AGO">AGO</option>
+                  </select>
+                </label>
+                <div className="flex items-end">
+                  <p className="text-xs text-amber-300">
+                    {manualCostForm.stationId ? `Yet to cost: ${liters(manualCostAvailable)}` : 'Select a station to see its yet-to-cost balance'}
+                  </p>
+                </div>
+
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Quantity (L)</span>
+                  <input
+                    type="number" min="0" step="any"
+                    value={manualCostForm.quantity}
+                    onChange={(e) => setManualCostForm((f) => ({ ...f, quantity: e.target.value }))}
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2.5 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                  />
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Cost price/L</span>
+                  <input
+                    type="number" min="0" step="any"
+                    value={manualCostForm.costPricePerLiter}
+                    onChange={(e) => setManualCostForm((f) => ({ ...f, costPricePerLiter: e.target.value }))}
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2.5 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                  />
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Transport cost/L</span>
+                  <input
+                    type="number" min="0" step="any"
+                    value={manualCostForm.transportCostPerLiter}
+                    onChange={(e) => setManualCostForm((f) => ({ ...f, transportCostPerLiter: e.target.value }))}
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2.5 text-sm text-white outline-none focus:border-[#a9cd39]/40"
+                  />
+                </label>
+
+                <label className="block space-y-1.5 md:col-span-2 xl:col-span-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Remark (why this is being backfilled)</span>
+                  <textarea
+                    value={manualCostForm.remark}
+                    onChange={(e) => setManualCostForm((f) => ({ ...f, remark: e.target.value }))}
+                    rows={2}
+                    className="w-full rounded-xl border border-white/10 bg-[#0d1220] px-3 py-2.5 text-sm text-white outline-none focus:border-[#a9cd39]/40 resize-none"
+                  />
+                </label>
+
+                {manualCostNotice && (
+                  <p className={`md:col-span-2 xl:col-span-3 text-xs ${manualCostNotice.startsWith('Cost entry saved') ? 'text-[#a9cd39]' : 'text-rose-400'}`}>{manualCostNotice}</p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={manualCostSubmitting}
+                  className="md:col-span-2 xl:col-span-3 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-black text-black hover:bg-amber-300 disabled:opacity-50 transition"
+                >
+                  {manualCostSubmitting ? 'Saving...' : 'Apply cost to oldest yet-to-cost litres'}
+                </button>
+              </form>
+            </Card>
+            </>
           ) : adminView !== 'profit-loss' ? (
             <Card className="space-y-5">
               {/* Period picker */}
@@ -1825,7 +2165,7 @@ const AdminDashboardPage = () => {
               {plStationCards.length === 0 ? (
                 <EmptyState title="No data for this period" message="No costed reports found for the selected period." />
               ) : (
-                <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus={adminView === 'profit-loss/daily'} />
+                <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus={adminView === 'profit-loss/daily'} productRequests={productRequests} batchConsumedTotals={batchConsumedTotals} manualCostEntries={manualCostEntries} />
               )}
 
               {/* 30-day cumulative chart */}
@@ -1886,7 +2226,7 @@ const AdminDashboardPage = () => {
           </div>
           {plStationCards.length === 0
             ? <EmptyState title="No P/L data for selected period" message="No costed reports found for the selected date range." />
-            : <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus />
+            : <PlStationCardGrid cards={plStationCards} sparklines={stationSparklines} expanded={plExpandedStation} setExpanded={setPlExpandedStation} showStatus productRequests={productRequests} batchConsumedTotals={batchConsumedTotals} manualCostEntries={manualCostEntries} />
           }
         </Card>
       )}

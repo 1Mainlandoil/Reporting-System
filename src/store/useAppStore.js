@@ -21,6 +21,7 @@ import {
   insertChatMessage,
   insertReport,
   insertInspectorVisit,
+  insertManualCostEntry,
   loadInitialData,
   markChatMessagesSeenInSupabase,
   upsertAdminReportResolution,
@@ -78,6 +79,7 @@ const ensurePersistedCollections = (state, fallback = {}) => ({
   ),
   adminReportResolutions: asArray(state.adminReportResolutions, fallback.adminReportResolutions),
   inspectorVisits: asArray(state.inspectorVisits, fallback.inspectorVisits),
+  manualCostEntries: asArray(state.manualCostEntries, fallback.manualCostEntries),
   appSettings: state.appSettings ?? fallback.appSettings ?? defaultAppSettings,
 })
 
@@ -138,6 +140,7 @@ export const useAppStore = create(
       productRequests: [],
       rejectedReports: [],
       inspectorVisits: [],
+      manualCostEntries: [],
       dailyFinalizations: [],
       monthEndFinalizations: [],
       adminDailyReviews: [],
@@ -1555,6 +1558,50 @@ export const useAppStore = create(
         }))
         return { ok: true }
       },
+      addManualCostEntry: async (payload) => {
+        const state = get()
+        if (state.role !== ROLES.ADMIN) {
+          return { ok: false, message: 'Only admins can add manual cost entries.' }
+        }
+        const stationId = String(payload?.stationId || '').trim()
+        const productType = payload?.productType === 'AGO' ? 'AGO' : 'PMS'
+        const quantity = Number(payload?.quantity || 0)
+        const costPricePerLiter = Number(payload?.costPricePerLiter || 0)
+        const transportCostPerLiter = Number(payload?.transportCostPerLiter || 0)
+        if (!stationId) return { ok: false, message: 'Select a station.' }
+        if (!(quantity > 0)) return { ok: false, message: 'Enter a quantity greater than zero.' }
+        if (!(costPricePerLiter > 0)) return { ok: false, message: 'Enter a cost price per liter.' }
+
+        const newEntry = {
+          id: `manual-cost-${Date.now()}`,
+          stationId,
+          productType,
+          quantity,
+          costPricePerLiter,
+          transportCostPerLiter,
+          landingCostPerLiter: costPricePerLiter + transportCostPerLiter,
+          remark: String(payload?.remark || '').trim(),
+          enteredBy: state.currentUser?.name || 'Admin',
+          enteredByUserId: state.currentUser?.id || null,
+          createdAt: new Date().toISOString(),
+        }
+
+        try {
+          if (hasSupabaseEnv && supabase) {
+            await insertManualCostEntry(newEntry)
+          }
+        } catch (error) {
+          return {
+            ok: false,
+            message: extractErrorMessage(error, 'Could not save manual cost entry. Check your connection and try again.'),
+          }
+        }
+
+        set((current) => ({
+          manualCostEntries: [...asArray(current.manualCostEntries), newEntry],
+        }))
+        return { ok: true }
+      },
       finalizeSupervisorDailyReview: ({ date, generalRemark, stationReviews }) =>
         set((state) => {
           if (!date) {
@@ -2002,6 +2049,7 @@ export const useAppStore = create(
               adminReplenishmentWorkflows: asArray(remoteData.adminReplenishmentWorkflows),
               adminReportResolutions: asArray(remoteData.adminReportResolutions),
               inspectorVisits: asArray(remoteData.inspectorVisits),
+              manualCostEntries: asArray(remoteData.manualCostEntries),
               hydratedFromSupabase: true,
               isHydrating: false,
             })
@@ -2058,6 +2106,7 @@ export const useAppStore = create(
             adminReplenishmentWorkflows: [],
             adminReportResolutions: [],
             inspectorVisits: [],
+            manualCostEntries: [],
           }
         }
         return persisted
@@ -2076,6 +2125,7 @@ export const useAppStore = create(
         adminReplenishmentWorkflows: state.adminReplenishmentWorkflows,
         adminReportResolutions: state.adminReportResolutions,
         inspectorVisits: state.inspectorVisits,
+        manualCostEntries: state.manualCostEntries,
         chatMessages: state.chatMessages,
         appSettings: state.appSettings,
         pinnedChatUserIds: state.pinnedChatUserIds,

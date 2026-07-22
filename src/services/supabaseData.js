@@ -329,6 +329,20 @@ const mapInspectorVisit = (row) => ({
   updatedAt: row.updated_at,
 })
 
+const mapManualCostEntry = (row) => ({
+  id: row.id,
+  stationId: row.station_id,
+  productType: row.product_type,
+  quantity: Number(row.quantity ?? 0) || 0,
+  costPricePerLiter: Number(row.cost_price_per_liter ?? 0) || 0,
+  transportCostPerLiter: Number(row.transport_cost_per_liter ?? 0) || 0,
+  landingCostPerLiter: Number(row.landing_cost_per_liter ?? 0) || 0,
+  remark: row.remark || '',
+  enteredBy: row.entered_by || 'Admin',
+  enteredByUserId: row.entered_by_user_id || null,
+  createdAt: row.created_at,
+})
+
 const safeSelect = async (builder, mapper, fallback = []) => {
   try {
     const { data, error } = await builder
@@ -376,7 +390,7 @@ export const loadInitialData = async () => {
     return null
   }
 
-  const [stationsRes, usersRes, reportsRes, chatMessagesRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits] = await Promise.all([
+  const [stationsRes, usersRes, reportsRes, chatMessagesRes, adminDailyReviewsRes, productRequests, dailyFinalizations, monthEndFinalizations, interventions, adminReplenishmentWorkflows, adminReportResolutions, inspectorVisits, manualCostEntries] = await Promise.all([
     supabase.from('stations').select('*').order('name', { ascending: true }),
     supabase.from('users').select('*').order('name', { ascending: true }),
     fetchAllReports(),
@@ -403,6 +417,11 @@ export const loadInitialData = async () => {
     safeSelect(
       supabase.from('inspector_visits').select('*').order('visit_date', { ascending: false }),
       mapInspectorVisit,
+      [],
+    ),
+    safeSelect(
+      supabase.from('manual_cost_entries').select('*').order('created_at', { ascending: true }),
+      mapManualCostEntry,
       [],
     ),
   ])
@@ -436,6 +455,7 @@ export const loadInitialData = async () => {
     adminReplenishmentWorkflows,
     adminReportResolutions,
     inspectorVisits,
+    manualCostEntries,
   }
 }
 
@@ -963,6 +983,31 @@ export const insertInspectorVisit = async (visit) => {
   }
 
   const { error } = await supabase.from('inspector_visits').upsert(payload, { onConflict: 'id' })
+  if (error) {
+    throw new Error(error.message)
+  }
+  return true
+}
+
+export const insertManualCostEntry = async (entry) => {
+  if (!hasSupabaseEnv || !supabase) {
+    throw new Error('Supabase is not configured for manual cost entry sync.')
+  }
+
+  const payload = {
+    id: entry.id,
+    station_id: entry.stationId,
+    product_type: entry.productType,
+    quantity: Number(entry.quantity || 0),
+    cost_price_per_liter: Number(entry.costPricePerLiter || 0),
+    transport_cost_per_liter: Number(entry.transportCostPerLiter || 0),
+    landing_cost_per_liter: Number(entry.landingCostPerLiter || 0),
+    remark: entry.remark || '',
+    entered_by: entry.enteredBy || 'Admin',
+    entered_by_user_id: entry.enteredByUserId || null,
+  }
+
+  const { error } = await supabase.from('manual_cost_entries').insert(payload)
   if (error) {
     throw new Error(error.message)
   }

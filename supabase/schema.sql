@@ -311,6 +311,27 @@ create index if not exists idx_inspector_visits_station_date on public.inspector
 alter table public.inspector_visits
   add column if not exists photo_evidence jsonb not null default '[]'::jsonb;
 
+-- Manual costing: backfills COGS for litres already sold with no matching
+-- dispatch batch (FIFO in batchCosting.js had nothing to draw from). This is
+-- a standalone correction ledger, not a new batch — it never feeds the FIFO
+-- dispatch pool, so it can't be consumed by future sales, only applied
+-- against litres already recorded as uncosted at entry time.
+create table if not exists public.manual_cost_entries (
+  id text primary key,
+  station_id text not null references public.stations(id) on delete cascade,
+  product_type text not null check (product_type in ('PMS', 'AGO')),
+  quantity numeric not null check (quantity > 0),
+  cost_price_per_liter numeric not null default 0,
+  transport_cost_per_liter numeric not null default 0,
+  landing_cost_per_liter numeric not null default 0,
+  remark text not null default '',
+  entered_by text not null default 'Admin',
+  entered_by_user_id text references public.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_manual_cost_entries_station_product on public.manual_cost_entries(station_id, product_type, created_at asc);
+
 alter table public.users
   add column if not exists manager_username text,
   add column if not exists manager_password_hash text;
@@ -433,6 +454,7 @@ alter table public.admin_replenishment_workflows enable row level security;
 alter table public.admin_report_resolutions enable row level security;
 alter table public.month_end_finalizations enable row level security;
 alter table public.inspector_visits enable row level security;
+alter table public.manual_cost_entries enable row level security;
 
 drop policy if exists "allow all stations" on public.stations;
 drop policy if exists "allow all users" on public.users;
@@ -446,6 +468,7 @@ drop policy if exists "allow all admin replenishment workflows" on public.admin_
 drop policy if exists "allow all admin report resolutions" on public.admin_report_resolutions;
 drop policy if exists "allow all month end finalizations" on public.month_end_finalizations;
 drop policy if exists "allow all inspector visits" on public.inspector_visits;
+drop policy if exists "allow all manual cost entries" on public.manual_cost_entries;
 
 create policy "allow all stations" on public.stations for all using (true) with check (true);
 create policy "allow all users" on public.users for all using (true) with check (true);
@@ -459,6 +482,7 @@ create policy "allow all admin replenishment workflows" on public.admin_replenis
 create policy "allow all admin report resolutions" on public.admin_report_resolutions for all using (true) with check (true);
 create policy "allow all month end finalizations" on public.month_end_finalizations for all using (true) with check (true);
 create policy "allow all inspector visits" on public.inspector_visits for all using (true) with check (true);
+create policy "allow all manual cost entries" on public.manual_cost_entries for all using (true) with check (true);
 
 -- Realtime: push chat + report (+ user contact) changes to connected clients
 do $$
