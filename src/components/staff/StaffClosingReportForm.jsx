@@ -436,7 +436,19 @@ const StaffClosingReportForm = ({
         if (unlockedSections.includes('Sales Quantity')) { patch.managerSalesPMS = Number(formData.managerSalesPMS || 0); patch.managerSalesAGO = Number(formData.managerSalesAGO || 0) }
         if (unlockedSections.includes('Pricing')) { patch.pmsPrice = Number(formData.pmsPrice || 0); patch.agoPrice = Number(formData.agoPrice || 0) }
         if (unlockedSections.includes('Expenses')) { patch.expenseItems = expenseItems; patch.expenseAmount = expenseItems.reduce((s, i) => s + Number(i.amount || 0), 0) }
-        if (unlockedSections.includes('Cash')) { patch.cashBf = Number(effectiveCashBf || 0); patch.cashSales = Number(formData.cashSales || 0); patch.closingBalance = Number(formData.closingBalanceOverride || effectiveClosingBalance || 0) }
+        if (unlockedSections.includes('Cash')) {
+          const cashSalesForCorrection = Number(formData.cashSales || 0)
+          const normalizedDepositsForCorrection = (paymentBreakdown || [])
+            .map((item) => ({ channel: String(item.channel || '').trim(), amount: Number(item.amount || 0) }))
+            .filter((item) => item.channel && item.amount > 0 && item.channel.toUpperCase() !== 'POS')
+          const totalDepositsForCorrection = normalizedDepositsForCorrection.reduce((sum, item) => sum + item.amount, 0)
+          const computedClosingBalance = (Number(effectiveCashBf || 0) + cashSalesForCorrection) - totalDepositsForCorrection - Number(posValue || 0)
+          patch.cashBf = Number(effectiveCashBf || 0)
+          patch.cashSales = cashSalesForCorrection
+          patch.closingBalance = formData.closingBalanceOverride !== '' && formData.closingBalanceOverride != null
+            ? Number(formData.closingBalanceOverride)
+            : computedClosingBalance
+        }
         if (unlockedSections.includes('POS Terminals')) { patch.posTerminalBreakdown = assignedPosTerminals.map((t) => ({ terminalId: t.id, name: t.name, amount: Number(posTerminalAmounts[t.id] || 0) })) }
         if (unlockedSections.includes('Payments')) { patch.paymentBreakdown = paymentBreakdown }
         if (unlockedSections.includes('Pump Readings')) { patch.pumpReadings = pumpReadings }
