@@ -575,86 +575,96 @@ export const useAppStore = create(
         })
         return { ok: true }
       },
-      requestSectionCorrection: ({ reportId, sections, reason }) =>
-        set((state) => {
-          const report = state.reports.find((r) => r.id === reportId)
-          if (!report) return { reports: state.reports }
-          const now = new Date().toISOString()
-          const updated = {
-            ...report,
-            correctionRequest: {
-              sections,
-              reason: String(reason || '').trim(),
-              requestedBy: state.currentUser?.name || 'Supervisor',
-              requestedByUserId: state.currentUser?.id || null,
-              requestedAt: now,
-              status: 'pending',
+      requestSectionCorrection: async ({ reportId, sections, reason }) => {
+        const state = get()
+        const report = state.reports.find((r) => r.id === reportId)
+        if (!report) return { ok: false, error: 'not_found' }
+        const now = new Date().toISOString()
+        const updated = {
+          ...report,
+          correctionRequest: {
+            sections,
+            reason: String(reason || '').trim(),
+            requestedBy: state.currentUser?.name || 'Supervisor',
+            requestedByUserId: state.currentUser?.id || null,
+            requestedAt: now,
+            status: 'pending',
+          },
+          supervisorReview: {
+            status: 'Needs Correction',
+            remark: String(reason || '').trim(),
+            reviewedBy: state.currentUser?.name || 'Supervisor',
+            reviewedAt: now,
+          },
+        }
+        try {
+          await insertReport(updated)
+        } catch (err) {
+          return { ok: false, error: err?.message || 'sync_failed' }
+        }
+        set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? updated : r)) }))
+        return { ok: true }
+      },
+      submitSectionCorrection: async ({ reportId, patch }) => {
+        const state = get()
+        const report = state.reports.find((r) => r.id === reportId)
+        if (!report) return { ok: false, error: 'not_found' }
+        const now = new Date().toISOString()
+        // Opening stock / RTT feed into the book-remaining figure — recompute it
+        // whenever a correction touches either, so it doesn't go stale relative
+        // to the corrected inputs (received/sales are untouched by this section).
+        const mergedPatch = { ...patch }
+        if (patch.openingStockPMS != null) {
+          mergedPatch.openingPMS = Number(patch.openingStockPMS)
+        }
+        if (patch.openingStockAGO != null) {
+          mergedPatch.openingAGO = Number(patch.openingStockAGO)
+        }
+        if (patch.openingStockPMS != null || patch.rttPMS != null) {
+          mergedPatch.quantityRemainingPMS = computeQuantityRemaining({
+            previousRemaining: Number(patch.openingStockPMS ?? report.openingStockPMS ?? 0),
+            received: Number(report.receivedPMS ?? 0),
+            salesLiters: Number(report.totalSalesLitersPMS ?? 0),
+            rtt: Number(patch.rttPMS ?? report.rttPMS ?? 0),
+          })
+        }
+        if (patch.openingStockAGO != null || patch.rttAGO != null) {
+          mergedPatch.quantityRemainingAGO = computeQuantityRemaining({
+            previousRemaining: Number(patch.openingStockAGO ?? report.openingStockAGO ?? 0),
+            received: Number(report.receivedAGO ?? 0),
+            salesLiters: Number(report.totalSalesLitersAGO ?? 0),
+            rtt: Number(patch.rttAGO ?? report.rttAGO ?? 0),
+          })
+        }
+        const updated = {
+          ...report,
+          ...mergedPatch,
+          correctionRequest: { ...report.correctionRequest, status: 'corrected', correctedAt: now },
+          supervisorCorrectionHistory: [
+            ...(Array.isArray(report.supervisorCorrectionHistory) ? report.supervisorCorrectionHistory : []),
+            {
+              correctedBy: state.currentUser?.name || 'Manager',
+              correctedByUserId: state.currentUser?.id || null,
+              correctedAt: now,
+              reason: `Manager correction — sections: ${(report.correctionRequest?.sections || []).join(', ')}`,
+              type: 'manager_correction',
+              sections: report.correctionRequest?.sections || [],
             },
-            supervisorReview: {
-              status: 'Needs Correction',
-              remark: String(reason || '').trim(),
-              reviewedBy: state.currentUser?.name || 'Supervisor',
-              reviewedAt: now,
-            },
-          }
-          insertReport(updated).catch(() => {})
-          return { reports: state.reports.map((r) => r.id === reportId ? updated : r) }
-        }),
-      submitSectionCorrection: ({ reportId, patch }) =>
-        set((state) => {
-          const report = state.reports.find((r) => r.id === reportId)
-          if (!report) return { reports: state.reports }
-          const now = new Date().toISOString()
-          // Opening stock / RTT feed into the book-remaining figure — recompute it
-          // whenever a correction touches either, so it doesn't go stale relative
-          // to the corrected inputs (received/sales are untouched by this section).
-          const mergedPatch = { ...patch }
-          if (patch.openingStockPMS != null) {
-            mergedPatch.openingPMS = Number(patch.openingStockPMS)
-          }
-          if (patch.openingStockAGO != null) {
-            mergedPatch.openingAGO = Number(patch.openingStockAGO)
-          }
-          if (patch.openingStockPMS != null || patch.rttPMS != null) {
-            mergedPatch.quantityRemainingPMS = computeQuantityRemaining({
-              previousRemaining: Number(patch.openingStockPMS ?? report.openingStockPMS ?? 0),
-              received: Number(report.receivedPMS ?? 0),
-              salesLiters: Number(report.totalSalesLitersPMS ?? 0),
-              rtt: Number(patch.rttPMS ?? report.rttPMS ?? 0),
-            })
-          }
-          if (patch.openingStockAGO != null || patch.rttAGO != null) {
-            mergedPatch.quantityRemainingAGO = computeQuantityRemaining({
-              previousRemaining: Number(patch.openingStockAGO ?? report.openingStockAGO ?? 0),
-              received: Number(report.receivedAGO ?? 0),
-              salesLiters: Number(report.totalSalesLitersAGO ?? 0),
-              rtt: Number(patch.rttAGO ?? report.rttAGO ?? 0),
-            })
-          }
-          const updated = {
-            ...report,
-            ...mergedPatch,
-            correctionRequest: { ...report.correctionRequest, status: 'corrected', correctedAt: now },
-            supervisorCorrectionHistory: [
-              ...(Array.isArray(report.supervisorCorrectionHistory) ? report.supervisorCorrectionHistory : []),
-              {
-                correctedBy: state.currentUser?.name || 'Manager',
-                correctedByUserId: state.currentUser?.id || null,
-                correctedAt: now,
-                reason: `Manager correction — sections: ${(report.correctionRequest?.sections || []).join(', ')}`,
-                type: 'manager_correction',
-                sections: report.correctionRequest?.sections || [],
-              },
-            ],
-            supervisorReview: {
-              ...report.supervisorReview,
-              status: 'Pending Review',
-              remark: 'Manager submitted corrections — awaiting supervisor review',
-            },
-          }
-          insertReport(updated).catch(() => {})
-          return { reports: state.reports.map((r) => r.id === reportId ? updated : r) }
-        }),
+          ],
+          supervisorReview: {
+            ...report.supervisorReview,
+            status: 'Pending Review',
+            remark: 'Manager submitted corrections — awaiting supervisor review',
+          },
+        }
+        try {
+          await insertReport(updated)
+        } catch (err) {
+          return { ok: false, error: err?.message || 'sync_failed' }
+        }
+        set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? updated : r)) }))
+        return { ok: true }
+      },
       updateReportSupervisorReview: ({ reportId, status, remark }) =>
         set((state) => ({
           reports: state.reports.map((report) =>

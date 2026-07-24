@@ -3588,8 +3588,12 @@ const SupervisorDashboardPage = () => {
                                   onClick={async () => {
                                     if (!report?.id) return
                                     setCorrectionReqSubmitting(true)
-                                    requestSectionCorrection({ reportId: report.id, sections: correctionReqSections, reason: correctionReqReason.trim() })
+                                    const result = await requestSectionCorrection({ reportId: report.id, sections: correctionReqSections, reason: correctionReqReason.trim() })
                                     setCorrectionReqSubmitting(false)
+                                    if (!result?.ok) {
+                                      window.alert(result?.error || 'Could not send the correction request. Check connection and try again.')
+                                      return
+                                    }
                                     setCorrectionReqOpen(false); setCorrectionReqSections([]); setCorrectionReqReason('')
                                     closeDailyOpeningModal()
                                   }}

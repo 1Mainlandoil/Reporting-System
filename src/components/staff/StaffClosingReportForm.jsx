@@ -440,7 +440,11 @@ const StaffClosingReportForm = ({
         if (unlockedSections.includes('POS Terminals')) { patch.posTerminalBreakdown = assignedPosTerminals.map((t) => ({ terminalId: t.id, name: t.name, amount: Number(posTerminalAmounts[t.id] || 0) })) }
         if (unlockedSections.includes('Payments')) { patch.paymentBreakdown = paymentBreakdown }
         if (unlockedSections.includes('Pump Readings')) { patch.pumpReadings = pumpReadings }
-        submitSectionCorrection({ reportId: correctionReportId, patch })
+        const result = await submitSectionCorrection({ reportId: correctionReportId, patch })
+        if (!result?.ok) {
+          const msg = result?.error || 'Could not save the correction. Check connection and try again.'
+          setSubmitError(msg); window.alert(msg); return
+        }
         setStep(0); setSuccess(true)
       } finally { setSubmitting(false) }
       return
